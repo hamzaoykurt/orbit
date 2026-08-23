@@ -7,20 +7,21 @@ import {
   Building2, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
   Circle, CircleDot, Clock3, Cloud, CloudOff, Command, Compass, Download, Dumbbell, Globe2,
   Home as HomeIcon, Languages, LayoutGrid, ListTodo, Map, MapPin,
-  Menu, Mic, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
+  Menu, Mic, Monitor, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
   Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
-  Smartphone, Sparkles, Square, StickyNote, Trash2, Undo2, UserRound, Users,
+  Smartphone, Sparkles, Square, StickyNote, Sun, Trash2, Undo2, UserRound, Users,
   Volume2, X, Zap,
 } from 'lucide-react';
 
 type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
 type Note = { id: string; title: string; body: string; date: string; tone: string };
+type ThemePreference = 'light' | 'dark' | 'system';
 type PersistedState = {
   completed: Record<string, boolean>;
   customPersonal: Record<string, string[]>;
   projectStages: Record<string, number>;
   notes: Note[];
-  settings: { notifications: boolean; motion: boolean; sound: boolean; autoArchive: boolean; accent: string };
+  settings: { notifications: boolean; motion: boolean; sound: boolean; autoArchive: boolean; accent: string; theme: ThemePreference };
 };
 type SyncStatus = 'loading' | 'saving' | 'synced' | 'offline';
 
@@ -46,7 +47,7 @@ const defaultState: PersistedState = {
     { id: 'n2', title: 'Orbit Explorer fikri', body: 'Gezegenleri ölçekli yörüngelerde, dokunarak keşfedilen sakin bir deneyime dönüştür.', date: 'Dün · 22:18', tone: 'blue' },
     { id: 'n3', title: 'Eylül turu', body: 'Seminer içeriğinde ilk 15 dakikayı daha görsel ve daha kısa tut. Transfer detaylarını tekrar kontrol et.', date: '21 Ağu · 16:05', tone: 'sand' },
   ],
-  settings: { notifications: true, motion: true, sound: false, autoArchive: true, accent: 'violet' },
+  settings: { notifications: true, motion: true, sound: false, autoArchive: true, accent: 'violet', theme: 'system' },
 };
 
 function mergePersistedState(value: unknown): PersistedState {
@@ -132,6 +133,7 @@ export default function PersonalOS() {
   const [state, setState] = useState<PersistedState>(defaultState);
   const [hydrated, setHydrated] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('loading');
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
   const lastSyncedState = useRef('');
   const [mobileMenu, setMobileMenu] = useState(false);
   const [modal, setModal] = useState<'quick' | 'voice' | 'search' | 'note' | null>(null);
@@ -216,6 +218,25 @@ export default function PersonalOS() {
 
     return () => window.clearTimeout(saveTimer);
   }, [state, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const applyTheme = () => {
+      const nextTheme = state.settings.theme === 'system'
+        ? (systemTheme.matches ? 'dark' : 'light')
+        : state.settings.theme;
+      document.documentElement.dataset.theme = nextTheme;
+      document.documentElement.style.colorScheme = nextTheme;
+      document.documentElement.classList.add('theme-ready');
+      setResolvedTheme(nextTheme);
+    };
+
+    applyTheme();
+    if (state.settings.theme !== 'system') return;
+    systemTheme.addEventListener('change', applyTheme);
+    return () => systemTheme.removeEventListener('change', applyTheme);
+  }, [hydrated, state.settings.theme]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -425,7 +446,7 @@ export default function PersonalOS() {
       <PageTitle eyebrow="AYARLAR" title="Orbit sana uyum sağlasın." description="Görünümü, bildirimleri ve çalışma biçimini kişiselleştir."/>
       <div className="settings-layout"><nav className="surface settings-nav"><button className={settingsTab==='general'?'active':''} onClick={()=>setSettingsTab('general')}><UserRound size={16}/> Genel</button><button className={settingsTab==='appearance'?'active':''} onClick={()=>setSettingsTab('appearance')}><Palette size={16}/> Görünüm</button><button className={settingsTab==='notifications'?'active':''} onClick={()=>setSettingsTab('notifications')}><Bell size={16}/> Bildirimler</button><button className={settingsTab==='data'?'active':''} onClick={()=>setSettingsTab('data')}><Download size={16}/> Veri</button></nav><div className="settings-content">
         {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">EG</div><div><h2>Emir Güney</h2><p>Kişisel çalışma alanı</p></div><button onClick={()=>notify('Profil bilgileri düzenlemeye hazır.')}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><button className="setting-link" onClick={()=>notify('Türkçe ve İstanbul saat dilimi aktif.')}>Kontrol et</button></div></section></>}
-        {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Arayüzdeki odak rengi</small></span><div className="color-options">{['violet','blue','mint','sand'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Tamamlama anlarında hafif ses geri bildirimi" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/></section>}
+        {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Arayüzdeki odak rengi</small></span><div className="color-options">{['violet','blue','mint','sand'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Tamamlama anlarında hafif ses geri bildirimi" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/></section>}
         {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>Sistem senin adına ne kadar takip etsin?</p></header><SettingToggle icon={Bell} title="Akıllı hatırlatmalar" description="Yaklaşan görev ve programlar için sakin bildirimler" value={state.settings.notifications} onChange={(value)=>updateSetting('notifications',value)}/><SettingToggle icon={Archive} title="Otomatik arşiv" description="Tamamlanan öğeleri 7 gün sonra arşivle" value={state.settings.autoArchive} onChange={(value)=>updateSetting('autoArchive',value)}/></section>}
         {settingsTab==='data'&&<><section className="surface settings-section"><header><h3>Verini dışa aktar</h3><p>Orbit’teki yerel demo verisinin taşınabilir bir kopyasını al.</p></header><button className="data-export" onClick={exportDemoData}><Download size={16}/><span><strong>JSON yedeğini indir</strong><small>Görevler, notlar, proje aşamaları ve tercihler</small></span><ArrowRight size={15}/></button></section><section className="surface settings-section danger-section"><header><h3>Demo verisi</h3><p>Yerel değişiklikleri silip başlangıç verisine dön.</p></header><button onClick={()=>{if(window.confirm('Tüm yerel demo değişiklikleri sıfırlansın mı?')){setState(defaultState);notify('Demo verisi sıfırlandı.')}}}><RotateCcw size={15}/> Demo verisini sıfırla</button></section></>}
       </div></div>
@@ -446,7 +467,7 @@ export default function PersonalOS() {
     <div className="ambient-background" aria-hidden="true"><i/><i/><i/></div>
     <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><CircleDot size={18}/></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item,index)=>{const NavIcon=item.icon;return <button key={item.id} className={active===item.id?'active':''} onClick={()=>go(item.id)}><span><NavIcon size={17}/></span>{item.label}{index===5&&<em>3</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>setModal('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli komutu dene</small></span><ArrowUpRight size={14}/></button><div className="sidebar-profile"><div className="avatar">EG</div><span><strong>Emir Güney</strong><small>Kişisel çalışma alanı</small></span><MoreHorizontal size={16}/></div></aside>
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
-    <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><div className="sync-pill" data-status={syncStatus} title={`Cloudflare D1 · ${syncLabel}`}>{syncStatus === 'offline' ? <CloudOff size={13}/> : <Cloud size={13}/>}<span>{syncLabel}</span></div><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli komut" onClick={()=>setModal('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
+    <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><div className="sync-pill" data-status={syncStatus} title={`Cloudflare D1 · ${syncLabel}`}>{syncStatus === 'offline' ? <CloudOff size={13}/> : <Cloud size={13}/>}<span>{syncLabel}</span></div><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli komut" onClick={()=>setModal('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{nav.slice(0,4).map((item)=>{const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<button onClick={()=>setMobileMenu(true)} className={['kibleteyn','programs','calendar','notes','archive','settings'].includes(active)?'active':''}><Menu size={19}/><small>Daha</small></button></nav>
     {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setModal(null)}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi"><IconButton label="Kapat" className="modal-close" onClick={()=>{setModal(null);setVoiceStep('idle')}}><X size={17}/></IconButton>{modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi bırak, zamanı gelince Orbit sana göstersin.</p><label>Görev adı<input autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options"><button><CalendarDays size={14}/> Bugün</button><button><CircleDot size={14}/> Personal</button></div><button className="primary-button full" onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}{modal==='note'&&<><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YENİ NOT</span><h2>Bir düşünce yakala.</h2><label>Başlık<input autoFocus value={noteDraft.title} onChange={(event)=>setNoteDraft({...noteDraft,title:event.target.value})} placeholder="Not başlığı"/></label><label>Not<textarea value={noteDraft.body} onChange={(event)=>setNoteDraft({...noteDraft,body:event.target.value})} placeholder="Buraya yaz..."/></label><button className="primary-button full" onClick={addNote}>Notu kaydet <Check size={15}/></button></>}{modal==='voice'&&<VoiceModal step={voiceStep} onStart={startVoice} onAccept={acceptVoice}/>} {modal==='search'&&<><div className="command-input"><Search size={18}/><input autoFocus value={searchText} onChange={(event)=>setSearchText(event.target.value)} placeholder="Sayfa veya özellik ara..."/><kbd>ESC</kbd></div><div className="command-results"><span>Hızlı geçiş</span>{searchResults.map((item)=>{const ItemIcon=item.icon;return <button key={item.id} onClick={()=>{go(item.id);setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.label}</strong><small>Sayfaya git</small><ChevronRight size={14}/></button>})}</div><div className="command-footer"><span><Command size={12}/> Orbit hızlı arama</span><span>↵ seç · esc kapat</span></div></>}</section></div>}
     <div className={`toast ${toast?'show':''}`} role="status"><CheckCircle2 size={16}/>{toast}</div>

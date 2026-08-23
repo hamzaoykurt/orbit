@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 
 const title = 'Orbit — Personal OS';
 const description = 'Hayatın, projelerin, programların ve hedeflerin için sakin bir çalışma alanı.';
+const themeBootScript = `(function(){try{var raw=localStorage.getItem('orbit-personal-os');var saved=raw?JSON.parse(raw):null;var preference=saved&&saved.settings&&saved.settings.theme?saved.settings.theme:'system';var dark=preference==='dark'||(preference==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light'}catch(e){var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light'}})();`;
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -41,7 +42,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="tr">
+    <html lang="tr" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/></head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
