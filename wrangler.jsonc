@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "orbit-personal-os",
+  "name": "personalos",
   "main": "./dist/server/index.js",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
@@ -8,6 +8,12 @@
     "binding": "ASSETS",
     "directory": "./dist/client"
   },
+  "r2_buckets": [
+    {
+      "binding": "AUDIO",
+      "bucket_name": "site-creator-r2"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
