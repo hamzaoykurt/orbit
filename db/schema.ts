@@ -1,0 +1,8 @@
+export const ORBIT_STATE_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS orbit_state (
+    workspace_id TEXT PRIMARY KEY,
+    state_json TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) STRICT
+`;

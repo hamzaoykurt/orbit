@@ -9,7 +9,9 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "db:migrate:local": "wrangler d1 migrations apply personal-os-db --local --config wrangler.jsonc",
+    "db:migrate:remote": "wrangler d1 migrations apply personal-os-db --remote --config wrangler.jsonc"
   },
   "dependencies": {
     "lucide-react": "^1.33.0",

@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Archive, ArrowRight, ArrowUpRight, Bell, BookOpen, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
-  Circle, CircleDot, Clock3, Command, Compass, Download, Dumbbell, Globe2,
+  Circle, CircleDot, Clock3, Cloud, CloudOff, Command, Compass, Download, Dumbbell, Globe2,
   Heart, Home as HomeIcon, Languages, LayoutGrid, ListTodo, Map, MapPin,
   Menu, Mic, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
   Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
@@ -22,6 +22,7 @@ type PersistedState = {
   notes: Note[];
   settings: { notifications: boolean; motion: boolean; sound: boolean; autoArchive: boolean; accent: string };
 };
+type SyncStatus = 'loading' | 'saving' | 'synced' | 'offline';
 
 const nav: { id: PageKey; label: string; icon: LucideIcon }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: HomeIcon },
@@ -47,6 +48,22 @@ const defaultState: PersistedState = {
   ],
   settings: { notifications: true, motion: true, sound: false, autoArchive: true, accent: 'violet' },
 };
+
+function mergePersistedState(value: unknown): PersistedState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultState;
+  const saved = value as Partial<PersistedState>;
+
+  return {
+    completed: { ...defaultState.completed, ...(saved.completed ?? {}) },
+    customPersonal: {
+      ...defaultState.customPersonal,
+      ...(saved.customPersonal ?? {}),
+    },
+    projectStages: { ...defaultState.projectStages, ...(saved.projectStages ?? {}) },
+    notes: Array.isArray(saved.notes) ? saved.notes : defaultState.notes,
+    settings: { ...defaultState.settings, ...(saved.settings ?? {}) },
+  };
+}
 
 const personalLists = {
   todo: { title: 'Yapılacaklar', icon: ListTodo, subtitle: 'Bugün ve yakında', items: ['Banka evraklarını düzenle', 'Pasaport randevusunu kontrol et', 'Haftalık değerlendirmeyi yaz', 'Çalışma masasını sadeleştir'] },
@@ -114,6 +131,8 @@ export default function PersonalOS() {
   const [active, setActive] = useState<PageKey>('home');
   const [state, setState] = useState<PersistedState>(defaultState);
   const [hydrated, setHydrated] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('loading');
+  const lastSyncedState = useRef('');
   const [mobileMenu, setMobileMenu] = useState(false);
   const [modal, setModal] = useState<'quick' | 'voice' | 'search' | 'note' | null>(null);
   const [toast, setToast] = useState('');
@@ -136,20 +155,66 @@ export default function PersonalOS() {
   const [focusActive, setFocusActive] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('orbit-personal-os');
-      if (saved) setState({ ...defaultState, ...JSON.parse(saved) });
-      const savedPage = localStorage.getItem('orbit-active-page') as PageKey | null;
-      if (savedPage && nav.some((item) => item.id === savedPage)) setActive(savedPage);
-    } catch { /* corrupted local demo data falls back safely */ }
-    setHydrated(true);
+    let cancelled = false;
+
+    async function hydrate() {
+      let resolvedState = defaultState;
+
+      try {
+        const saved = localStorage.getItem('orbit-personal-os');
+        if (saved) resolvedState = mergePersistedState(JSON.parse(saved));
+        const savedPage = localStorage.getItem('orbit-active-page') as PageKey | null;
+        if (savedPage && nav.some((item) => item.id === savedPage)) setActive(savedPage);
+      } catch { /* corrupted local data falls back safely */ }
+
+      try {
+        const response = await fetch('/api/state', { cache: 'no-store' });
+        if (!response.ok) throw new Error('D1 state request failed');
+        const payload = await response.json() as { state?: unknown };
+        if (payload.state) {
+          resolvedState = mergePersistedState(payload.state);
+          lastSyncedState.current = JSON.stringify(resolvedState);
+        }
+        if (!cancelled) setSyncStatus('synced');
+      } catch {
+        if (!cancelled) setSyncStatus('offline');
+      }
+
+      if (!cancelled) {
+        setState(resolvedState);
+        setHydrated(true);
+      }
+    }
+
+    void hydrate();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem('orbit-personal-os', JSON.stringify(state));
+    const serializedState = JSON.stringify(state);
+    localStorage.setItem('orbit-personal-os', serializedState);
     document.documentElement.dataset.accent = state.settings.accent;
     document.documentElement.classList.toggle('reduce-motion', !state.settings.motion);
+
+    if (serializedState === lastSyncedState.current) return;
+    const saveTimer = window.setTimeout(async () => {
+      setSyncStatus('saving');
+      try {
+        const response = await fetch('/api/state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state }),
+        });
+        if (!response.ok) throw new Error('D1 state save failed');
+        lastSyncedState.current = serializedState;
+        setSyncStatus('synced');
+      } catch {
+        setSyncStatus('offline');
+      }
+    }, 650);
+
+    return () => window.clearTimeout(saveTimer);
   }, [state, hydrated]);
 
   useEffect(() => {
@@ -206,6 +271,7 @@ export default function PersonalOS() {
 
   const completedCount = Object.values(state.completed).filter(Boolean).length;
   const displayDate = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }).format(new Date(2026, 7, 23));
+  const syncLabel = syncStatus === 'synced' ? 'D1 senkronize' : syncStatus === 'saving' ? 'Kaydediliyor' : syncStatus === 'offline' ? 'Yerel mod' : 'Bağlanıyor';
 
   const renderHome = () => (
     <>
@@ -380,7 +446,7 @@ export default function PersonalOS() {
     <div className="ambient-background" aria-hidden="true"><i/><i/><i/></div>
     <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><CircleDot size={18}/></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item,index)=>{const NavIcon=item.icon;return <button key={item.id} className={active===item.id?'active':''} onClick={()=>go(item.id)}><span><NavIcon size={17}/></span>{item.label}{index===5&&<em>3</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>setModal('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli komutu dene</small></span><ArrowUpRight size={14}/></button><div className="sidebar-profile"><div className="avatar">EG</div><span><strong>Emir Güney</strong><small>Kişisel çalışma alanı</small></span><MoreHorizontal size={16}/></div></aside>
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
-    <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli komut" onClick={()=>setModal('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
+    <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><div className="sync-pill" data-status={syncStatus} title={`Cloudflare D1 · ${syncLabel}`}>{syncStatus === 'offline' ? <CloudOff size={13}/> : <Cloud size={13}/>}<span>{syncLabel}</span></div><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli komut" onClick={()=>setModal('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{nav.slice(0,4).map((item)=>{const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<button onClick={()=>setMobileMenu(true)} className={['kibleteyn','programs','calendar','notes','archive','settings'].includes(active)?'active':''}><Menu size={19}/><small>Daha</small></button></nav>
     {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setModal(null)}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi"><IconButton label="Kapat" className="modal-close" onClick={()=>{setModal(null);setVoiceStep('idle')}}><X size={17}/></IconButton>{modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi bırak, zamanı gelince Orbit sana göstersin.</p><label>Görev adı<input autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options"><button><CalendarDays size={14}/> Bugün</button><button><CircleDot size={14}/> Personal</button></div><button className="primary-button full" onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}{modal==='note'&&<><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YENİ NOT</span><h2>Bir düşünce yakala.</h2><label>Başlık<input autoFocus value={noteDraft.title} onChange={(event)=>setNoteDraft({...noteDraft,title:event.target.value})} placeholder="Not başlığı"/></label><label>Not<textarea value={noteDraft.body} onChange={(event)=>setNoteDraft({...noteDraft,body:event.target.value})} placeholder="Buraya yaz..."/></label><button className="primary-button full" onClick={addNote}>Notu kaydet <Check size={15}/></button></>}{modal==='voice'&&<VoiceModal step={voiceStep} onStart={startVoice} onAccept={acceptVoice}/>} {modal==='search'&&<><div className="command-input"><Search size={18}/><input autoFocus value={searchText} onChange={(event)=>setSearchText(event.target.value)} placeholder="Sayfa veya özellik ara..."/><kbd>ESC</kbd></div><div className="command-results"><span>Hızlı geçiş</span>{searchResults.map((item)=>{const ItemIcon=item.icon;return <button key={item.id} onClick={()=>{go(item.id);setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.label}</strong><small>Sayfaya git</small><ChevronRight size={14}/></button>})}</div><div className="command-footer"><span><Command size={12}/> Orbit hızlı arama</span><span>↵ seç · esc kapat</span></div></>}</section></div>}
     <div className={`toast ${toast?'show':''}`} role="status"><CheckCircle2 size={16}/>{toast}</div>
