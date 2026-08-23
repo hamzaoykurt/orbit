@@ -84,11 +84,37 @@ html[data-theme=dark] .roadmap-hero,html[data-theme=dark] .operation-hero{backgr
 html[data-theme=dark] .roadmap-track:before{background:#48434f}
 html[data-theme=dark] .roadmap-track button i{color:#a9a3b1;background:#34313b;border-color:#24212b;box-shadow:0 0 0 1px #4d4854}
 html[data-theme=dark] :is(.project-summary>div,.program-overview>div,.department-tabs button,.kanban-column,.category-grid details){border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.035)}
+html[data-theme=dark] :is(.project-summary>div,.program-overview>div,.department-tabs button){box-shadow:inset 0 1px rgba(255,255,255,.04),0 9px 24px rgba(0,0,0,.1)}
+html[data-theme=dark] .kanban-column{box-shadow:inset 0 1px rgba(255,255,255,.045),inset 0 -1px rgba(0,0,0,.28),0 14px 35px rgba(0,0,0,.16)}
+html[data-theme=dark] .kanban-column>header>b{color:#b0a9b8;background:rgba(255,255,255,.07)}
+html[data-theme=dark] .project-stat-icon.violet{background:rgba(117,100,220,.18);color:#afa3fb}
+html[data-theme=dark] .project-stat-icon.mint{background:rgba(89,155,134,.17);color:#8bc6b2}
+html[data-theme=dark] .project-stat-icon.blue{background:rgba(82,127,207,.18);color:#9dbbe9}
+html[data-theme=dark] .project-card{color:var(--ink);border-color:rgba(255,255,255,.075);background:linear-gradient(145deg,rgba(43,40,51,.97),rgba(29,27,35,.98));box-shadow:0 13px 31px rgba(0,0,0,.25),inset 0 1px rgba(255,255,255,.05)}
+html[data-theme=dark] .project-cover{background:linear-gradient(145deg,#302b43,#4a3d75)}
+html[data-theme=dark] .tone-blue .project-cover{background:linear-gradient(145deg,#202c39,#31516d)}
+html[data-theme=dark] .tone-rose .project-cover{background:linear-gradient(145deg,#3b2832,#744356)}
+html[data-theme=dark] .tone-mint .project-cover{background:linear-gradient(145deg,#20332e,#356657)}
+html[data-theme=dark] .tone-sand .project-cover{background:linear-gradient(145deg,#392f23,#735838)}
+html[data-theme=dark] .project-cover i{color:#f4f1f8;background:rgba(18,16,23,.58);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(6px)}
+html[data-theme=dark] .tag-row em{color:#bbb4c4;background:rgba(255,255,255,.065)}
+html[data-theme=dark] .project-progress{background:#45414c}
+html[data-theme=dark] .project-meta{color:#aaa4b4}
+html[data-theme=dark] .project-subtasks>button>span{border-color:#625c69}
+html[data-theme=dark] .department-tabs button>span,html[data-theme=dark] .department-task-grid button>span:first-child{color:#b8b1c0;background:rgba(255,255,255,.06);box-shadow:inset 2px 2px 7px rgba(0,0,0,.14)}
+html[data-theme=dark] .department-tabs button.active>span{color:#b6aaff;background:rgba(var(--accent-rgb),.18)}
 html[data-theme=dark] .department-tabs button.active{background:rgba(var(--accent-rgb),.14);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.12)}
+html[data-theme=dark] .department-task-grid button{color:var(--ink);border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.04);box-shadow:inset 0 1px rgba(255,255,255,.035)}
+html[data-theme=dark] :is(.status-chip,.program-name em,.archive-item em){color:#8cc9b4;background:rgba(86,161,136,.13);border:1px solid rgba(108,190,163,.13)}
 html[data-theme=dark] .program-progress>i{background:#3d3943}
 html[data-theme=dark] .calendar-grid>button,html[data-theme=dark] .empty-day{background:rgba(255,255,255,.025)}
 html[data-theme=dark] .calendar-grid>button:hover{background:rgba(255,255,255,.055)}
 html[data-theme=dark] .calendar-grid>button.selected{background:rgba(var(--accent-rgb),.09)}
+html[data-theme=dark] .calendar-grid button i{color:#b9adff;background:rgba(var(--accent-rgb),.15)}
+html[data-theme=dark] .calendar-grid button i.blue{color:#9ec4ed;background:rgba(82,127,207,.17)}
+html[data-theme=dark] .calendar-grid button i.mint{color:#8bc7b2;background:rgba(88,160,135,.16)}
+html[data-theme=dark] .calendar-grid button i.orange,html[data-theme=dark] .calendar-grid button i.sand{color:#dfab83;background:rgba(186,122,84,.16)}
+html[data-theme=dark] .calendar-grid button i.rose{color:#d99aae;background:rgba(182,108,131,.16)}
 html[data-theme=dark] .search-field{border-color:rgba(255,255,255,.075);background:rgba(255,255,255,.04);box-shadow:inset 2px 2px 7px rgba(0,0,0,.18),inset -1px -1px 4px rgba(255,255,255,.025)}
 html[data-theme=dark] .modal-layer{background:rgba(5,4,8,.58)}
 html[data-theme=dark] .modal-card{border-color:rgba(255,255,255,.08);background:rgba(28,26,34,.96);box-shadow:0 35px 110px rgba(0,0,0,.55),inset 0 1px rgba(255,255,255,.055)}
