@@ -19,6 +19,8 @@ type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'pro
 type Note = { id: string; title: string; body: string; date: string; tone: string };
 type PersonalListKey = 'todo' | 'buy' | 'visit';
 type PersonalItemDetails = { title?: string; note?: string; price?: string; link?: string; locationUrl?: string; priority?: 'normal' | 'important' };
+type PersonalSubtask = { id: string; title: string };
+type PersonalDragState = { kind: 'item' | 'subtask'; list: PersonalListKey; itemId: string; subtaskId?: string; overId: string; title: string; x: number; y: number; pointerId: number };
 type ProjectCover = 'orbit' | 'aurora' | 'grid' | 'minimal';
 type Project = { id: string; title: string; stage: number; progress: number; color: string; due: string; tags: string[]; tasks: string[]; cover?: ProjectCover };
 type ProjectDragState = { projectId: string; title: string; color: string; sourceStage: number; overStage: number; active: boolean; x: number; y: number; startX: number; startY: number; pointerId: number };
@@ -54,6 +56,8 @@ type PersistedState = {
   customPersonal: Record<string, string[]>;
   personalItemDetails: Record<string, PersonalItemDetails>;
   personalRemovedItems: string[];
+  personalOrder: Record<PersonalListKey, string[]>;
+  personalSubtasks: Record<string, PersonalSubtask[]>;
   projectStages: Record<string, number>;
   customProjects: Project[];
   projectEdits: Record<string, Partial<Project>>;
@@ -100,6 +104,8 @@ const defaultState: PersistedState = {
     'personal-visit-0': { locationUrl: 'https://www.google.com/maps/search/?api=1&query=Dunluce+Castle' },
   },
   personalRemovedItems: [],
+  personalOrder: { todo: [], buy: [], visit: [] },
+  personalSubtasks: {},
   projectStages: {},
   customProjects: [],
   projectEdits: {},
@@ -142,6 +148,8 @@ function mergePersistedState(value: unknown): PersistedState {
     },
     personalItemDetails: { ...defaultState.personalItemDetails, ...(saved.personalItemDetails ?? {}) },
     personalRemovedItems: Array.isArray(saved.personalRemovedItems) ? saved.personalRemovedItems : defaultState.personalRemovedItems,
+    personalOrder: { ...defaultState.personalOrder, ...(saved.personalOrder ?? {}) },
+    personalSubtasks: saved.personalSubtasks && typeof saved.personalSubtasks === 'object' && !Array.isArray(saved.personalSubtasks) ? saved.personalSubtasks : defaultState.personalSubtasks,
     projectStages: { ...defaultState.projectStages, ...(saved.projectStages ?? {}) },
     customProjects: Array.isArray(saved.customProjects) ? saved.customProjects : defaultState.customProjects,
     projectEdits: saved.projectEdits && typeof saved.projectEdits === 'object' && !Array.isArray(saved.projectEdits) ? saved.projectEdits : defaultState.projectEdits,
@@ -309,6 +317,11 @@ export default function PersonalOS() {
   const [personalTab, setPersonalTab] = useState<keyof typeof personalLists>('todo');
   const [editingPersonalItemId, setEditingPersonalItemId] = useState<string | null>(null);
   const [personalItemDraft, setPersonalItemDraft] = useState({ list: 'todo' as PersonalListKey, title: '', note: '', price: '', link: '', locationUrl: '', priority: 'normal' as 'normal' | 'important' });
+  const [personalSubtaskParent, setPersonalSubtaskParent] = useState<string | null>(null);
+  const [personalSubtaskDraft, setPersonalSubtaskDraft] = useState('');
+  const [personalDrag, setPersonalDrag] = useState<PersonalDragState | null>(null);
+  const personalDragRef = useRef<PersonalDragState | null>(null);
+  const personalDragCleanupRef = useRef<(() => void) | null>(null);
   const [rebuildArea, setRebuildArea] = useState('Beden');
   const [month, setMonth] = useState(0);
   const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
@@ -685,13 +698,144 @@ export default function PersonalOS() {
 
   const toggle = (id: string) => setState((current) => ({ ...current, completed: { ...current.completed, [id]: !current.completed[id] } }));
 
-  const personalItemsFor = (list: PersonalListKey) => {
-    const source = [...personalLists[list].items, ...(state.customPersonal[list] ?? [])];
+  const personalItemsFrom = (list: PersonalListKey, sourceState: PersistedState) => {
+    const source = [...personalLists[list].items, ...(sourceState.customPersonal[list] ?? [])];
+    const order = sourceState.personalOrder[list] ?? [];
+    const positions = new globalThis.Map(order.map((id, index) => [id, index]));
     return source.map((originalTitle, index) => {
       const id = `personal-${list}-${index}`;
-      const details = state.personalItemDetails[id] ?? {};
+      const details = sourceState.personalItemDetails[id] ?? {};
       return { id, index, title: details.title?.trim() || originalTitle, details };
-    }).filter((item) => !state.personalRemovedItems.includes(item.id));
+    }).filter((item) => !sourceState.personalRemovedItems.includes(item.id)).sort((a, b) => (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.index - b.index);
+  };
+
+  const personalItemsFor = (list: PersonalListKey) => personalItemsFrom(list, state);
+
+  const reorder = <T,>(items: T[], fromIndex: number, toIndex: number) => {
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  };
+
+  const movePersonalItem = (list: PersonalListKey, itemId: string, direction: -1 | 1) => {
+    setState((current) => {
+      const ids = personalItemsFrom(list, current).map((item) => item.id);
+      const fromIndex = ids.indexOf(itemId);
+      const toIndex = Math.max(0, Math.min(ids.length - 1, fromIndex + direction));
+      if (fromIndex < 0 || fromIndex === toIndex) return current;
+      return { ...current, personalOrder: { ...current.personalOrder, [list]: reorder(ids, fromIndex, toIndex) } };
+    });
+  };
+
+  const movePersonalSubtask = (itemId: string, subtaskId: string, direction: -1 | 1) => {
+    setState((current) => {
+      const subtasks = current.personalSubtasks[itemId] ?? [];
+      const fromIndex = subtasks.findIndex((subtask) => subtask.id === subtaskId);
+      const toIndex = Math.max(0, Math.min(subtasks.length - 1, fromIndex + direction));
+      if (fromIndex < 0 || fromIndex === toIndex) return current;
+      return { ...current, personalSubtasks: { ...current.personalSubtasks, [itemId]: reorder(subtasks, fromIndex, toIndex) } };
+    });
+  };
+
+  const addPersonalSubtask = (itemId: string) => {
+    const title = personalSubtaskDraft.trim();
+    if (!title) return;
+    const subtask: PersonalSubtask = { id: `personal-subtask-${Date.now()}`, title };
+    setState((current) => ({ ...current, personalSubtasks: { ...current.personalSubtasks, [itemId]: [...(current.personalSubtasks[itemId] ?? []), subtask] } }));
+    setPersonalSubtaskDraft('');
+    setPersonalSubtaskParent(null);
+    notify('Alt görev eklendi.');
+  };
+
+  const removePersonalSubtask = (itemId: string, subtask: PersonalSubtask) => {
+    if (!window.confirm(`“${subtask.title}” alt görevi kaldırılsın mı?`)) return;
+    setState((current) => ({
+      ...current,
+      personalSubtasks: { ...current.personalSubtasks, [itemId]: (current.personalSubtasks[itemId] ?? []).filter((entry) => entry.id !== subtask.id) },
+      completed: Object.fromEntries(Object.entries(current.completed).filter(([id]) => id !== subtask.id)),
+    }));
+    notify('Alt görev kaldırıldı.');
+  };
+
+  const updatePersonalDrag = (clientX: number, clientY: number) => {
+    const current = personalDragRef.current;
+    if (!current) return;
+    const target = document.elementFromPoint(clientX, clientY);
+    let overId = current.overId;
+    if (current.kind === 'item') {
+      const itemTarget = target?.closest<HTMLElement>('[data-personal-item]');
+      if (itemTarget?.dataset.personalItem) overId = itemTarget.dataset.personalItem;
+    } else {
+      const subtaskTarget = target?.closest<HTMLElement>('[data-personal-subtask]');
+      if (subtaskTarget?.dataset.personalParent === current.itemId && subtaskTarget.dataset.personalSubtask) overId = subtaskTarget.dataset.personalSubtask;
+    }
+    const next = { ...current, x: clientX, y: clientY, overId };
+    personalDragRef.current = next;
+    setPersonalDrag(next);
+    if (clientY < 92) window.scrollBy({ top: -18, behavior: 'auto' });
+    else if (clientY > window.innerHeight - 92) window.scrollBy({ top: 18, behavior: 'auto' });
+  };
+
+  const finishPersonalDrag = () => {
+    const drag = personalDragRef.current;
+    if (drag && drag.overId !== (drag.kind === 'item' ? drag.itemId : drag.subtaskId)) {
+      setState((current) => {
+        if (drag.kind === 'item') {
+          const ids = personalItemsFrom(drag.list, current).map((item) => item.id);
+          const fromIndex = ids.indexOf(drag.itemId);
+          const toIndex = ids.indexOf(drag.overId);
+          if (fromIndex < 0 || toIndex < 0) return current;
+          return { ...current, personalOrder: { ...current.personalOrder, [drag.list]: reorder(ids, fromIndex, toIndex) } };
+        }
+        const subtasks = current.personalSubtasks[drag.itemId] ?? [];
+        const fromIndex = subtasks.findIndex((subtask) => subtask.id === drag.subtaskId);
+        const toIndex = subtasks.findIndex((subtask) => subtask.id === drag.overId);
+        if (fromIndex < 0 || toIndex < 0) return current;
+        return { ...current, personalSubtasks: { ...current.personalSubtasks, [drag.itemId]: reorder(subtasks, fromIndex, toIndex) } };
+      });
+      notify(drag.kind === 'item' ? 'Liste sırası güncellendi.' : 'Alt görev sırası güncellendi.');
+    }
+    personalDragRef.current = null;
+    setPersonalDrag(null);
+    personalDragCleanupRef.current?.();
+  };
+
+  const cancelPersonalDrag = () => {
+    personalDragRef.current = null;
+    setPersonalDrag(null);
+    personalDragCleanupRef.current?.();
+  };
+
+  const beginPersonalDrag = (event: ReactPointerEvent<HTMLButtonElement>, drag: Omit<PersonalDragState, 'x' | 'y' | 'pointerId' | 'overId'> & { overId?: string }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    personalDragCleanupRef.current?.();
+    const pointerId = event.pointerId;
+    const activeDrag: PersonalDragState = { ...drag, overId: drag.overId ?? (drag.kind === 'item' ? drag.itemId : drag.subtaskId ?? ''), x: event.clientX, y: event.clientY, pointerId };
+    personalDragRef.current = activeDrag;
+    setPersonalDrag(activeDrag);
+    playFeedback('tap', true);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      moveEvent.preventDefault();
+      updatePersonalDrag(moveEvent.clientX, moveEvent.clientY);
+    };
+    const handlePointerUp = (upEvent: PointerEvent) => { if (upEvent.pointerId === pointerId) finishPersonalDrag(); };
+    const handlePointerCancel = (cancelEvent: PointerEvent) => { if (cancelEvent.pointerId === pointerId) cancelPersonalDrag(); };
+    const detach = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('blur', cancelPersonalDrag);
+      if (personalDragCleanupRef.current === detach) personalDragCleanupRef.current = null;
+    };
+    personalDragCleanupRef.current = detach;
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('blur', cancelPersonalDrag);
   };
 
   const openPersonalItem = (list: PersonalListKey, id?: string) => {
@@ -737,7 +881,14 @@ export default function PersonalOS() {
 
   const removePersonalItem = () => {
     if (!editingPersonalItemId || !window.confirm('Bu kayıt listeden kaldırılsın mı?')) return;
-    setState((current) => ({ ...current, personalRemovedItems: [...new Set([...current.personalRemovedItems, editingPersonalItemId])] }));
+    const removedId = editingPersonalItemId;
+    setState((current) => ({
+      ...current,
+      personalRemovedItems: [...new Set([...current.personalRemovedItems, removedId])],
+      personalOrder: { ...current.personalOrder, [personalItemDraft.list]: (current.personalOrder[personalItemDraft.list] ?? []).filter((id) => id !== removedId) },
+      personalSubtasks: Object.fromEntries(Object.entries(current.personalSubtasks).filter(([id]) => id !== removedId)),
+      completed: Object.fromEntries(Object.entries(current.completed).filter(([id]) => id !== removedId && !(current.personalSubtasks[removedId] ?? []).some((subtask) => subtask.id === id))),
+    }));
     setModal(null); setEditingPersonalItemId(null); notify('Kayıt kaldırıldı.');
   };
 
@@ -1527,18 +1678,27 @@ export default function PersonalOS() {
       <div className="personal-layout action-first">
         <section className="surface personal-main">
           <div className="section-lead"><span className={`feature-icon ${personalTab}`}><CurrentIcon size={22}/></span><div><h2>{current.title}</h2><p>{current.subtitle}</p></div><span className="personal-list-stats"><span className="count-pill">{openItems.length} açık</span>{openBudget > 0 && <span className="budget-pill">{formatPrice(openBudget)}</span>}</span></div>
-          <div className="task-list">{items.map((item) => {
+          <div className={`task-list personal-sortable-list ${personalDrag ? 'is-reordering' : ''}`}>{items.map((item) => {
             if (!state.settings.showCompleted && state.completed[item.id]) return null;
             const externalUrl = personalTab === 'visit' ? safeExternalUrl(item.details.locationUrl) : safeExternalUrl(item.details.link);
             const fallback = personalTab === 'visit' ? 'Kaydedilen yer' : item.index < 2 ? 'Bu hafta' : 'Daha sonra';
-            return <div key={item.id} className={`task-item ${state.completed[item.id] ? 'completed' : ''}`}>
-              <button className="task-item-toggle" onClick={() => toggle(item.id)}>
-                <span className="check-circle">{state.completed[item.id] && <Check size={13}/>}</span>
-                <span className="task-item-copy"><strong>{item.title}</strong><span className="personal-item-meta">{item.details.priority === 'important' && <em><Flag size={10}/> Önemli</em>}{personalTab === 'buy' && numericPrice(item.details.price) > 0 && <em>{formatPrice(numericPrice(item.details.price))}</em>}<small>{item.details.note || fallback}</small></span></span>
-              </button>
-              <span className="personal-item-actions">{externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label={personalTab === 'visit' ? `${item.title} konumunu Google Haritalar'da aç` : `${item.title} ürün bağlantısını aç`}>{personalTab === 'visit' ? <MapPin size={15}/> : <ExternalLink size={15}/>}</a>}<button aria-label={`${item.title} kaydını takvime ekle`} onClick={() => scheduleItem(item.title, current.title, item.details.note)}><CalendarDays size={15}/></button><button aria-label={`${item.title} kaydını düzenle`} onClick={() => openPersonalItem(personalTab, item.id)}><MoreHorizontal size={17}/></button></span>
-            </div>;
+            const subtasks = state.personalSubtasks[item.id] ?? [];
+            const isDragging = personalDrag?.kind === 'item' && personalDrag.itemId === item.id;
+            const isDragOver = personalDrag?.kind === 'item' && personalDrag.overId === item.id && !isDragging;
+            return <article data-personal-item={item.id} key={item.id} className={`task-item personal-task-card ${state.completed[item.id] ? 'completed' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}>
+              <div className="personal-task-main">
+                <button className="personal-drag-handle" aria-label={`${item.title} kaydını sürükleyerek sırala`} title="Sürükle veya ok tuşlarıyla sırala" onPointerDown={(event)=>beginPersonalDrag(event,{kind:'item',list:personalTab,itemId:item.id,title:item.title})} onKeyDown={(event)=>{if(event.key==='ArrowUp'){event.preventDefault();movePersonalItem(personalTab,item.id,-1)}if(event.key==='ArrowDown'){event.preventDefault();movePersonalItem(personalTab,item.id,1)}}}><GripVertical size={16}/></button>
+                <button className="task-item-toggle" onClick={() => toggle(item.id)}>
+                  <span className="check-circle">{state.completed[item.id] && <Check size={13}/>}</span>
+                  <span className="task-item-copy"><strong>{item.title}</strong><span className="personal-item-meta">{item.details.priority === 'important' && <em><Flag size={10}/> Önemli</em>}{personalTab === 'buy' && numericPrice(item.details.price) > 0 && <em>{formatPrice(numericPrice(item.details.price))}</em>}<small>{item.details.note || fallback}</small>{subtasks.length>0&&<small className="subtask-count">{subtasks.filter((subtask)=>state.completed[subtask.id]).length}/{subtasks.length} alt görev</small>}</span></span>
+                </button>
+                <span className="personal-item-actions">{externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label={personalTab === 'visit' ? `${item.title} konumunu Google Haritalar'da aç` : `${item.title} ürün bağlantısını aç`}>{personalTab === 'visit' ? <MapPin size={15}/> : <ExternalLink size={15}/>}</a>}<button aria-label={`${item.title} kaydını takvime ekle`} onClick={() => scheduleItem(item.title, current.title, item.details.note)}><CalendarDays size={15}/></button><button aria-label={`${item.title} kaydını düzenle`} onClick={() => openPersonalItem(personalTab, item.id)}><MoreHorizontal size={17}/></button></span>
+              </div>
+              {(subtasks.length>0||personalSubtaskParent===item.id)&&<div className="personal-subtask-list">{subtasks.map((subtask)=>{const subtaskDragging=personalDrag?.kind==='subtask'&&personalDrag.subtaskId===subtask.id;const subtaskOver=personalDrag?.kind==='subtask'&&personalDrag.itemId===item.id&&personalDrag.overId===subtask.id&&!subtaskDragging;return <div data-personal-subtask={subtask.id} data-personal-parent={item.id} key={subtask.id} className={`personal-subtask ${state.completed[subtask.id]?'completed':''} ${subtaskDragging?'dragging':''} ${subtaskOver?'drag-over':''}`}><button className="personal-subtask-drag" aria-label={`${subtask.title} alt görevini sürükleyerek sırala`} title="Sürükle veya ok tuşlarıyla sırala" onPointerDown={(event)=>beginPersonalDrag(event,{kind:'subtask',list:personalTab,itemId:item.id,subtaskId:subtask.id,title:subtask.title})} onKeyDown={(event)=>{if(event.key==='ArrowUp'){event.preventDefault();movePersonalSubtask(item.id,subtask.id,-1)}if(event.key==='ArrowDown'){event.preventDefault();movePersonalSubtask(item.id,subtask.id,1)}}}><GripVertical size={14}/></button><button className="personal-subtask-toggle" onClick={()=>toggle(subtask.id)}><span>{state.completed[subtask.id]?<Check size={11}/>:<Circle size={11}/>}</span><strong>{subtask.title}</strong></button><button className="personal-subtask-remove" aria-label={`${subtask.title} alt görevini kaldır`} onClick={()=>removePersonalSubtask(item.id,subtask)}><Trash2 size={13}/></button></div>})}{personalSubtaskParent===item.id&&<div className="personal-subtask-composer"><input autoFocus aria-label={`${item.title} için yeni alt görev`} value={personalSubtaskDraft} onChange={(event)=>setPersonalSubtaskDraft(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter')addPersonalSubtask(item.id);if(event.key==='Escape'){setPersonalSubtaskParent(null);setPersonalSubtaskDraft('')}}} placeholder="Alt görevi yaz..."/><button disabled={!personalSubtaskDraft.trim()} onClick={()=>addPersonalSubtask(item.id)}><Check size={14}/> Ekle</button><button aria-label="Alt görev eklemeyi kapat" onClick={()=>{setPersonalSubtaskParent(null);setPersonalSubtaskDraft('')}}><X size={14}/></button></div>}</div>}
+              {personalSubtaskParent!==item.id&&<button className="personal-subtask-add" onClick={()=>{setPersonalSubtaskParent(item.id);setPersonalSubtaskDraft('')}}><Plus size={13}/> Alt görev ekle</button>}
+            </article>;
           })}</div>
+          {personalDrag&&<div className="personal-drag-ghost" style={{left:personalDrag.x,top:personalDrag.y}}><GripVertical size={16}/><span><strong>{personalDrag.title}</strong><small>{personalDrag.kind==='item'?'Ana kayıt':'Alt görev'}</small></span></div>}
           <button className="inline-add" onClick={() => openPersonalItem(personalTab)}><Plus size={15}/> Yeni öğe ekle</button>
         </section>
       </div>
