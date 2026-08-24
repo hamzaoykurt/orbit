@@ -8,7 +8,7 @@ import {
   Archive, ArrowRight, ArrowUpRight, Bell, BookOpen, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
   Circle, CircleDot, Clock3, Command, Compass, Download, Dumbbell, Eye, Globe2,
-  Home as HomeIcon, Languages, LayoutGrid, ListTodo, Map, MapPin,
+  ExternalLink, Flag, Home as HomeIcon, Languages, LayoutGrid, ListTodo, Map, MapPin,
   Menu, Mic, Monitor, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
   Pencil, Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
   Smartphone, Sparkles, Square, StickyNote, Sun, Trash2, Undo2, UserRound, Users,
@@ -17,6 +17,8 @@ import {
 
 type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
 type Note = { id: string; title: string; body: string; date: string; tone: string };
+type PersonalListKey = 'todo' | 'buy' | 'visit';
+type PersonalItemDetails = { title?: string; note?: string; price?: string; link?: string; locationUrl?: string; priority?: 'normal' | 'important' };
 type ProjectCover = 'orbit' | 'aurora' | 'grid' | 'minimal';
 type Project = { id: string; title: string; stage: number; progress: number; color: string; due: string; tags: string[]; tasks: string[]; cover?: ProjectCover };
 type ProjectDragState = { projectId: string; title: string; color: string; sourceStage: number; overStage: number; active: boolean; x: number; y: number; startX: number; startY: number; pointerId: number };
@@ -38,6 +40,8 @@ type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 type PersistedState = {
   completed: Record<string, boolean>;
   customPersonal: Record<string, string[]>;
+  personalItemDetails: Record<string, PersonalItemDetails>;
+  personalRemovedItems: string[];
   projectStages: Record<string, number>;
   customProjects: Project[];
   projectEdits: Record<string, Partial<Project>>;
@@ -73,6 +77,12 @@ const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] 
 const defaultState: PersistedState = {
   completed: { 'routine-1': true, 'personal-1': true, 'program-14': true, 'project-pos-1': true, 'rebuild-2': true },
   customPersonal: { todo: [], buy: [], visit: [] },
+  personalItemDetails: {
+    'personal-buy-1': { price: '1250' },
+    'personal-buy-3': { price: '6000' },
+    'personal-visit-0': { locationUrl: 'https://www.google.com/maps/search/?api=1&query=Dunluce+Castle' },
+  },
+  personalRemovedItems: [],
   projectStages: {},
   customProjects: [],
   projectEdits: {},
@@ -100,7 +110,7 @@ const defaultState: PersistedState = {
 function mergePersistedState(value: unknown): PersistedState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultState;
   const saved = value as Partial<PersistedState>;
-  const savedSettings = saved.settings ?? {};
+  const savedSettings: Partial<PersistedState['settings']> = saved.settings ?? {};
   const needsFeedbackMigration = savedSettings.feedbackVersion !== 4;
 
   return {
@@ -109,6 +119,8 @@ function mergePersistedState(value: unknown): PersistedState {
       ...defaultState.customPersonal,
       ...(saved.customPersonal ?? {}),
     },
+    personalItemDetails: { ...defaultState.personalItemDetails, ...(saved.personalItemDetails ?? {}) },
+    personalRemovedItems: Array.isArray(saved.personalRemovedItems) ? saved.personalRemovedItems : defaultState.personalRemovedItems,
     projectStages: { ...defaultState.projectStages, ...(saved.projectStages ?? {}) },
     customProjects: Array.isArray(saved.customProjects) ? saved.customProjects : defaultState.customProjects,
     projectEdits: saved.projectEdits && typeof saved.projectEdits === 'object' && !Array.isArray(saved.projectEdits) ? saved.projectEdits : defaultState.projectEdits,
@@ -132,9 +144,22 @@ function mergePersistedState(value: unknown): PersistedState {
 
 const personalLists = {
   todo: { title: 'Yapılacaklar', icon: ListTodo, subtitle: 'Sisteme geçirilecek kişisel işler', items: ['Tüm mevcut projelerimi tek sisteme geçir', 'Masaüstü bilgisayarın uygulamalar menüsünü düzenle', 'Masaüstü bilgisayarda yer aç', 'Masaüstü bilgisayardaki fotoğrafları düzenle', 'Masaüstü bilgisayardaki uygulama listesini düzenle', 'Spor programımı düzenle', "Instagram'da kaydettiğim GitHub projesini incele", 'Özelleştirmeyle ilgili proje fikirleri araştır', 'GPT ile sevdiğim şeylerden proje fikirleri üret'] },
-  buy: { title: 'Alınacaklar', icon: ShoppingBag, subtitle: 'Önemli, çalışma alanı, giyim ve bisiklet', items: ['Güneş gözlüğü', 'Monitör kolu · yaklaşık 1.250 TL', 'Yeşil pamuklu gömlek', 'Casio B185D saat · yaklaşık 6.000 TL', 'Keten pantolon', 'Sarı / ahşap masa lambası', 'Ahşap bardak altlığı', 'Siyah mousepad', 'Sağlam ahşap monitör üstü raf', 'Siyah bardak', 'Siyah mouse', 'Yapay bitki', 'Cam bardak', 'Bisiklet kaskı', 'Bisiklet gözlüğü', 'Ön ışık', 'Arka ışık', 'Matara', 'Matara yuvası', 'Telefon tutacağı', 'Bisiklet ek çantası', 'Çanta için pompa', 'Yama seti', 'İç lastik', 'Levye', 'Temel bisiklet ekipmanları'] },
+  buy: { title: 'Alınacaklar', icon: ShoppingBag, subtitle: 'Önemli, çalışma alanı, giyim ve bisiklet', items: ['Güneş gözlüğü', 'Monitör kolu', 'Yeşil pamuklu gömlek', 'Casio B185D saat', 'Keten pantolon', 'Sarı / ahşap masa lambası', 'Ahşap bardak altlığı', 'Siyah mousepad', 'Sağlam ahşap monitör üstü raf', 'Siyah bardak', 'Siyah mouse', 'Yapay bitki', 'Cam bardak', 'Bisiklet kaskı', 'Bisiklet gözlüğü', 'Ön ışık', 'Arka ışık', 'Matara', 'Matara yuvası', 'Telefon tutacağı', 'Bisiklet ek çantası', 'Çanta için pompa', 'Yama seti', 'İç lastik', 'Levye', 'Temel bisiklet ekipmanları'] },
   visit: { title: 'Gezilecekler', icon: MapPin, subtitle: 'Kaydedilen yerler ve yeni keşifler', items: ['Dunluce Castle'] },
 };
+
+const safeExternalUrl = (value?: string) => {
+  if (!value?.trim()) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const numericPrice = (value?: string) => Number((value ?? '').replace(',', '.')) || 0;
+const formatPrice = (value: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(value);
 
 const rebuildAreas: { title: string; icon: LucideIcon; progress: number; color: string; habits: string[] }[] = [
   { title: 'Beden', icon: Dumbbell, progress: 72, color: 'mint', habits: ['Haftada 3 spor yap', 'Her antrenmanı 45–60 dakika sürdür', 'İlk 6 hafta performans yerine devamlılığı koru', 'Tekrar düzenli spor yapan biri olmayı hedefle', 'Spor programını yeniden düzenle'] },
@@ -240,7 +265,7 @@ export default function PersonalOS() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastFeedbackAtRef = useRef(0);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [modal, setModal] = useState<'quick' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
+  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
   const [toast, setToast] = useState('');
   const [expandedProject, setExpandedProject] = useState<string | null>('pos');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -251,6 +276,8 @@ export default function PersonalOS() {
   const [expandedProgram, setExpandedProgram] = useState<string | null>('p1');
   const [expandedDepartment, setExpandedDepartment] = useState('general');
   const [personalTab, setPersonalTab] = useState<keyof typeof personalLists>('todo');
+  const [editingPersonalItemId, setEditingPersonalItemId] = useState<string | null>(null);
+  const [personalItemDraft, setPersonalItemDraft] = useState({ list: 'todo' as PersonalListKey, title: '', note: '', price: '', link: '', locationUrl: '', priority: 'normal' as 'normal' | 'important' });
   const [rebuildArea, setRebuildArea] = useState('Beden');
   const [month, setMonth] = useState(2);
   const [selectedDay, setSelectedDay] = useState(23);
@@ -423,7 +450,7 @@ export default function PersonalOS() {
   const handleModalChange = useCallback((event: FormEvent<HTMLElement>) => {
     if (!(event.target instanceof HTMLSelectElement)) return;
     const target = event.target;
-    window.setTimeout(() => advanceModalField(target, false), 90);
+    window.setTimeout(() => advanceModalField(target as unknown as HTMLElement, false), 90);
   }, [advanceModalField]);
 
   const handleModalFocus = useCallback((event: ReactFocusEvent<HTMLElement>) => {
@@ -588,6 +615,62 @@ export default function PersonalOS() {
   };
 
   const toggle = (id: string) => setState((current) => ({ ...current, completed: { ...current.completed, [id]: !current.completed[id] } }));
+
+  const personalItemsFor = (list: PersonalListKey) => {
+    const source = [...personalLists[list].items, ...(state.customPersonal[list] ?? [])];
+    return source.map((originalTitle, index) => {
+      const id = `personal-${list}-${index}`;
+      const details = state.personalItemDetails[id] ?? {};
+      return { id, index, title: details.title?.trim() || originalTitle, details };
+    }).filter((item) => !state.personalRemovedItems.includes(item.id));
+  };
+
+  const openPersonalItem = (list: PersonalListKey, id?: string) => {
+    const item = id ? personalItemsFor(list).find((entry) => entry.id === id) : null;
+    setEditingPersonalItemId(item?.id ?? null);
+    setPersonalItemDraft({
+      list,
+      title: item?.title ?? '',
+      note: item?.details.note ?? '',
+      price: item?.details.price ?? '',
+      link: item?.details.link ?? '',
+      locationUrl: item?.details.locationUrl ?? '',
+      priority: item?.details.priority ?? 'normal',
+    });
+    setModal('personalItem');
+  };
+
+  const savePersonalItem = () => {
+    if (!personalItemDraft.title.trim()) return;
+    const details: PersonalItemDetails = {
+      title: personalItemDraft.title.trim(),
+      note: personalItemDraft.note.trim(),
+      priority: personalItemDraft.priority,
+      ...(personalItemDraft.list === 'buy' ? { price: personalItemDraft.price.trim(), link: personalItemDraft.link.trim() } : {}),
+      ...(personalItemDraft.list === 'visit' ? { locationUrl: personalItemDraft.locationUrl.trim() } : {}),
+    };
+    if (editingPersonalItemId) {
+      setState((current) => ({ ...current, personalItemDetails: { ...current.personalItemDetails, [editingPersonalItemId]: details } }));
+      setModal(null); setEditingPersonalItemId(null); notify('Kayıt güncellendi.');
+      return;
+    }
+    setState((current) => {
+      const index = personalLists[personalItemDraft.list].items.length + (current.customPersonal[personalItemDraft.list]?.length ?? 0);
+      const id = `personal-${personalItemDraft.list}-${index}`;
+      return {
+        ...current,
+        customPersonal: { ...current.customPersonal, [personalItemDraft.list]: [...(current.customPersonal[personalItemDraft.list] ?? []), personalItemDraft.title.trim()] },
+        personalItemDetails: { ...current.personalItemDetails, [id]: details },
+      };
+    });
+    setPersonalTab(personalItemDraft.list); setModal(null); notify('Yeni kayıt eklendi.');
+  };
+
+  const removePersonalItem = () => {
+    if (!editingPersonalItemId || !window.confirm('Bu kayıt listeden kaldırılsın mı?')) return;
+    setState((current) => ({ ...current, personalRemovedItems: [...new Set([...current.personalRemovedItems, editingPersonalItemId])] }));
+    setModal(null); setEditingPersonalItemId(null); notify('Kayıt kaldırıldı.');
+  };
 
   const addQuick = () => {
     if (!quickText.trim()) return;
@@ -1057,16 +1140,29 @@ export default function PersonalOS() {
 
   const renderPersonal = () => {
     const current = personalLists[personalTab];
-    const items = [...current.items, ...state.customPersonal[personalTab]];
+    const items = personalItemsFor(personalTab);
+    const openItems = items.filter((item) => !state.completed[item.id]);
+    const openBudget = personalTab === 'buy' ? openItems.reduce((total, item) => total + numericPrice(item.details.price), 0) : 0;
     const CurrentIcon = current.icon;
     return <>
-      <PageTitle eyebrow="PERSONAL" title="Kendine ait alan." description="Günlük hayatın küçük yüklerini tek, sakin bir yerde tut." action={<button className="primary-button compact" onClick={() => setModal('quick')}><Plus size={15}/> Yeni ekle</button>}/>
-      <div className="segmented-control">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key) => { const item = personalLists[key]; const TabIcon = item.icon; return <button key={key} onClick={() => setPersonalTab(key)} className={personalTab === key ? 'active' : ''}><TabIcon size={16}/>{item.title}<span>{item.items.length + state.customPersonal[key].length}</span></button>})}</div>
+      <PageTitle eyebrow="PERSONAL" title="Kendine ait alan." description="Günlük hayatın küçük yüklerini tek, sakin bir yerde tut." action={<button className="primary-button compact" onClick={() => openPersonalItem(personalTab)}><Plus size={15}/> Yeni ekle</button>}/>
+      <div className="segmented-control">{(Object.keys(personalLists) as PersonalListKey[]).map((key) => { const item = personalLists[key]; const TabIcon = item.icon; return <button key={key} onClick={() => setPersonalTab(key)} className={personalTab === key ? 'active' : ''}><TabIcon size={16}/>{item.title}<span>{personalItemsFor(key).length}</span></button>})}</div>
       <div className="personal-layout action-first">
         <section className="surface personal-main">
-          <div className="section-lead"><span className={`feature-icon ${personalTab}`}><CurrentIcon size={22}/></span><div><h2>{current.title}</h2><p>{current.subtitle}</p></div><span className="count-pill">{items.filter((_, index) => !state.completed[`personal-${personalTab}-${index}`]).length} açık</span></div>
-          <div className="task-list">{items.map((item, index) => { const id = `personal-${personalTab}-${index}`; if (!state.settings.showCompleted && state.completed[id]) return null; return <button key={`${item}-${index}`} className={`task-item ${state.completed[id] ? 'completed' : ''}`} onClick={() => toggle(id)}><span className="check-circle">{state.completed[id] && <Check size={13}/>}</span><span><strong>{item}</strong><small>{personalTab === 'visit' ? 'Kaydedilen yer' : index < 2 ? 'Bu hafta' : 'Daha sonra'}</small></span><MoreHorizontal size={16}/></button>})}</div>
-          <button className="inline-add" onClick={() => setModal('quick')}><Plus size={15}/> Yeni öğe ekle</button>
+          <div className="section-lead"><span className={`feature-icon ${personalTab}`}><CurrentIcon size={22}/></span><div><h2>{current.title}</h2><p>{current.subtitle}</p></div><span className="personal-list-stats"><span className="count-pill">{openItems.length} açık</span>{openBudget > 0 && <span className="budget-pill">{formatPrice(openBudget)}</span>}</span></div>
+          <div className="task-list">{items.map((item) => {
+            if (!state.settings.showCompleted && state.completed[item.id]) return null;
+            const externalUrl = personalTab === 'visit' ? safeExternalUrl(item.details.locationUrl) : safeExternalUrl(item.details.link);
+            const fallback = personalTab === 'visit' ? 'Kaydedilen yer' : item.index < 2 ? 'Bu hafta' : 'Daha sonra';
+            return <div key={item.id} className={`task-item ${state.completed[item.id] ? 'completed' : ''}`}>
+              <button className="task-item-toggle" onClick={() => toggle(item.id)}>
+                <span className="check-circle">{state.completed[item.id] && <Check size={13}/>}</span>
+                <span className="task-item-copy"><strong>{item.title}</strong><span className="personal-item-meta">{item.details.priority === 'important' && <em><Flag size={10}/> Önemli</em>}{personalTab === 'buy' && numericPrice(item.details.price) > 0 && <em>{formatPrice(numericPrice(item.details.price))}</em>}<small>{item.details.note || fallback}</small></span></span>
+              </button>
+              <span className="personal-item-actions">{externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label={personalTab === 'visit' ? `${item.title} konumunu Google Haritalar'da aç` : `${item.title} ürün bağlantısını aç`}>{personalTab === 'visit' ? <MapPin size={15}/> : <ExternalLink size={15}/>}</a>}<button aria-label={`${item.title} kaydını düzenle`} onClick={() => openPersonalItem(personalTab, item.id)}><MoreHorizontal size={17}/></button></span>
+            </div>;
+          })}</div>
+          <button className="inline-add" onClick={() => openPersonalItem(personalTab)}><Plus size={15}/> Yeni öğe ekle</button>
         </section>
       </div>
       <aside className="surface personal-insight analytics-bottom"><span className="eyebrow">HAFTALIK DENGE</span><div className="balance-orbit"><span/><i/><b>74%</b></div><h3>İyi gidiyorsun.</h3><p>Açık öğelerin çoğu bu hafta için gerçekçi. Bugün sadece iki tanesini seçmen yeterli.</p><button onClick={() => go('calendar')}>Takvime yerleştir <ArrowRight size={14}/></button></aside>
@@ -1273,6 +1369,7 @@ export default function PersonalOS() {
   };
 
   const searchResults = useMemo(() => nav.filter((item)=>item.label.toLocaleLowerCase('tr').includes(searchText.toLocaleLowerCase('tr'))),[searchText]);
+  const personalSearchResults = searchText.trim().length < 2 ? [] : (Object.keys(personalLists) as PersonalListKey[]).flatMap((list) => personalItemsFor(list).filter((item) => `${item.title} ${item.details.note ?? ''}`.toLocaleLowerCase('tr').includes(searchText.toLocaleLowerCase('tr'))).map((item) => ({ ...item, list }))).slice(0, 6);
 
   return <main className="app-shell">
     <div className="ambient-background" aria-hidden="true"><i/><i/><i/></div>
@@ -1282,6 +1379,7 @@ export default function PersonalOS() {
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
     {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi" onKeyDownCapture={handleModalKeyDown} onChangeCapture={handleModalChange} onFocusCapture={handleModalFocus}><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button key={key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
+      {modal==='personalItem'&&<><span className="modal-icon">{personalItemDraft.list==='visit'?<MapPin size={20}/>:personalItemDraft.list==='buy'?<ShoppingBag size={20}/>:<ListTodo size={20}/>}</span><span className="eyebrow">{editingPersonalItemId?'KAYDI DÜZENLE':'YENİ KAYIT'}</span><h2>{personalLists[personalItemDraft.list].title}</h2><label>Başlık<input autoFocus value={personalItemDraft.title} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,title:event.target.value})} placeholder={personalItemDraft.list==='visit'?'Örn. Efes Antik Kenti':personalItemDraft.list==='buy'?'Örn. Monitör kolu':'Yapılacak iş'}/></label>{personalItemDraft.list==='buy'&&<><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={personalItemDraft.price} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,price:event.target.value})} placeholder="1250"/></label><label>Ürün bağlantısı<input type="url" value={personalItemDraft.link} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,link:event.target.value})} placeholder="https://..."/></label></>}{personalItemDraft.list==='visit'&&<label>Google Haritalar konum bağlantısı<input type="url" value={personalItemDraft.locationUrl} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,locationUrl:event.target.value})} placeholder="https://maps.google.com/..."/></label>}<label>Kısa not <small>İsteğe bağlı</small><textarea value={personalItemDraft.note} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,note:event.target.value})} placeholder="Kısa bir ayrıntı ekle..."/></label><label>Öncelik<select value={personalItemDraft.priority} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,priority:event.target.value as 'normal'|'important'})}><option value="normal">Normal</option><option value="important">Önemli</option></select></label>{editingPersonalItemId&&<button className="personal-delete-button" onClick={removePersonalItem}><Trash2 size={15}/> Kaydı kaldır</button>}<button className="primary-button full" onClick={savePersonalItem}>{editingPersonalItemId?'Değişiklikleri kaydet':'Listeye ekle'} <ArrowRight size={15}/></button></>}
       {modal==='note'&&<><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YENİ NOT</span><h2>Bir düşünce yakala.</h2><label>Başlık<input autoFocus value={noteDraft.title} onChange={(event)=>setNoteDraft({...noteDraft,title:event.target.value})} placeholder="Not başlığı"/></label><label>Not<textarea value={noteDraft.body} onChange={(event)=>setNoteDraft({...noteDraft,body:event.target.value})} placeholder="Buraya yaz..."/></label><button className="primary-button full" onClick={addNote}>Notu kaydet <Check size={15}/></button></>}
       {modal==='project'&&<><span className="modal-icon"><PanelsTopLeft size={20}/></span><span className="eyebrow">{editingProjectId?'PROJEYİ DÜZENLE':'YENİ PROJE'}</span><h2>{editingProjectId?'Kartı ve içeriğini güncelle.':'Fikre net bir başlangıç ver.'}</h2><label>Proje adı<input autoFocus value={projectDraft.title} onChange={(event)=>setProjectDraft({...projectDraft,title:event.target.value})} placeholder="Örn. Seyahat planlama uygulaması"/></label><div className="form-row"><label>Aşama<select value={projectDraft.stage} onChange={(event)=>setProjectDraft({...projectDraft,stage:Number(event.target.value)})}>{['Fikirler','Devam ediyor','İnceleme','Tamamlandı'].map((label,index)=><option value={index} key={label}>{label}</option>)}</select></label><label>İlerleme<input type="number" inputMode="numeric" min="0" max="100" value={projectDraft.progress} onChange={(event)=>setProjectDraft({...projectDraft,progress:Number(event.target.value)})} placeholder="0–100"/></label></div><div className="form-row"><label>Renk<select value={projectDraft.color} onChange={(event)=>setProjectDraft({...projectDraft,color:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'}].map((color)=><option key={color.value} value={color.value}>{color.label}</option>)}</select></label><label>Kapak<select value={projectDraft.cover} onChange={(event)=>setProjectDraft({...projectDraft,cover:event.target.value as ProjectCover})}>{[{value:'orbit',label:'Yörünge'},{value:'aurora',label:'Aurora'},{value:'grid',label:'Teknolojik ızgara'},{value:'minimal',label:'Minimal'}].map((cover)=><option key={cover.value} value={cover.value}>{cover.label}</option>)}</select></label></div><label>Hedef tarih<input value={projectDraft.due} onChange={(event)=>setProjectDraft({...projectDraft,due:event.target.value})} placeholder="Örn. 18 Eyl"/></label><label>Etiketler <small>Virgülle ayır</small><input value={projectDraft.tags} onChange={(event)=>setProjectDraft({...projectDraft,tags:event.target.value})} placeholder="UI, Mobil, Araştırma"/></label><label>Görevler ve alt görevler <small>Her satıra bir görev, alt görev için &gt; kullan</small><textarea value={projectDraft.tasks} onChange={(event)=>setProjectDraft({...projectDraft,tasks:event.target.value})} placeholder={'Kullanıcı akışını çıkar\n> İlk ekranı tasarla\n> Mobil akışı test et'}/></label><button className="primary-button full" onClick={addProject}>{editingProjectId?'Değişiklikleri kaydet':'Projeyi oluştur'} <ArrowRight size={15}/></button></>}
       {modal==='program'&&<><span className="modal-icon"><Plane size={20}/></span><span className="eyebrow">{editingProgramId?'TURU DÜZENLE':'YENİ TUR'}</span><h2>{editingProgramId?'Tur bilgilerini güncelle.':'Turun hazırlık alanını aç.'}</h2><label>Tur adı<input autoFocus value={programDraft.title} onChange={(event)=>setProgramDraft({...programDraft,title:event.target.value})} placeholder="Örn. 12–16 Ekim Umre"/></label><label>Tarih aralığı<input value={programDraft.range} onChange={(event)=>setProgramDraft({...programDraft,range:event.target.value})} placeholder="Örn. 12–16 Ekim 2026"/></label><label>Durum<select value={programDraft.status} onChange={(event)=>setProgramDraft({...programDraft,status:event.target.value})}>{['Taslak','Planlandı','Hazırlanıyor'].map((status)=><option key={status}>{status}</option>)}</select></label><label>Vurgu rengi<select value={programDraft.accent} onChange={(event)=>setProgramDraft({...programDraft,accent:event.target.value})}>{['violet','blue','mint','sand','rose'].map((color)=><option key={color} value={color}>{color}</option>)}</select></label><button className="primary-button full" onClick={addProgram}>{editingProgramId?'Değişiklikleri kaydet':'Turu oluştur'} <ArrowRight size={15}/></button></>}
@@ -1291,7 +1389,7 @@ export default function PersonalOS() {
       {modal==='capture'&&<><span className="modal-icon">{captureMethod==='voice'?<Mic size={20}/>:<StickyNote size={20}/>}</span><span className="eyebrow">{captureMethod==='voice'?'SESLİ KAYIT':'YAZILI KAYIT'}</span><h2>Kaydı tamamla.</h2>{captureMethod==='voice'&&<button className={`capture-mic ${captureListening?'listening':''}`} onClick={startCaptureVoice}><span>{captureListening?<Square size={16}/>:<Mic size={16}/>}</span><span><strong>{captureListening?'Dinliyorum…':'Konuşarak başlık ekle'}</strong><small>İstersen alttan düzenleyebilirsin</small></span></button>}<label>Başlık<input autoFocus value={captureTitle} onChange={(event)=>setCaptureTitle(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&saveCapture()} placeholder="Kaydetmek istediğin şey"/></label><label>Açıklama <small>İsteğe bağlı</small><textarea value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder="Kısa bir ayrıntı ekle..."/></label><div className="capture-destination"><strong>Nereye kaydedilsin?</strong><label>Sayfa<select value={capturePage} onChange={(event)=>{const page=event.target.value as CapturePage;setCapturePage(page);setCaptureArea(captureAreasFor(page)[0]?.value ?? '');}}>{[{value:'personal',label:'Personal'},{value:'rebuild',label:'6 Aylık Rebuild'},{value:'projects',label:'Projeler'},{value:'kibleteyn',label:'Kıbleteyn'},{value:'programs',label:'Programlar'},{value:'calendar',label:'Takvim'},{value:'notes',label:'Notlar'}].map((item)=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label>Alan<select value={captureArea} onChange={(event)=>setCaptureArea(event.target.value)}>{captureAreasFor(capturePage).map((area)=><option key={area.value} value={area.value}>{area.label}</option>)}</select></label></div><button className="primary-button full" onClick={saveCapture}>Seçilen alana kaydet <ArrowRight size={15}/></button></>}
       {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2><label>Etkinlik adı<input autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat<input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre<input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{['violet','blue','mint','sand','rose','orange'].map((tone)=><option key={tone} value={tone}>{tone}</option>)}</select></label></div><button className="primary-button full" onClick={addEvent}>Takvime ekle <ArrowRight size={15}/></button></>}
       {modal==='profile'&&<><span className="modal-icon"><UserRound size={20}/></span><span className="eyebrow">ÇALIŞMA ALANI</span><h2>Profilini kişiselleştir.</h2><label>İsim<input autoFocus value={profileDraft.name} onChange={(event)=>setProfileDraft({...profileDraft,name:event.target.value})} placeholder="İsmin"/></label><label>Çalışma alanı<input value={profileDraft.workspace} onChange={(event)=>setProfileDraft({...profileDraft,workspace:event.target.value})} placeholder="Örn. Tasarım ve operasyon"/></label><button className="primary-button full" onClick={saveProfile}>Değişiklikleri kaydet <Check size={15}/></button></>}
-      {modal==='search'&&<><div className="command-input"><Search size={18}/><input autoFocus value={searchText} onChange={(event)=>setSearchText(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter'&&searchResults[0]){go(searchResults[0].id);setModal(null);setSearchText('');}}} placeholder="Sayfa veya özellik ara..."/><kbd>ESC</kbd></div><div className="command-results"><span>Hızlı geçiş</span>{searchResults.length?searchResults.map((item)=>{const ItemIcon=item.icon;return <button key={item.id} onClick={()=>{go(item.id);setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.label}</strong><small>Sayfaya git</small><ChevronRight size={14}/></button>}):<p className="empty-inline">Eşleşen sayfa bulunamadı.</p>}</div><div className="command-footer"><span><Command size={12}/> Orbit hızlı arama</span><span>↵ ilk sonucu aç · esc kapat</span></div></>}
+      {modal==='search'&&<><div className="command-input"><Search size={18}/><input autoFocus value={searchText} onChange={(event)=>setSearchText(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter'&&searchResults[0]){go(searchResults[0].id);setModal(null);setSearchText('');}}} placeholder="Sayfa veya kayıt ara..."/><kbd>ESC</kbd></div><div className="command-results"><span>Hızlı geçiş</span>{searchResults.map((item)=>{const ItemIcon=item.icon;return <button key={item.id} onClick={()=>{go(item.id);setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.label}</strong><small>Sayfaya git</small><ChevronRight size={14}/></button>})}{personalSearchResults.length>0&&<><span>Personal kayıtları</span>{personalSearchResults.map((item)=>{const ItemIcon=personalLists[item.list].icon;return <button key={item.id} onClick={()=>{setPersonalTab(item.list);go('personal');setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.title}</strong><small>{personalLists[item.list].title}</small><ChevronRight size={14}/></button>})}</>}{!searchResults.length&&!personalSearchResults.length&&<p className="empty-inline">Eşleşen sonuç bulunamadı.</p>}</div><div className="command-footer"><span><Command size={12}/> Orbit hızlı arama</span><span>↵ ilk sayfayı aç · esc kapat</span></div></>}
     </section></div>}
     <div className={`toast ${toast?'show':''}`} role="status"><CheckCircle2 size={16}/>{toast}</div>
   </main>;
