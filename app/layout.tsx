@@ -34,9 +34,9 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     manifest: '/manifest.webmanifest',
     icons: {
-      icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+      icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
       shortcut: '/favicon.svg',
-      apple: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+      apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
     },
     appleWebApp: { capable: true, title: 'Orbit', statusBarStyle: 'black-translucent' },
     openGraph: { title, description, type: 'website', locale: 'tr_TR', images: [{ url: image, width: 1672, height: 941, alt: 'Orbit Personal OS' }] },
@@ -51,7 +51,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#7564dc"/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/></head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
