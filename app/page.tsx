@@ -90,14 +90,14 @@ const defaultState: PersistedState = {
   ],
   mobileNav: ['home', 'personal', 'rebuild', 'projects'],
   profile: { name: 'Emir Güney', workspace: 'Kişisel çalışma alanı' },
-  settings: { notifications: true, motion: true, sound: true, soundVolume: 85, haptics: true, feedbackVersion: 3, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
+  settings: { notifications: true, motion: true, sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
 };
 
 function mergePersistedState(value: unknown): PersistedState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultState;
   const saved = value as Partial<PersistedState>;
   const savedSettings = saved.settings ?? {};
-  const needsFeedbackMigration = savedSettings.feedbackVersion !== 3;
+  const needsFeedbackMigration = savedSettings.feedbackVersion !== 4;
 
   return {
     completed: { ...defaultState.completed, ...(saved.completed ?? {}) },
@@ -121,7 +121,7 @@ function mergePersistedState(value: unknown): PersistedState {
     notes: Array.isArray(saved.notes) ? saved.notes : defaultState.notes,
     mobileNav: Array.isArray(saved.mobileNav) && saved.mobileNav.length === 4 && saved.mobileNav.every((page): page is PageKey => typeof page === 'string' && nav.some((item) => item.id === page)) && new Set(saved.mobileNav).size === 4 ? saved.mobileNav : defaultState.mobileNav,
     profile: { ...defaultState.profile, ...(saved.profile ?? {}) },
-    settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, soundVolume: 85, haptics: true, feedbackVersion: 3 } : {}) },
+    settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4 } : {}) },
   };
 }
 
@@ -369,7 +369,7 @@ export default function PersonalOS() {
     window.setTimeout(() => setToast(''), 2400);
   }, []);
 
-  const playFeedback = useCallback((tone: 'tap' | 'select' | 'confirm', shouldVibrate = true, forceSound = false, forceHaptics = false) => {
+  const playFeedback = useCallback((tone: 'tap' | 'select' | 'navigation' | 'confirm', shouldVibrate = true, forceSound = false, forceHaptics = false) => {
     const nowMs = Date.now();
     if (!forceSound && nowMs - lastFeedbackAtRef.current < 38) return;
     lastFeedbackAtRef.current = nowMs;
@@ -388,12 +388,13 @@ export default function PersonalOS() {
           const now = context.currentTime;
           const isConfirm = tone === 'confirm';
           const isSelect = tone === 'select';
-          const duration = isConfirm ? 0.14 : isSelect ? 0.105 : 0.085;
-          const volume = Math.max(0.1, Math.min(1, state.settings.soundVolume / 100));
-          const peak = (isConfirm ? 0.24 : isSelect ? 0.17 : 0.13) * volume;
+          const isNavigation = tone === 'navigation';
+          const duration = isConfirm ? 0.14 : isNavigation ? 0.115 : isSelect ? 0.105 : 0.085;
+          const volume = Math.max(0.1, Math.min(1.5, state.settings.soundVolume / 100));
+          const peak = Math.min(0.55, (isConfirm ? 0.32 : isNavigation ? 0.27 : isSelect ? 0.23 : 0.2) * volume);
           oscillator.type = isConfirm ? 'sine' : 'triangle';
-          oscillator.frequency.setValueAtTime(isConfirm ? 480 : isSelect ? 390 : 285, now);
-          oscillator.frequency.exponentialRampToValueAtTime(isConfirm ? 760 : isSelect ? 560 : 230, now + duration * 0.7);
+          oscillator.frequency.setValueAtTime(isConfirm ? 480 : isNavigation ? 340 : isSelect ? 390 : 285, now);
+          oscillator.frequency.exponentialRampToValueAtTime(isConfirm ? 760 : isNavigation ? 475 : isSelect ? 560 : 230, now + duration * 0.7);
           gain.gain.setValueAtTime(0.0001, now);
           gain.gain.exponentialRampToValueAtTime(peak, now + 0.012);
           gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
@@ -407,20 +408,22 @@ export default function PersonalOS() {
       } catch { /* audio feedback is optional */ }
     }
     if (shouldVibrate && (state.settings.haptics || forceHaptics) && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(tone === 'confirm' ? [10, 28, 14] : tone === 'select' ? 10 : 7);
+      navigator.vibrate(tone === 'confirm' ? [18, 30, 18] : tone === 'navigation' ? [16, 18, 12] : tone === 'select' ? [12, 18, 10] : 12);
     }
   }, [state.settings.haptics, state.settings.sound, state.settings.soundVolume]);
 
   useEffect(() => {
     const feedbackFor = (element: Element) => {
-      const button = element.closest('button,[role="button"],a[href]');
-      if (!button || (button instanceof HTMLButtonElement && button.disabled)) return;
-      const isImportant = button.matches('.primary-button,.quick-capture-trigger,.capture-action,.task-item,.switch,.move-project,.add-department-task,.add-program-task,.add-card,.focus-main-button,.focus-reset-button,.project-subtasks button,.program-task button,.data-export');
-      playFeedback(isImportant ? 'confirm' : 'tap', true);
+      const control = element.closest('button,[role="button"],a[href],select,input,textarea,label[for],[tabindex]:not([tabindex="-1"]),[contenteditable="true"]');
+      if (!control || control.matches(':disabled,[aria-disabled="true"]')) return;
+      const isSelection = control.matches('select,input[type="checkbox"],input[type="radio"],input[type="range"],input[type="date"],input[type="time"]');
+      const isImportant = control.matches('.primary-button,.quick-capture-trigger,.capture-action,.task-item,.switch,.move-project,.add-department-task,.add-program-task,.add-card,.focus-main-button,.focus-reset-button,.project-subtasks button,.program-task button,.data-export');
+      const isNavigation = Boolean(control.closest('.bottom-nav'));
+      playFeedback(isImportant ? 'confirm' : isNavigation ? 'navigation' : isSelection ? 'select' : 'tap', true);
     };
     const handlePointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Element)) return;
-      if (event.target.closest('[data-feedback-test],select,input,textarea')) return;
+      if (event.target.closest('[data-feedback-test]')) return;
       feedbackFor(event.target);
     };
     const handleKeyFeedback = (event: KeyboardEvent) => {
@@ -916,7 +919,7 @@ export default function PersonalOS() {
   const updateSetting = (key: Exclude<keyof PersistedState['settings'], 'feedbackVersion'>, value: boolean | string | number) => {
     setState((current) => ({ ...current, settings: { ...current.settings, [key]: value } }));
     if (key === 'sound' && value === true) playFeedback('confirm', state.settings.haptics, true);
-    if (key === 'haptics' && value === true && typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate([10, 28, 14]);
+    if (key === 'haptics' && value === true && typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate([18, 30, 18]);
   };
 
   const updateNotifications = async (enabled: boolean) => {
@@ -939,7 +942,7 @@ export default function PersonalOS() {
       <div className="settings-layout"><nav className="surface settings-nav"><button className={settingsTab==='general'?'active':''} onClick={()=>setSettingsTab('general')}><UserRound size={16}/> Genel</button><button className={settingsTab==='appearance'?'active':''} onClick={()=>setSettingsTab('appearance')}><Palette size={16}/> Görünüm</button><button className={settingsTab==='notifications'?'active':''} onClick={()=>setSettingsTab('notifications')}><Bell size={16}/> Bildirimler</button><button className={settingsTab==='data'?'active':''} onClick={()=>setSettingsTab('data')}><Download size={16}/> Veri</button></nav><div className="settings-content">
         {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">{profileInitials}</div><div><h2>{state.profile.name}</h2><p>{state.profile.workspace}</p></div><button onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><CheckCircle2 size={18} className="setting-ok"/></div></section></>}
         {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Altı renk seçeneğinden birini kullan</small></span><div className="color-options">{['violet','blue','mint','sand','rose','slate'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><div className="setting-row density-setting"><span className="setting-icon"><PanelsTopLeft size={17}/></span><span><strong>Bilgi yoğunluğu</strong><small>Ekranda daha ferah veya daha sıkı bir düzen seç</small></span><div className="theme-options" role="group" aria-label="Bilgi yoğunluğu">{([{id:'comfortable',label:'Ferah'},{id:'compact',label:'Kompakt'}] as const).map(({id,label})=><button key={id} className={state.settings.density===id?'selected':''} aria-pressed={state.settings.density===id} onClick={()=>updateSetting('density',id)}><span>{label}</span></button>)}</div></div><div className="setting-row nav-setting"><span className="setting-icon"><Menu size={17}/></span><span><strong>Alt menü</strong><small>Mobil çubuktaki dört sayfayı değiştir</small></span><button className="settings-edit-button" onClick={()=>setModal('navCustomize')}>Düzenle</button></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Buton ve işlem anlarında yumuşak geri bildirim" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/><SettingToggle icon={Smartphone} title="Dokunsal geri bildirim" description="Mobil işlemlerde hafif titreşim kullan" value={state.settings.haptics} onChange={(value)=>updateSetting('haptics',value)}/><button data-feedback-test className="feedback-test-button" onClick={()=>{playFeedback('confirm',true,true,true);notify('Ses ve titreşim denemesi çalıştırıldı.');}}><Volume2 size={16}/><span><strong>Geri bildirimi dene</strong><small>Ses ve titreşim bu cihazda birlikte çalışır</small></span><Zap size={15}/></button></section>}
-        {settingsTab==='appearance'&&<section className="surface settings-section sound-settings-section"><header><h3>Ses seviyesi</h3><p>Arayüz efektlerini cihazına göre ayarla.</p></header><div className="sound-level-control"><div className="sound-level-copy"><span className="setting-icon"><Volume1 size={17}/></span><span><strong>Efekt yüksekliği</strong><small>Düşükten belirgin seviyeye</small></span><em>%{state.settings.soundVolume}</em></div><div className="sound-volume-control"><Volume1 size={14}/><input aria-label="Arayüz ses seviyesi" type="range" min="10" max="100" step="5" value={state.settings.soundVolume} style={{'--sound-fill':`${state.settings.soundVolume}%`} as CSSProperties} onChange={(event)=>updateSetting('soundVolume',Number(event.target.value))} onPointerUp={()=>playFeedback('confirm',false,true)} onKeyUp={()=>playFeedback('confirm',false,true)}/><Volume2 size={16}/></div></div></section>}
+        {settingsTab==='appearance'&&<section className="surface settings-section sound-settings-section"><header><h3>Ses seviyesi</h3><p>Arayüz efektlerini cihazına göre ayarla.</p></header><div className="sound-level-control"><div className="sound-level-copy"><span className="setting-icon"><Volume1 size={17}/></span><span><strong>Efekt yüksekliği</strong><small>Düşükten ekstra güçlü seviyeye</small></span><em>%{state.settings.soundVolume}</em></div><div className="sound-volume-control"><Volume1 size={14}/><input aria-label="Arayüz ses seviyesi" type="range" min="10" max="150" step="5" value={state.settings.soundVolume} style={{'--sound-fill':`${Math.round(state.settings.soundVolume/1.5)}%`} as CSSProperties} onChange={(event)=>updateSetting('soundVolume',Number(event.target.value))} onPointerUp={()=>playFeedback('confirm',false,true)} onKeyUp={()=>playFeedback('confirm',false,true)}/><Volume2 size={16}/></div></div></section>}
         {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>İzin ve görünüm tercihlerini buradan yönet.</p></header><SettingToggle icon={Bell} title="Akıllı hatırlatmalar" description="Tarayıcı bildirimi iznini aç veya kapat" value={state.settings.notifications} onChange={(value)=>void updateNotifications(value)}/><SettingToggle icon={Eye} title="Tamamlananları göster" description="Personal listelerinde biten işleri görünür tut" value={state.settings.showCompleted} onChange={(value)=>updateSetting('showCompleted',value)}/></section>}
         {settingsTab==='data'&&<><section className="surface settings-section"><header><h3>Uygulama olarak kullan</h3><p>Orbit’i ana ekranına ekleyip tarayıcı çubuğu olmadan aç.</p></header><InstallOrbit/></section><section className="surface settings-section"><header><h3>Verini dışa aktar</h3><p>Orbit’teki yerel demo verisinin taşınabilir bir kopyasını al.</p></header><button className="data-export" onClick={exportDemoData}><Download size={16}/><span><strong>JSON yedeğini indir</strong><small>Görevler, notlar, proje aşamaları ve tercihler</small></span><ArrowRight size={15}/></button></section><section className="surface settings-section danger-section"><header><h3>Demo verisi</h3><p>Yerel değişiklikleri silip başlangıç verisine dön.</p></header><button onClick={()=>{if(window.confirm('Tüm yerel demo değişiklikleri sıfırlansın mı?')){setState(defaultState);notify('Demo verisi sıfırlandı.')}}}><RotateCcw size={15}/> Demo verisini sıfırla</button></section></>}
       </div></div>
@@ -962,7 +965,7 @@ export default function PersonalOS() {
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
     <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli kayıt" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
-    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setModal(null)}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi"><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
+    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi"><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button key={key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='note'&&<><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YENİ NOT</span><h2>Bir düşünce yakala.</h2><label>Başlık<input autoFocus value={noteDraft.title} onChange={(event)=>setNoteDraft({...noteDraft,title:event.target.value})} placeholder="Not başlığı"/></label><label>Not<textarea value={noteDraft.body} onChange={(event)=>setNoteDraft({...noteDraft,body:event.target.value})} placeholder="Buraya yaz..."/></label><button className="primary-button full" onClick={addNote}>Notu kaydet <Check size={15}/></button></>}
       {modal==='project'&&<><span className="modal-icon"><PanelsTopLeft size={20}/></span><span className="eyebrow">YENİ PROJE</span><h2>Fikre net bir başlangıç ver.</h2><label>Proje adı<input autoFocus value={projectDraft.title} onChange={(event)=>setProjectDraft({...projectDraft,title:event.target.value})} placeholder="Örn. Seyahat planlama uygulaması"/></label><div className="form-row"><label>Aşama<select value={projectDraft.stage} onChange={(event)=>setProjectDraft({...projectDraft,stage:Number(event.target.value)})}>{['Fikirler','Devam ediyor','İnceleme','Tamamlandı'].map((label,index)=><option value={index} key={label}>{label}</option>)}</select></label><label>Renk<select value={projectDraft.color} onChange={(event)=>setProjectDraft({...projectDraft,color:event.target.value})}>{['violet','blue','mint','sand','rose'].map((color)=><option key={color} value={color}>{color}</option>)}</select></label></div><label>Hedef tarih<input value={projectDraft.due} onChange={(event)=>setProjectDraft({...projectDraft,due:event.target.value})} placeholder="Örn. 18 Eyl"/></label><label>Etiketler <small>Virgülle ayır</small><input value={projectDraft.tags} onChange={(event)=>setProjectDraft({...projectDraft,tags:event.target.value})} placeholder="UI, Mobil, Araştırma"/></label><label>İlk görevler <small>Her satıra bir görev</small><textarea value={projectDraft.tasks} onChange={(event)=>setProjectDraft({...projectDraft,tasks:event.target.value})} placeholder={'Kullanıcı akışını çıkar\nİlk ekranı tasarla'}/></label><button className="primary-button full" onClick={addProject}>Projeyi oluştur <ArrowRight size={15}/></button></>}
