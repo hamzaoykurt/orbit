@@ -293,3 +293,49 @@ html[data-theme=dark] .bottom-nav .capture-action.ai{color:#e6dcff;background:li
   .capture-processing,.voice-command{min-height:300px;padding-inline:2px}
   .voice-command-orb{width:88px;height:88px}
 }
+
+/* Creation flows: one calm, readable system for every save/create dialog. */
+.modal-card:not(.search){width:min(560px,100%);max-height:min(90dvh,820px);overflow-x:hidden;overflow-y:auto;padding:30px 32px 32px;border-radius:28px;scrollbar-width:thin;scrollbar-color:rgba(var(--accent-rgb),.24) transparent}
+.modal-card:not(.search)::before{content:"";position:absolute;inset:0 0 auto;height:5px;background:linear-gradient(90deg,var(--accent),rgba(var(--accent-rgb),.28) 68%,transparent)}
+.modal-card:not(.search) .modal-icon{width:50px;height:50px;margin:0 0 18px;border:1px solid rgba(var(--accent-rgb),.16);border-radius:16px;background:linear-gradient(145deg,rgba(var(--accent-rgb),.17),rgba(var(--accent-rgb),.07));box-shadow:0 10px 24px rgba(var(--accent-rgb),.12),inset 0 1px rgba(255,255,255,.68)}
+.modal-card:not(.search)>.eyebrow{display:block;margin-bottom:7px;color:var(--accent);font-size:9px;font-weight:850;letter-spacing:.16em}
+.modal-card:not(.search)>h2{max-width:440px;margin:0 0 8px;font-size:27px;line-height:1.12;letter-spacing:-.045em}
+.modal-card:not(.search)>p{max-width:440px;margin:0 0 22px;color:var(--muted);font-size:11px;line-height:1.65}
+.modal-card:not(.search)>label,.modal-card:not(.search) .form-row>label,.modal-card:not(.search) .nav-customizer>label{margin-top:17px;color:var(--ink-2);font-size:10px;font-weight:760;letter-spacing:.01em}
+.modal-card:not(.search) label small{float:right;margin:1px 0 0 8px;color:var(--muted);font-size:8px;font-weight:550}
+.modal-card:not(.search) label :is(input,select,textarea),.modal-card:not(.search) .capture-destination select{width:100%;min-height:50px;margin-top:8px;padding:13px 14px;border:1px solid rgba(76,67,98,.1);border-radius:14px;background:rgba(255,255,255,.62);box-shadow:0 1px 0 rgba(255,255,255,.85),inset 0 1px 2px rgba(48,41,67,.035);color:var(--ink);font-size:13px;line-height:1.4;transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}
+.modal-card:not(.search) label textarea{min-height:118px;height:auto;resize:vertical}
+.modal-card:not(.search) label :is(input,select,textarea):hover{border-color:rgba(var(--accent-rgb),.23);background:rgba(255,255,255,.78)}
+.modal-card:not(.search) label :is(input,select,textarea):focus-visible,.modal-card:not(.search) .capture-destination select:focus-visible{outline:0;border-color:rgba(var(--accent-rgb),.62);background:rgba(255,255,255,.88);box-shadow:0 0 0 4px rgba(var(--accent-rgb),.11),0 8px 24px rgba(var(--accent-rgb),.08)}
+.modal-card:not(.search) :is(input,textarea)::placeholder{color:#aaa4b0;opacity:1}
+.modal-card:not(.search) .form-row{gap:14px}
+.modal-card:not(.search)>.primary-button.full{min-height:54px;margin-top:24px;border-radius:15px;font-size:12px;font-weight:800;letter-spacing:.01em;box-shadow:0 12px 28px rgba(var(--accent-rgb),.25),inset 0 1px rgba(255,255,255,.24)}
+.modal-card:not(.search)>.primary-button.full:hover{transform:translateY(-1px);box-shadow:0 16px 34px rgba(var(--accent-rgb),.3),inset 0 1px rgba(255,255,255,.24)}
+.modal-card:not(.search)>.primary-button.full:disabled{cursor:not-allowed;opacity:.45;filter:saturate(.45);transform:none;box-shadow:none}
+.modal-card:not(.search) .modal-close{width:38px;height:38px;border:1px solid rgba(80,72,96,.08);background:rgba(255,255,255,.58);color:var(--muted)}
+html[data-theme=dark] .modal-card:not(.search) label :is(input,select,textarea),html[data-theme=dark] .modal-card:not(.search) .capture-destination select{border-color:rgba(255,255,255,.09);background:rgba(255,255,255,.045);box-shadow:inset 0 1px rgba(255,255,255,.025)}
+html[data-theme=dark] .modal-card:not(.search) label :is(input,select,textarea):hover,html[data-theme=dark] .modal-card:not(.search) label :is(input,select,textarea):focus-visible{background:rgba(255,255,255,.07)}
+html[data-theme=dark] .modal-card:not(.search) .modal-close{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.055)}
+@media(max-width:560px){
+  .modal-layer{padding:0;align-items:end}
+  .modal-layer .modal-card:not(.search){width:100%;max-height:calc(100dvh - max(10px,env(safe-area-inset-top)));padding:24px 20px calc(22px + env(safe-area-inset-bottom));border-radius:25px 25px 0 0}
+  .modal-card:not(.search)::after{content:"";position:absolute;top:9px;left:50%;width:38px;height:4px;border-radius:99px;background:rgba(119,111,130,.25);transform:translateX(-50%)}
+  .modal-card:not(.search) .modal-icon{width:46px;height:46px;margin-top:8px;margin-bottom:16px}
+  .modal-card:not(.search)>h2{font-size:25px}
+  .modal-card:not(.search)>p{font-size:11px;margin-bottom:18px}
+  .modal-card:not(.search)>label,.modal-card:not(.search) .form-row>label{font-size:11px;margin-top:17px}
+  .modal-card:not(.search) label :is(input,select,textarea),.modal-card:not(.search) .capture-destination select{min-height:54px;font-size:16px}
+  .modal-card:not(.search)>.primary-button.full{bottom:calc(4px + env(safe-area-inset-bottom));min-height:58px;font-size:14px}
+}
+.modal-card:not(.search) .modal-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}
+.modal-card:not(.search) .modal-options button{min-height:44px;justify-content:flex-start;padding:10px 12px;border:1px solid rgba(76,67,98,.09);border-radius:12px;background:rgba(255,255,255,.46);font-size:10px;font-weight:680;transition:border-color .18s ease,background .18s ease,transform .18s ease}
+.modal-card:not(.search) .modal-options button:hover{border-color:rgba(var(--accent-rgb),.24);transform:translateY(-1px)}
+.modal-card:not(.search) .modal-options button.selected{border-color:rgba(var(--accent-rgb),.38);background:linear-gradient(145deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.075));box-shadow:0 6px 16px rgba(var(--accent-rgb),.08)}
+.modal-card:not(.search) .capture-destination{margin-top:18px;padding:16px;border:1px solid rgba(var(--accent-rgb),.11);border-radius:17px;background:rgba(var(--accent-rgb),.035)}
+.modal-card:not(.search) .capture-destination>strong{display:block;margin-bottom:2px;color:var(--ink);font-size:11px}
+.modal-card:not(.search) .calendar-save-status{margin:20px 0 0;padding:12px 13px;border:1px solid rgba(76,67,98,.07);border-radius:13px}
+.modal-card:not(.search) .calendar-save-status.connected{border-color:rgba(91,163,137,.18)}
+.modal-card:not(.search) :is(input,textarea)[required]:placeholder-shown{border-left-color:rgba(var(--accent-rgb),.45)}
+html[data-theme=dark] .modal-card:not(.search) .modal-options button{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.04)}
+html[data-theme=dark] .modal-card:not(.search) .capture-destination{border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.025)}
+@media(max-width:560px){.modal-card:not(.search) .modal-options{grid-template-columns:1fr 1fr}.modal-card:not(.search) .modal-options button{min-height:50px;font-size:11px}.modal-card:not(.search) .capture-destination{padding:14px}.modal-card:not(.search) .calendar-save-status{margin-top:18px}}
