@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
@@ -16,7 +16,14 @@ const geistMono = Geist_Mono({
 
 const title = 'Orbit — Personal OS';
 const description = 'Hayatın, projelerin, programların ve hedeflerin için sakin bir çalışma alanı.';
-const themeBootScript = `(function(){try{var raw=localStorage.getItem('orbit-personal-os');var saved=raw?JSON.parse(raw):null;var preference=saved&&saved.settings&&saved.settings.theme?saved.settings.theme:'system';var dark=preference==='dark'||(preference==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light'}catch(e){var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light'}})();`;
+const themeBootScript = `(function(){function apply(dark){var theme=dark?'dark':'light';document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme;var meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',dark?'#15131a':'#f4f3f7')}try{var raw=localStorage.getItem('orbit-personal-os');var saved=raw?JSON.parse(raw):null;var preference=saved&&saved.settings&&saved.settings.theme?saved.settings.theme:'system';apply(preference==='dark'||(preference==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches))}catch(e){apply(window.matchMedia('(prefers-color-scheme: dark)').matches)}})();`;
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  colorScheme: 'dark light',
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -51,7 +58,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#7564dc"/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/></head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

@@ -350,6 +350,7 @@ export default function PersonalOS() {
         : state.settings.theme;
       document.documentElement.dataset.theme = nextTheme;
       document.documentElement.style.colorScheme = nextTheme;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', nextTheme === 'dark' ? '#15131a' : '#f4f3f7');
       document.documentElement.classList.add('theme-ready');
       setResolvedTheme(nextTheme);
     };
