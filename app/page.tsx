@@ -384,49 +384,63 @@ export default function PersonalOS() {
         const emitTone = () => {
           if (context?.state !== 'running') return;
           const body = context.createOscillator();
-          const texture = context.createOscillator();
+          const bloom = context.createOscillator();
           const bodyGain = context.createGain();
-          const textureGain = context.createGain();
-          const envelope = context.createGain();
-          const filter = context.createBiquadFilter();
-          const compressor = context.createDynamicsCompressor();
+          const bloomGain = context.createGain();
+          const clickGain = context.createGain();
+          const clickFilter = context.createBiquadFilter();
+          const master = context.createGain();
+          const masterFilter = context.createBiquadFilter();
           const now = context.currentTime;
           const isConfirm = tone === 'confirm';
           const isSelect = tone === 'select';
           const isNavigation = tone === 'navigation';
-          const duration = isConfirm ? 0.16 : isNavigation ? 0.13 : isSelect ? 0.12 : 0.095;
+          const duration = isConfirm ? 0.145 : isNavigation ? 0.115 : isSelect ? 0.105 : 0.078;
           const volume = Math.max(0.1, Math.min(1.5, state.settings.soundVolume / 100));
-          const peak = Math.min(0.48, (isConfirm ? 0.3 : isNavigation ? 0.25 : isSelect ? 0.22 : 0.19) * volume);
-          const startFrequency = isConfirm ? 330 : isNavigation ? 255 : isSelect ? 295 : 220;
-          const endFrequency = isConfirm ? 430 : isNavigation ? 175 : isSelect ? 365 : 145;
+          const peak = Math.min(0.52, (isConfirm ? 0.36 : isNavigation ? 0.31 : isSelect ? 0.28 : 0.25) * volume);
+          const startFrequency = isConfirm ? 390 : isNavigation ? 320 : isSelect ? 350 : 285;
+          const endFrequency = isConfirm ? 250 : isNavigation ? 205 : isSelect ? 235 : 175;
 
           body.type = 'sine';
-          texture.type = 'triangle';
+          bloom.type = 'sine';
           body.frequency.setValueAtTime(startFrequency, now);
-          body.frequency.exponentialRampToValueAtTime(endFrequency, now + duration * 0.72);
-          texture.frequency.setValueAtTime(startFrequency * 1.52, now);
-          texture.frequency.exponentialRampToValueAtTime(endFrequency * 1.34, now + duration * 0.65);
-          bodyGain.gain.value = 0.86;
-          textureGain.gain.value = 0.14;
+          body.frequency.exponentialRampToValueAtTime(endFrequency, now + duration * 0.8);
+          bloom.frequency.setValueAtTime(startFrequency * 1.38, now);
+          bloom.frequency.exponentialRampToValueAtTime(endFrequency * 1.2, now + duration * 0.72);
 
-          envelope.gain.setValueAtTime(0.0001, now);
-          envelope.gain.exponentialRampToValueAtTime(peak, now + 0.018);
-          envelope.gain.exponentialRampToValueAtTime(peak * 0.34, now + duration * 0.46);
-          envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-          filter.type = 'lowpass';
-          filter.frequency.setValueAtTime(isConfirm ? 1150 : 880, now);
-          filter.Q.value = 0.45;
-          compressor.threshold.value = -22;
-          compressor.knee.value = 22;
-          compressor.ratio.value = 5;
-          compressor.attack.value = 0.004;
-          compressor.release.value = 0.12;
+          bodyGain.gain.setValueAtTime(0.0001, now);
+          bodyGain.gain.exponentialRampToValueAtTime(peak, now + 0.006);
+          bodyGain.gain.exponentialRampToValueAtTime(peak * 0.28, now + duration * 0.45);
+          bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+          bloomGain.gain.setValueAtTime(0.0001, now);
+          bloomGain.gain.exponentialRampToValueAtTime(peak * (isConfirm ? 0.17 : 0.1), now + 0.012);
+          bloomGain.gain.exponentialRampToValueAtTime(0.0001, now + duration * 0.72);
 
-          body.connect(bodyGain).connect(envelope);
-          texture.connect(textureGain).connect(envelope);
-          envelope.connect(filter).connect(compressor).connect(context.destination);
-          body.start(now); texture.start(now);
-          body.stop(now + duration + 0.015); texture.stop(now + duration + 0.015);
+          const clickDuration = 0.032;
+          const clickBuffer = context.createBuffer(1, Math.ceil(context.sampleRate * clickDuration), context.sampleRate);
+          const clickData = clickBuffer.getChannelData(0);
+          for (let index = 0; index < clickData.length; index += 1) {
+            const decay = Math.exp(-index / (context.sampleRate * 0.0045));
+            clickData[index] = (Math.random() * 2 - 1) * decay;
+          }
+          const click = context.createBufferSource();
+          click.buffer = clickBuffer;
+          clickFilter.type = 'bandpass';
+          clickFilter.frequency.value = isConfirm ? 1050 : isNavigation ? 880 : 760;
+          clickFilter.Q.value = 0.75;
+          clickGain.gain.setValueAtTime(peak * 0.11, now);
+          clickGain.gain.exponentialRampToValueAtTime(0.0001, now + clickDuration);
+
+          master.gain.value = 0.92;
+          masterFilter.type = 'lowpass';
+          masterFilter.frequency.value = isConfirm ? 1800 : 1450;
+          masterFilter.Q.value = 0.32;
+          body.connect(bodyGain).connect(master);
+          bloom.connect(bloomGain).connect(master);
+          click.connect(clickFilter).connect(clickGain).connect(master);
+          master.connect(masterFilter).connect(context.destination);
+          body.start(now); bloom.start(now); click.start(now);
+          body.stop(now + duration + 0.012); bloom.stop(now + duration + 0.012); click.stop(now + clickDuration + 0.005);
         };
 
         audioContextRef.current = context;
