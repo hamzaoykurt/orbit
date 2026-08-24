@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, FocusEvent as ReactFocusEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
 import {
@@ -356,6 +356,22 @@ export default function PersonalOS() {
   }, [hydrated, state.settings.motion]);
 
   useEffect(() => {
+    if (!modal) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+    const fields = Array.from(document.querySelectorAll<HTMLElement>('.modal-card input:not([disabled]),.modal-card select:not([disabled]),.modal-card textarea:not([disabled])'));
+    fields.forEach((field, index) => {
+      if (field instanceof HTMLInputElement) field.setAttribute('enterkeyhint', index < fields.length - 1 ? 'next' : 'done');
+    });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscroll;
+    };
+  }, [modal]);
+
+  useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === '/' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); setModal('search'); }
       if (event.key === 'Escape') { setModal(null); setMobileMenu(false); setCaptureMenuOpen(false); }
@@ -368,6 +384,42 @@ export default function PersonalOS() {
     setToast(message);
     window.setTimeout(() => setToast(''), 2400);
   }, []);
+
+  const advanceModalField = useCallback((current: HTMLElement, activateFinalButton: boolean) => {
+    const card = current.closest('.modal-card');
+    if (!card) return false;
+    const controls = Array.from(card.querySelectorAll<HTMLElement>('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button.primary-button:not([disabled])'))
+      .filter((control) => control.offsetParent !== null);
+    const next = controls[controls.indexOf(current) + 1];
+    if (!next) return false;
+    if (next instanceof HTMLButtonElement && activateFinalButton) next.click();
+    else {
+      next.focus({ preventScroll: true });
+      window.setTimeout(() => next.scrollIntoView({ behavior: state.settings.motion ? 'smooth' : 'auto', block: 'center' }), 80);
+    }
+    return true;
+  }, [state.settings.motion]);
+
+  const handleModalKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey || !(event.target instanceof HTMLElement)) return;
+    if (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
+    if (advanceModalField(event.target, true)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, [advanceModalField]);
+
+  const handleModalChange = useCallback((event: FormEvent<HTMLElement>) => {
+    if (!(event.target instanceof HTMLSelectElement)) return;
+    const target = event.target;
+    window.setTimeout(() => advanceModalField(target, false), 90);
+  }, [advanceModalField]);
+
+  const handleModalFocus = useCallback((event: ReactFocusEvent<HTMLElement>) => {
+    if (!(event.target instanceof HTMLElement) || !event.target.matches('input,select,textarea')) return;
+    const target = event.target;
+    window.setTimeout(() => target.scrollIntoView({ behavior: state.settings.motion ? 'smooth' : 'auto', block: 'center' }), 180);
+  }, [state.settings.motion]);
 
   const playFeedback = useCallback((tone: 'tap' | 'select' | 'navigation' | 'confirm', shouldVibrate = true, forceSound = false, forceHaptics = false) => {
     const nowMs = Date.now();
@@ -1006,7 +1058,7 @@ export default function PersonalOS() {
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
     <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli kayıt" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
-    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi"><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
+    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi" onKeyDownCapture={handleModalKeyDown} onChangeCapture={handleModalChange} onFocusCapture={handleModalFocus}><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button key={key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='note'&&<><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YENİ NOT</span><h2>Bir düşünce yakala.</h2><label>Başlık<input autoFocus value={noteDraft.title} onChange={(event)=>setNoteDraft({...noteDraft,title:event.target.value})} placeholder="Not başlığı"/></label><label>Not<textarea value={noteDraft.body} onChange={(event)=>setNoteDraft({...noteDraft,body:event.target.value})} placeholder="Buraya yaz..."/></label><button className="primary-button full" onClick={addNote}>Notu kaydet <Check size={15}/></button></>}
       {modal==='project'&&<><span className="modal-icon"><PanelsTopLeft size={20}/></span><span className="eyebrow">YENİ PROJE</span><h2>Fikre net bir başlangıç ver.</h2><label>Proje adı<input autoFocus value={projectDraft.title} onChange={(event)=>setProjectDraft({...projectDraft,title:event.target.value})} placeholder="Örn. Seyahat planlama uygulaması"/></label><div className="form-row"><label>Aşama<select value={projectDraft.stage} onChange={(event)=>setProjectDraft({...projectDraft,stage:Number(event.target.value)})}>{['Fikirler','Devam ediyor','İnceleme','Tamamlandı'].map((label,index)=><option value={index} key={label}>{label}</option>)}</select></label><label>Renk<select value={projectDraft.color} onChange={(event)=>setProjectDraft({...projectDraft,color:event.target.value})}>{['violet','blue','mint','sand','rose'].map((color)=><option key={color} value={color}>{color}</option>)}</select></label></div><label>Hedef tarih<input value={projectDraft.due} onChange={(event)=>setProjectDraft({...projectDraft,due:event.target.value})} placeholder="Örn. 18 Eyl"/></label><label>Etiketler <small>Virgülle ayır</small><input value={projectDraft.tags} onChange={(event)=>setProjectDraft({...projectDraft,tags:event.target.value})} placeholder="UI, Mobil, Araştırma"/></label><label>İlk görevler <small>Her satıra bir görev</small><textarea value={projectDraft.tasks} onChange={(event)=>setProjectDraft({...projectDraft,tasks:event.target.value})} placeholder={'Kullanıcı akışını çıkar\nİlk ekranı tasarla'}/></label><button className="primary-button full" onClick={addProject}>Projeyi oluştur <ArrowRight size={15}/></button></>}
