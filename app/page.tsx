@@ -8,11 +8,11 @@ import {
   Archive, ArrowRight, ArrowUpRight, Bell, BookOpen, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
   Circle, CircleDot, Clock3, Command, Compass, Download, Dumbbell, Eye, Globe2,
-  ExternalLink, Flag, Home as HomeIcon, Languages, LayoutGrid, ListTodo, Map, MapPin,
+  ExternalLink, Flag, Home as HomeIcon, Languages, LayoutGrid, Link2, ListTodo, Map, MapPin,
   Menu, Mic, Monitor, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
   Pencil, Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
   Smartphone, Sparkles, Square, StickyNote, Sun, Trash2, Undo2, UserRound, Users,
-  Volume1, Volume2, X, Zap, GripVertical,
+  Volume1, Volume2, X, Zap, GripVertical, RefreshCw,
 } from 'lucide-react';
 
 type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
@@ -23,7 +23,8 @@ type ProjectCover = 'orbit' | 'aurora' | 'grid' | 'minimal';
 type Project = { id: string; title: string; stage: number; progress: number; color: string; due: string; tags: string[]; tasks: string[]; cover?: ProjectCover };
 type ProjectDragState = { projectId: string; title: string; color: string; sourceStage: number; overStage: number; active: boolean; x: number; y: number; startX: number; startY: number; pointerId: number };
 type Program = { id: string; title: string; range: string; people: number; status: string; progress: number; accent: string };
-type CalendarEvent = { id: string; title: string; tone: string; time: string; duration: string };
+type CalendarEvent = { id: string; title: string; tone: string; time: string; duration: string; description?: string; source?: string; googleEventId?: string; htmlLink?: string };
+type GoogleCalendarIntegration = { clientId: string; calendarId: string };
 type ArchiveItem = { id: string; title: string; type: 'project' | 'program' | 'note'; label: string; date: string; source?: Project | Program | Note };
 type ThemePreference = 'light' | 'dark' | 'system';
 type CapturePage = 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes';
@@ -37,6 +38,8 @@ type BrowserSpeechRecognition = {
   onend: () => void;
 };
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+type GoogleTokenResponse = { access_token?: string; error?: string };
+type GoogleOAuthWindow = Window & { google?: { accounts: { oauth2: { initTokenClient: (config: { client_id: string; scope: string; callback: (response: GoogleTokenResponse) => void }) => { requestAccessToken: (options: { prompt: string }) => void }; revoke: (token: string, callback: () => void) => void } } } };
 type PersistedState = {
   completed: Record<string, boolean>;
   customPersonal: Record<string, string[]>;
@@ -54,6 +57,7 @@ type PersistedState = {
   customDepartmentTasks: Record<string, string[]>;
   customRebuildTasks: Record<string, string[]>;
   calendarEvents: Record<string, CalendarEvent[]>;
+  calendarIntegration: GoogleCalendarIntegration;
   archive: ArchiveItem[];
   restoredArchiveIds: string[];
   notes: Note[];
@@ -95,6 +99,7 @@ const defaultState: PersistedState = {
   customDepartmentTasks: {},
   customRebuildTasks: {},
   calendarEvents: {},
+  calendarIntegration: { clientId: '', calendarId: 'primary' },
   archive: [],
   restoredArchiveIds: [],
   notes: [
@@ -133,6 +138,7 @@ function mergePersistedState(value: unknown): PersistedState {
     customDepartmentTasks: saved.customDepartmentTasks && typeof saved.customDepartmentTasks === 'object' && !Array.isArray(saved.customDepartmentTasks) ? saved.customDepartmentTasks : defaultState.customDepartmentTasks,
     customRebuildTasks: saved.customRebuildTasks && typeof saved.customRebuildTasks === 'object' && !Array.isArray(saved.customRebuildTasks) ? saved.customRebuildTasks : defaultState.customRebuildTasks,
     calendarEvents: saved.calendarEvents && typeof saved.calendarEvents === 'object' && !Array.isArray(saved.calendarEvents) ? saved.calendarEvents : defaultState.calendarEvents,
+    calendarIntegration: { ...defaultState.calendarIntegration, ...(saved.calendarIntegration ?? {}) },
     archive: Array.isArray(saved.archive) ? saved.archive : defaultState.archive,
     restoredArchiveIds: Array.isArray(saved.restoredArchiveIds) ? saved.restoredArchiveIds : defaultState.restoredArchiveIds,
     notes: Array.isArray(saved.notes) ? saved.notes : defaultState.notes,
@@ -160,6 +166,25 @@ const safeExternalUrl = (value?: string) => {
 
 const numericPrice = (value?: string) => Number((value ?? '').replace(',', '.')) || 0;
 const formatPrice = (value: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(value);
+const localDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const todayKey = () => localDateKey(new Date());
+const completionRate = (done: number, total: number) => total ? Math.round(done / total * 100) : 0;
+const durationInMinutes = (duration: string) => Math.max(15, Number(duration.match(/\d+/)?.[0] ?? 60));
+const compactGoogleDate = (date: Date) => date.toISOString().replace(/[-:]|\.\d{3}/g, '');
+
+const googleCalendarTemplateUrl = (event: CalendarEvent, date: string) => {
+  const params = new URLSearchParams({ action: 'TEMPLATE', text: event.title, details: [event.description, event.source ? `Orbit · ${event.source}` : ''].filter(Boolean).join('\n') });
+  if (/^\d{2}:\d{2}$/.test(event.time)) {
+    const start = new Date(`${date}T${event.time}:00`);
+    const end = new Date(start.getTime() + durationInMinutes(event.duration) * 60_000);
+    params.set('dates', `${compactGoogleDate(start)}/${compactGoogleDate(end)}`);
+  } else {
+    const start = new Date(`${date}T00:00:00`);
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+    params.set('dates', `${localDateKey(start).replaceAll('-', '')}/${localDateKey(end).replaceAll('-', '')}`);
+  }
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+};
 
 const rebuildAreas: { title: string; icon: LucideIcon; progress: number; color: string; habits: string[] }[] = [
   { title: 'Beden', icon: Dumbbell, progress: 72, color: 'mint', habits: ['Haftada 3 spor yap', 'Her antrenmanı 45–60 dakika sürdür', 'İlk 6 hafta performans yerine devamlılığı koru', 'Tekrar düzenli spor yapan biri olmayı hedefle', 'Spor programını yeniden düzenle'] },
@@ -220,18 +245,6 @@ const programs: Program[] = [
 
 const lifePrinciples = ['Mükemmel proje bekleyip başlamamazlık yapma', 'Hata yapmaktan korktuğunda projeyi küçült', 'Kalite standardını koru; kapsamı küçült', 'İlk versiyonun kusurlu olması normal', 'Düşünmek yerine küçük deneyler yap', 'İngilizcem düzelsin sonra yaşarım deme', 'Vücudum düzelsin sonra sosyalleşirim deme', 'Para kazanayım sonra gezerim deme', 'Özgüven gelince dışarı çıkmayı bekleme', 'Yaşadıkça özgüven kazan', 'Üretirken öğren', 'Öğrenirken paylaş', 'Başkasının yolunu kopyalamak yerine kendi merakını takip et'];
 
-const calendarEvents: Record<string, CalendarEvent[]> = {
-  '2026-08-03': [{ id: 'seed-3', title: 'İngilizce konuşma', tone: 'blue', time: '19:00', duration: '45 dk' }],
-  '2026-08-06': [{ id: 'seed-6', title: 'Merak araştırması', tone: 'violet', time: '18:00', duration: '60 dk' }],
-  '2026-08-10': [{ id: 'seed-10', title: 'Spor · 45–60 dk', tone: 'mint', time: '09:00', duration: '60 dk' }],
-  '2026-08-14': [{ id: 'seed-14', title: 'Sosyal ortam', tone: 'orange', time: '19:00', duration: '90 dk' }],
-  '2026-08-18': [{ id: 'seed-18', title: 'Orbit prototipi', tone: 'blue', time: '10:30', duration: '90 dk' }],
-  '2026-08-20': [{ id: 'seed-20', title: 'Diksiyon kaydı', tone: 'rose', time: '18:30', duration: '30 dk' }],
-  '2026-08-23': [{ id: 'seed-23a', title: 'Haftalık kayıt', tone: 'violet', time: '10:30', duration: '45 dk' }, { id: 'seed-23b', title: 'Solo çıkış', tone: 'sand', time: '19:00', duration: '90 dk' }],
-  '2026-08-26': [{ id: 'seed-26', title: 'Yaratıcı üretim', tone: 'rose', time: '18:00', duration: '90 dk' }],
-  '2026-08-29': [{ id: 'seed-29', title: 'Tur semineri', tone: 'orange', time: '14:00', duration: '120 dk' }],
-};
-
 const archiveSeed: ArchiveItem[] = [
   { id: 'archive-project-notes', title: 'Not Uygulaması', type: 'project', label: 'Proje', date: '12 Ağustos 2026' },
   { id: 'archive-program-istanbul', title: 'Temmuz İstanbul Programı', type: 'program', label: 'Program', date: '28 Temmuz 2026' },
@@ -265,7 +278,7 @@ export default function PersonalOS() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastFeedbackAtRef = useRef(0);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
+  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'calendarConnect' | 'profile' | 'navCustomize' | 'capture' | null>(null);
   const [toast, setToast] = useState('');
   const [expandedProject, setExpandedProject] = useState<string | null>('pos');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -279,9 +292,9 @@ export default function PersonalOS() {
   const [editingPersonalItemId, setEditingPersonalItemId] = useState<string | null>(null);
   const [personalItemDraft, setPersonalItemDraft] = useState({ list: 'todo' as PersonalListKey, title: '', note: '', price: '', link: '', locationUrl: '', priority: 'normal' as 'normal' | 'important' });
   const [rebuildArea, setRebuildArea] = useState('Beden');
-  const [month, setMonth] = useState(2);
-  const [selectedDay, setSelectedDay] = useState(23);
-  const [calendarCursor, setCalendarCursor] = useState(new Date(2026, 7, 1));
+  const [month, setMonth] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
+  const [calendarCursor, setCalendarCursor] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [quickText, setQuickText] = useState('');
   const [quickTarget, setQuickTarget] = useState<keyof typeof personalLists>('todo');
   const [noteDraft, setNoteDraft] = useState({ title: '', body: '' });
@@ -290,7 +303,11 @@ export default function PersonalOS() {
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [programTaskDraft, setProgramTaskDraft] = useState({ programId: '', category: 'Vize', title: '' });
   const [departmentTaskDraft, setDepartmentTaskDraft] = useState('');
-  const [eventDraft, setEventDraft] = useState({ title: '', date: '2026-08-23', time: '10:00', duration: '60 dk', tone: 'violet' });
+  const [eventDraft, setEventDraft] = useState({ title: '', date: todayKey(), time: '10:00', duration: '60 dk', tone: 'violet', description: '', source: '' });
+  const [calendarConnectDraft, setCalendarConnectDraft] = useState(defaultState.calendarIntegration);
+  const [googleCalendarEvents, setGoogleCalendarEvents] = useState<Record<string, CalendarEvent[]>>({});
+  const [googleCalendarStatus, setGoogleCalendarStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'>('disconnected');
+  const googleAccessTokenRef = useRef('');
   const [profileDraft, setProfileDraft] = useState(defaultState.profile);
   const [noteSearch, setNoteSearch] = useState('');
   const [noteFilter, setNoteFilter] = useState<'all' | 'ideas' | 'logs'>('all');
@@ -1014,8 +1031,9 @@ export default function PersonalOS() {
       setExpandedProgram(programId);
     }
     if (capturePage === 'calendar') {
-      const event: CalendarEvent = { id: `capture-${Date.now()}`, title, tone: captureMethod === 'voice' ? 'blue' : 'violet', time: 'Saat yok', duration: captureDetails.trim() || 'Kayıt' };
+      const event: CalendarEvent = { id: `event-${Date.now()}`, title, tone: captureMethod === 'voice' ? 'blue' : 'violet', time: 'Tüm gün', duration: 'Tüm gün', description: captureDetails.trim(), source: captureMethod === 'voice' ? 'Sesli hızlı kayıt' : 'Yazılı hızlı kayıt' };
       setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [captureArea]: [...(current.calendarEvents[captureArea] ?? []), event] } }));
+      if (googleAccessTokenRef.current) void createGoogleCalendarEvent(event, captureArea).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [captureArea]: (current.calendarEvents[captureArea] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Hızlı kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
     }
     if (capturePage === 'notes') {
       setState((current) => ({ ...current, notes: [{ id: `note-${Date.now()}`, title, body: captureDetails.trim() || (captureMethod === 'voice' ? 'Sesli kayıt' : 'Hızlı kayıt'), date: 'Şimdi', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
@@ -1032,21 +1050,133 @@ export default function PersonalOS() {
     notify('Hazırlık görevi kaldırıldı.');
   };
 
-  const openEvent = (date = '2026-08-23') => {
-    setEventDraft({ title: '', date, time: '10:00', duration: '60 dk', tone: 'violet' });
+  const loadGoogleIdentity = () => new Promise<GoogleOAuthWindow>((resolve, reject) => {
+    const googleWindow = window as GoogleOAuthWindow;
+    if (googleWindow.google?.accounts.oauth2) { resolve(googleWindow); return; }
+    const existing = document.querySelector<HTMLScriptElement>('script[data-orbit-google-identity]');
+    const script = existing ?? document.createElement('script');
+    const finish = () => googleWindow.google?.accounts.oauth2 ? resolve(googleWindow) : reject(new Error('Google Identity yüklenemedi'));
+    script.addEventListener('load', finish, { once: true });
+    script.addEventListener('error', () => reject(new Error('Google Identity yüklenemedi')), { once: true });
+    if (!existing) {
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true; script.defer = true; script.dataset.orbitGoogleIdentity = 'true';
+      document.head.appendChild(script);
+    }
+  });
+
+  const requestGoogleAccess = async (clientId = state.calendarIntegration.clientId) => {
+    if (!clientId.trim()) { setCalendarConnectDraft(state.calendarIntegration); setModal('calendarConnect'); return null; }
+    setGoogleCalendarStatus('connecting');
+    try {
+      const googleWindow = await loadGoogleIdentity();
+      return await new Promise<string>((resolve, reject) => {
+        const client = googleWindow.google!.accounts.oauth2.initTokenClient({
+          client_id: clientId.trim(),
+          scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+          callback: (response) => response.access_token ? resolve(response.access_token) : reject(new Error(response.error ?? 'Google bağlantısı reddedildi')),
+        });
+        client.requestAccessToken({ prompt: 'consent' });
+      });
+    } catch {
+      setGoogleCalendarStatus('error'); notify('Google Takvim bağlantısı kurulamadı. İstemci kimliğini ve izinleri kontrol et.'); return null;
+    }
+  };
+
+  const syncGoogleCalendar = async (token = googleAccessTokenRef.current, cursor = calendarCursor, calendarIdOverride?: string) => {
+    if (!token) return;
+    setGoogleCalendarStatus('syncing');
+    const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    const calendarId = calendarIdOverride?.trim() || state.calendarIntegration.calendarId.trim() || 'primary';
+    const query = new URLSearchParams({ timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '250' });
+    try {
+      const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Google Calendar API error');
+      const payload = await response.json() as { items?: Array<{ id: string; summary?: string; description?: string; htmlLink?: string; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }> };
+      const grouped: Record<string, CalendarEvent[]> = {};
+      for (const item of payload.items ?? []) {
+        const startValue = item.start?.dateTime ?? item.start?.date;
+        if (!startValue) continue;
+        const startDate = new Date(item.start?.dateTime ?? `${startValue}T00:00:00`);
+        const endDate = item.end?.dateTime ? new Date(item.end.dateTime) : null;
+        const date = item.start?.date ?? localDateKey(startDate);
+        const duration = endDate ? `${Math.max(15, Math.round((endDate.getTime() - startDate.getTime()) / 60_000))} dk` : 'Tüm gün';
+        (grouped[date] ??= []).push({ id: `google-${item.id}`, googleEventId: item.id, title: item.summary ?? 'Adsız etkinlik', tone: 'blue', time: item.start?.dateTime ? startDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : 'Tüm gün', duration, description: item.description, source: 'Google Takvim', htmlLink: item.htmlLink });
+      }
+      setGoogleCalendarEvents((current) => ({ ...current, ...grouped }));
+      googleAccessTokenRef.current = token;
+      setGoogleCalendarStatus('connected');
+    } catch {
+      setGoogleCalendarStatus('error'); notify('Google Takvim verileri alınamadı. Yeniden bağlanmayı dene.');
+    }
+  };
+
+  const connectGoogleCalendar = async () => {
+    const integration = { clientId: calendarConnectDraft.clientId.trim(), calendarId: calendarConnectDraft.calendarId.trim() || 'primary' };
+    if (!integration.clientId) { notify('Google OAuth istemci kimliğini gir.'); return; }
+    setState((current) => ({ ...current, calendarIntegration: integration }));
+    const token = await requestGoogleAccess(integration.clientId);
+    if (!token) return;
+    googleAccessTokenRef.current = token; setModal(null);
+    await syncGoogleCalendar(token, calendarCursor, integration.calendarId);
+    notify('Google Takvim bağlandı ve güncellendi.');
+  };
+
+  const disconnectGoogleCalendar = () => {
+    const token = googleAccessTokenRef.current;
+    const googleWindow = window as GoogleOAuthWindow;
+    if (token && googleWindow.google?.accounts.oauth2) googleWindow.google.accounts.oauth2.revoke(token, () => undefined);
+    googleAccessTokenRef.current = ''; setGoogleCalendarEvents({}); setGoogleCalendarStatus('disconnected');
+    notify('Google Takvim bağlantısı kapatıldı.');
+  };
+
+  const createGoogleCalendarEvent = async (event: CalendarEvent, date: string) => {
+    const token = googleAccessTokenRef.current;
+    if (!token) return null;
+    const calendarId = state.calendarIntegration.calendarId.trim() || 'primary';
+    const timed = /^\d{2}:\d{2}$/.test(event.time);
+    const start = timed ? new Date(`${date}T${event.time}:00`) : new Date(`${date}T00:00:00`);
+    const end = new Date(start.getTime() + (timed ? durationInMinutes(event.duration) : 24 * 60) * 60_000);
+    const body = timed
+      ? { summary: event.title, description: [event.description, event.source ? `Orbit · ${event.source}` : ''].filter(Boolean).join('\n'), start: { dateTime: start.toISOString(), timeZone: 'Europe/Istanbul' }, end: { dateTime: end.toISOString(), timeZone: 'Europe/Istanbul' } }
+      : { summary: event.title, description: event.description, start: { date }, end: { date: localDateKey(end) } };
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error('Google event insert failed');
+    return await response.json() as { id: string; htmlLink?: string };
+  };
+
+  const openEvent = (date = todayKey(), preset?: { title: string; description?: string; source?: string }) => {
+    setEventDraft({ title: preset?.title ?? '', date, time: '10:00', duration: '60 dk', tone: 'violet', description: preset?.description ?? '', source: preset?.source ?? '' });
     setModal('event');
   };
 
-  const addEvent = () => {
+  const scheduleItem = (title: string, source: string, description = '') => openEvent(todayKey(), { title, source, description });
+
+  const addEvent = async () => {
     if (!eventDraft.title.trim() || !eventDraft.date) return;
-    const event: CalendarEvent = { id: `event-${Date.now()}`, title: eventDraft.title.trim(), tone: eventDraft.tone, time: eventDraft.time || 'Saat yok', duration: eventDraft.duration.trim() || 'Süre yok' };
+    const event: CalendarEvent = { id: `event-${Date.now()}`, title: eventDraft.title.trim(), tone: eventDraft.tone, time: eventDraft.time || 'Saat yok', duration: eventDraft.duration.trim() || 'Süre yok', description: eventDraft.description.trim(), source: eventDraft.source.trim() || 'Orbit' };
     setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [eventDraft.date]: [...(current.calendarEvents[eventDraft.date] ?? []), event] } }));
-    setModal(null); notify('Etkinlik takvime eklendi.');
+    setModal(null);
+    if (googleAccessTokenRef.current) {
+      try {
+        const googleEvent = await createGoogleCalendarEvent(event, eventDraft.date);
+        if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [eventDraft.date]: (current.calendarEvents[eventDraft.date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } }));
+        notify('Etkinlik Orbit ve Google Takvim’e eklendi.');
+      } catch { notify('Etkinlik Orbit’e eklendi; Google aktarımı için yeniden bağlan.'); }
+    } else notify('Etkinlik takvime eklendi. Google’a tek dokunuşla aktarabilirsin.');
   };
 
-  const deleteEvent = (date: string, id: string) => {
+  const deleteEvent = async (date: string, id: string) => {
+    const removed = (state.calendarEvents[date] ?? []).find((event) => event.id === id);
     setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).filter((event) => event.id !== id) } }));
-    notify('Etkinlik takvimden kaldırıldı.');
+    if (removed?.googleEventId && googleAccessTokenRef.current) {
+      const calendarId = state.calendarIntegration.calendarId.trim() || 'primary';
+      try {
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(removed.googleEventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${googleAccessTokenRef.current}` } });
+        notify('Etkinlik Orbit ve Google Takvim’den kaldırıldı.');
+      } catch { notify('Etkinlik Orbit’ten kaldırıldı; Google kaydı kaldı.'); }
+    } else notify('Etkinlik takvimden kaldırıldı.');
   };
 
   const archiveNote = (note: Note) => {
@@ -1097,8 +1227,50 @@ export default function PersonalOS() {
     notify('Orbit verisi indirildi.');
   };
 
-  const completedCount = Object.values(state.completed).filter(Boolean).length;
-  const displayDate = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }).format(new Date(2026, 7, 23));
+  const eventsForDate = (date: string) => {
+    const local = state.calendarEvents[date] ?? [];
+    const syncedIds = new Set(local.map((event) => event.googleEventId).filter(Boolean));
+    return [...local, ...(googleCalendarEvents[date] ?? []).filter((event) => !syncedIds.has(event.googleEventId))].sort((a, b) => a.time.localeCompare(b.time));
+  };
+  const personalMetricItems = (Object.keys(personalLists) as PersonalListKey[]).flatMap(personalItemsFor);
+  const personalDone = personalMetricItems.filter((item) => state.completed[item.id]).length;
+  const personalProgress = completionRate(personalDone, personalMetricItems.length);
+  const rebuildMetrics = rebuildAreas.map((area) => {
+    const habits = [...area.habits, ...(state.customRebuildTasks[area.title] ?? [])];
+    const done = habits.filter((_, index) => state.completed[`rebuild-${area.title}-${index}`]).length;
+    return { ...area, habits, done, progress: completionRate(done, habits.length) };
+  });
+  const rebuildDone = rebuildMetrics.reduce((sum, area) => sum + area.done, 0);
+  const rebuildTotal = rebuildMetrics.reduce((sum, area) => sum + area.habits.length, 0);
+  const rebuildProgress = completionRate(rebuildDone, rebuildTotal);
+  const departmentMetrics = departments.map((department) => {
+    const tasks = [...department.tasks, ...(state.customDepartmentTasks[department.id] ?? [])];
+    const done = tasks.filter((_, index) => state.completed[`dept-${department.id}-${index}`]).length;
+    return { ...department, tasks, done, progress: completionRate(done, tasks.length) };
+  });
+  const departmentDone = departmentMetrics.reduce((sum, department) => sum + department.done, 0);
+  const departmentTotal = departmentMetrics.reduce((sum, department) => sum + department.tasks.length, 0);
+  const metricProjects = [...projectSeed, ...state.customProjects].map(projectWithEdits);
+  const projectMetrics = metricProjects.map((project) => {
+    const tasks = visibleProjectTasks(project);
+    const done = tasks.filter((_, index) => state.completed[`project-${project.id}-${index}`]).length;
+    return { project, tasks, done, progress: completionRate(done, tasks.length) };
+  });
+  const projectDone = projectMetrics.reduce((sum, item) => sum + item.done, 0);
+  const projectTotal = projectMetrics.reduce((sum, item) => sum + item.tasks.length, 0);
+  const metricPrograms = [...programs.map((program) => ({ ...program, ...(state.programEdits[program.id] ?? {}) })), ...state.customPrograms];
+  const programTaskMetrics = metricPrograms.flatMap((program) => programCategories.flatMap((category, categoryIndex) => visibleProgramTasks(program.id, category.name).map((task, taskIndex) => ({ task, done: Boolean(state.completed[`program-${program.id}-${categoryIndex}-${taskIndex}`]) }))));
+  const programDone = programTaskMetrics.filter((item) => item.done).length;
+  const overallDone = personalDone + rebuildDone + departmentDone + projectDone + programDone;
+  const overallTotal = personalMetricItems.length + rebuildTotal + departmentTotal + projectTotal + programTaskMetrics.length;
+  const overallProgress = completionRate(overallDone, overallTotal);
+  const weeklyNotes = state.notes.filter((note) => note.title.toLocaleLowerCase('tr').includes('haftalık')).slice(0, 3);
+  const now = new Date();
+  const displayDate = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }).format(now);
+  const weekStart = new Date(now); weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+  const weekLabel = `${weekStart.getDate()}–${weekEnd.getDate()} ${new Intl.DateTimeFormat('tr-TR', { month: 'long' }).format(weekEnd)}`;
+  const todayEvents = eventsForDate(todayKey());
   const profileInitials = state.profile.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('tr') || 'O';
   const focusDisplay = `${String(Math.floor(focusSeconds / 60)).padStart(2, '0')}:${String(focusSeconds % 60).padStart(2, '0')}`;
   const focusProgress = focusMode === 'countdown' ? Math.max(0, Math.min(100, (1 - focusSeconds / (focusMinutes * 60)) * 100)) : Math.min(100, focusSeconds / (focusMinutes * 60) * 100);
@@ -1114,9 +1286,9 @@ export default function PersonalOS() {
         <article className="surface today-card">
           <div className="card-title-row"><div><span className="eyebrow">AKIŞ</span><h3>Bugün</h3></div><button className="text-button" onClick={() => go('calendar')}>Tümünü gör</button></div>
           <div className="timeline">
-            {[['09:00','Sabah rutini','Beden · 35 dk','routine-1'],['11:00','Personal OS arayüzü','Proje · 90 dk','routine-2'],['15:30','İngilizce pratik','Rebuild · 45 dk','routine-3'],['18:30','Diksiyon kaydı','Rebuild · 30 dk','routine-4'],['20:00','Gün sonu planlama','Personal · 15 dk','routine-5']].map((row, index) => (
-              <button key={row[3]} className={`time-row ${state.completed[row[3]] ? 'done' : ''} ${index === 1 ? 'current' : ''}`} onClick={() => toggle(row[3])}><time>{row[0]}</time><span className="line-dot"/><span><strong>{row[1]}</strong><small>{row[2]}</small></span>{state.completed[row[3]] ? <Check size={14}/> : index === 1 ? <b>Şimdi</b> : <MoreHorizontal size={14}/>}</button>
-            ))}
+            {todayEvents.length ? todayEvents.slice(0, 6).map((event) => (
+              <button key={event.id} className="time-row" onClick={() => go('calendar')}><time>{event.time}</time><span className="line-dot"/><span><strong>{event.title}</strong><small>{event.source ?? 'Orbit'} · {event.duration}</small></span><ChevronRight size={14}/></button>
+            )) : <button className="empty-timeline" onClick={() => openEvent(todayKey())}><CalendarDays size={18}/><span><strong>Bugün için kayıt yok</strong><small>İlk etkinliğini planla</small></span><Plus size={14}/></button>}
           </div>
         </article>
         <article className="surface quick-card">
@@ -1133,7 +1305,7 @@ export default function PersonalOS() {
       </section>
       <section className="surface week-card analytics-bottom">
         <div className="card-title-row"><div><span className="eyebrow">BU HAFTA</span><h3>İlerleme</h3></div><IconButton label="Rebuild sayfasına git" onClick={() => go('rebuild')}><ArrowUpRight size={16}/></IconButton></div>
-        <div className="progress-wrap"><ProgressRing value={68}/><div className="progress-meta"><p><i className="dot violet"/> {Math.max(12, completedCount)} tamamlandı</p><p><i className="dot soft"/> 6 devam ediyor</p><button onClick={() => go('rebuild')}>Detayları gör <ChevronRight size={12}/></button></div></div>
+        <div className="progress-wrap"><ProgressRing value={overallProgress}/><div className="progress-meta"><p><i className="dot violet"/> {overallDone} tamamlandı</p><p><i className="dot soft"/> {Math.max(0, overallTotal - overallDone)} açık</p><button onClick={() => go('rebuild')}>Detayları gör <ChevronRight size={12}/></button></div></div>
       </section>
     </>
   );
@@ -1159,13 +1331,13 @@ export default function PersonalOS() {
                 <span className="check-circle">{state.completed[item.id] && <Check size={13}/>}</span>
                 <span className="task-item-copy"><strong>{item.title}</strong><span className="personal-item-meta">{item.details.priority === 'important' && <em><Flag size={10}/> Önemli</em>}{personalTab === 'buy' && numericPrice(item.details.price) > 0 && <em>{formatPrice(numericPrice(item.details.price))}</em>}<small>{item.details.note || fallback}</small></span></span>
               </button>
-              <span className="personal-item-actions">{externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label={personalTab === 'visit' ? `${item.title} konumunu Google Haritalar'da aç` : `${item.title} ürün bağlantısını aç`}>{personalTab === 'visit' ? <MapPin size={15}/> : <ExternalLink size={15}/>}</a>}<button aria-label={`${item.title} kaydını düzenle`} onClick={() => openPersonalItem(personalTab, item.id)}><MoreHorizontal size={17}/></button></span>
+              <span className="personal-item-actions">{externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label={personalTab === 'visit' ? `${item.title} konumunu Google Haritalar'da aç` : `${item.title} ürün bağlantısını aç`}>{personalTab === 'visit' ? <MapPin size={15}/> : <ExternalLink size={15}/>}</a>}<button aria-label={`${item.title} kaydını takvime ekle`} onClick={() => scheduleItem(item.title, current.title, item.details.note)}><CalendarDays size={15}/></button><button aria-label={`${item.title} kaydını düzenle`} onClick={() => openPersonalItem(personalTab, item.id)}><MoreHorizontal size={17}/></button></span>
             </div>;
           })}</div>
           <button className="inline-add" onClick={() => openPersonalItem(personalTab)}><Plus size={15}/> Yeni öğe ekle</button>
         </section>
       </div>
-      <aside className="surface personal-insight analytics-bottom"><span className="eyebrow">HAFTALIK DENGE</span><div className="balance-orbit"><span/><i/><b>74%</b></div><h3>İyi gidiyorsun.</h3><p>Açık öğelerin çoğu bu hafta için gerçekçi. Bugün sadece iki tanesini seçmen yeterli.</p><button onClick={() => go('calendar')}>Takvime yerleştir <ArrowRight size={14}/></button></aside>
+      <aside className="surface personal-insight analytics-bottom"><span className="eyebrow">GERÇEK İLERLEME</span><div className="balance-orbit"><span/><i/><b>{personalProgress}%</b></div><h3>{personalProgress >= 70 ? 'İyi gidiyorsun.' : personalProgress > 0 ? 'Ritim kuruluyor.' : 'İlk adımı seç.'}</h3><p>{personalDone}/{personalMetricItems.length} kişisel kayıt tamamlandı. Açık kayıtları satırdaki takvim düğmesiyle doğrudan planlayabilirsin.</p><button onClick={() => openEvent(todayKey())}>Takvime yeni plan ekle <ArrowRight size={14}/></button></aside>
     </>;
   };
 
@@ -1173,22 +1345,22 @@ export default function PersonalOS() {
     <>
       <PageTitle eyebrow="6 AYLIK REBUILD" title="Değişimi görünür kıl." description="Eylül'den Şubat'a; küçük ritimler, net kilometre taşları." action={<button className="ghost-button" onClick={()=>{setNoteDraft({title:'Haftalık Rebuild kaydı',body:''});setModal('note');}}><BookOpen size={15}/> Haftalık kayıt</button>}/>
       <div className="rebuild-layout action-first">
-        <section><div className="section-header"><div><span className="eyebrow">BU HAFTA</span><h2>Odak alanları</h2></div><span>23–29 Ağustos</span></div><div className="area-grid">{rebuildAreas.map((area) => { const AreaIcon = area.icon; const open = rebuildArea === area.title; const habits = [...area.habits, ...(state.customRebuildTasks[area.title] ?? [])]; return <article key={area.title} className={`surface area-card ${open ? 'open' : ''}`}><button className="area-card-head" onClick={() => setRebuildArea(open ? '' : area.title)}><span className={`area-icon ${area.color}`}><AreaIcon size={19}/></span><span><strong>{area.title}</strong><small>{area.progress}% tamamlandı</small></span><b>{area.progress}%</b><ChevronDown size={16}/></button><div className="area-progress"><i style={{width:`${area.progress}%`}}/></div><div className="area-details">{habits.map((habit,index) => { const id = `rebuild-${area.title}-${index}`; return <button onClick={() => toggle(id)} key={`${habit}-${index}`} className={state.completed[id] ? 'completed' : ''}><span>{state.completed[id] && <Check size={11}/>}</span>{habit}</button>})}</div></article>})}</div></section>
+        <section><div className="section-header"><div><span className="eyebrow">BU HAFTA</span><h2>Odak alanları</h2></div><span>{weekLabel}</span></div><div className="area-grid">{rebuildMetrics.map((area) => { const AreaIcon = area.icon; const open = rebuildArea === area.title; return <article key={area.title} className={`surface area-card ${open ? 'open' : ''}`}><button className="area-card-head" onClick={() => setRebuildArea(open ? '' : area.title)}><span className={`area-icon ${area.color}`}><AreaIcon size={19}/></span><span><strong>{area.title}</strong><small>{area.done}/{area.habits.length} tamamlandı</small></span><b>{area.progress}%</b><ChevronDown size={16}/></button><div className="area-progress"><i style={{width:`${area.progress}%`}}/></div><div className="area-details">{area.habits.map((habit,index) => { const id = `rebuild-${area.title}-${index}`; return <div className={`schedulable-task-row ${state.completed[id] ? 'completed' : ''}`} key={`${habit}-${index}`}><button onClick={() => toggle(id)}><span>{state.completed[id] && <Check size={11}/>}</span>{habit}</button><button className="schedule-action" aria-label={`${habit} alışkanlığını takvime ekle`} onClick={() => scheduleItem(habit, `Rebuild · ${area.title}`)}><CalendarDays size={14}/></button></div>})}</div></article>})}</div></section>
       </div>
       <section className="surface roadmap-hero analytics-bottom">
-        <div className="roadmap-top"><div><span className="eyebrow">GENEL YOLCULUK</span><h2>6 ayda yeni bir düzen</h2></div><div className="roadmap-score"><strong>42</strong><span>% tamamlandı</span></div></div>
-        <div className="roadmap-track"><span className="track-fill" style={{width:'42%'}}/>{roadmapMonths.map((item,index) => <button key={item.month} className={`${index <= 2 ? 'passed' : ''} ${month === index ? 'active' : ''}`} onClick={() => setMonth(index)}><i>{index < 2 ? <Check size={12}/> : index + 1}</i><strong>{item.month}</strong><small>{item.phase}</small></button>)}</div>
-        <div className="month-focus"><span>{String(month+1).padStart(2,'0')}</span><div><small>{roadmapMonths[month].month.toLocaleUpperCase('tr')} · {roadmapMonths[month].phase}</small><strong>{roadmapMonths[month].focus}</strong><p>{roadmapMonths[month].detail}</p></div><ProgressRing value={roadmapMonths[month].progress} size="small"/></div>
+        <div className="roadmap-top"><div><span className="eyebrow">GENEL YOLCULUK</span><h2>6 ayda yeni bir düzen</h2></div><div className="roadmap-score"><strong>{rebuildProgress}</strong><span>% gerçek görev ilerlemesi</span></div></div>
+        <div className="roadmap-track"><span className="track-fill" style={{width:`${rebuildProgress}%`}}/>{roadmapMonths.map((item,index) => <button key={item.month} className={`${index === 0 && rebuildProgress === 100 ? 'passed' : ''} ${month === index ? 'active' : ''}`} onClick={() => setMonth(index)}><i>{index === 0 && rebuildProgress === 100 ? <Check size={12}/> : index + 1}</i><strong>{item.month}</strong><small>{item.phase}</small></button>)}</div>
+        <div className="month-focus"><span>{String(month+1).padStart(2,'0')}</span><div><small>{roadmapMonths[month].month.toLocaleUpperCase('tr')} · {roadmapMonths[month].phase}</small><strong>{roadmapMonths[month].focus}</strong><p>{roadmapMonths[month].detail}</p></div><ProgressRing value={month === 0 ? rebuildProgress : 0} size="small"/></div>
       </section>
-      <aside className="surface weekly-log analytics-bottom"><div className="card-title-row"><div><span className="eyebrow">HAFTALIK KAYITLAR</span><h3>Son üç hafta</h3></div><BookOpen size={18}/></div>{[['17–23 Ağu','Sakin ama üretken','82'],['10–16 Ağu','Ritim kuruluyor','71'],['3–9 Ağu','Başlangıç','63']].map((log,index)=><button key={log[0]} onClick={()=>{setNoteDraft({title:`Haftalık kayıt · ${log[0]}`,body:log[1]});setModal('note');}}><span className={`log-dot n${index}`}/><span><strong>{log[0]}</strong><small>{log[1]}</small></span><b>{log[2]}</b><ChevronRight size={14}/></button>)}<button className="weekly-new" onClick={() => {setNoteDraft({title:'Haftalık Rebuild kaydı',body:''});setModal('note');}}><Plus size={14}/> Bu haftayı kaydet</button></aside>
+      <aside className="surface weekly-log analytics-bottom"><div className="card-title-row"><div><span className="eyebrow">HAFTALIK KAYITLAR</span><h3>Gerçek notların</h3></div><BookOpen size={18}/></div>{weeklyNotes.length ? weeklyNotes.map((log,index)=><button key={log.id} onClick={()=>{setNoteDraft({title:log.title,body:log.body});setModal('note');}}><span className={`log-dot n${index}`}/><span><strong>{log.title}</strong><small>{log.body || 'Aç ve düzenle'}</small></span><b>{log.date.split('·')[0]}</b><ChevronRight size={14}/></button>) : <p className="empty-inline">Henüz haftalık kayıt yok.</p>}<button className="weekly-new" onClick={() => {setNoteDraft({title:'Haftalık Rebuild kaydı',body:''});setModal('note');}}><Plus size={14}/> Bu haftayı kaydet</button></aside>
     </>
   );
 
   const renderProjects = () => {
     const stages = ['Fikirler', 'Devam ediyor', 'İnceleme', 'Tamamlandı'];
-    const allProjects = [...projectSeed, ...state.customProjects].map(projectWithEdits);
+    const allProjects = metricProjects;
     const visibleProjects = allProjects.filter((project) => `${project.title} ${project.tags.join(' ')}`.toLocaleLowerCase('tr').includes(projectQuery.toLocaleLowerCase('tr')));
-    const averageProgress = Math.round(allProjects.reduce((total, project) => total + project.progress, 0) / Math.max(1, allProjects.length));
+    const averageProgress = Math.round(projectMetrics.reduce((total, item) => total + item.progress, 0) / Math.max(1, projectMetrics.length));
     return <>
       <PageTitle eyebrow="PROJELER" title="Fikirden gerçeğe." description="Tüm üretim yolculuğun; sade, görsel ve hareketli." action={<button className="primary-button compact" onClick={() => openProject()}><Plus size={15}/> Yeni proje</button>}/>
       <div className="project-thesis"><Sparkles size={15}/><span><strong>Proje filtresi</strong><small>Tasarım + teknoloji + uzay + dinozor + retro + futuristic + görsel üretim + interaktif deneyim.</small></span><label className="inline-search"><Search size={13}/><input aria-label="Projelerde ara" value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} placeholder="Ara..."/></label></div>
@@ -1209,7 +1381,7 @@ export default function PersonalOS() {
               {stageProjects.map((project) => {
                 const tasks = visibleProjectTasks(project);
                 const done = tasks.filter((_, index) => state.completed[`project-${project.id}-${index}`]).length;
-                const progress = Math.max(project.progress, tasks.length ? Math.round(done / tasks.length * 100) : 0);
+                const progress = completionRate(done, tasks.length);
                 const isCustom = state.customProjects.some((item) => item.id === project.id);
                 return <article
                   key={project.id}
@@ -1238,7 +1410,7 @@ export default function PersonalOS() {
                     {tasks.length ? tasks.map((task, index) => {
                       const id = `project-${project.id}-${index}`;
                       const isSubtask = task.startsWith('>');
-                      return <button key={`${task}-${index}`} onClick={() => toggle(id)} className={`${state.completed[id] ? 'completed ' : ''}${isSubtask ? 'subtask' : ''}`.trim()}><span>{state.completed[id] && <Check size={10}/>}</span>{isSubtask ? task.slice(1).trim() : task}</button>;
+                      return <div className={`project-task-row ${state.completed[id] ? 'completed ' : ''}${isSubtask ? 'subtask' : ''}`.trim()} key={`${task}-${index}`}><button onClick={() => toggle(id)}><span>{state.completed[id] && <Check size={10}/>}</span>{isSubtask ? task.slice(1).trim() : task}</button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={() => scheduleItem(isSubtask ? task.slice(1).trim() : task, `Proje · ${project.title}`)}><CalendarDays size={13}/></button></div>;
                     }) : <p className="empty-inline">Bu proje için henüz görev eklenmedi.</p>}
                     {stageIndex === 3
                       ? <button className="move-project" disabled={!isCustom} onClick={() => isCustom && archiveProject(project)}>{isCustom ? 'Arşive taşı' : 'Tamamlandı'}<Archive size={13}/></button>
@@ -1261,23 +1433,23 @@ export default function PersonalOS() {
   };
 
   const renderKibleteyn = () => {
-    const current = departments.find((item) => item.id === expandedDepartment)!;
-    const currentTasks = [...current.tasks, ...(state.customDepartmentTasks[current.id] ?? [])];
+    const current = departmentMetrics.find((item) => item.id === expandedDepartment)!;
+    const currentTasks = current.tasks;
     const CurrentIcon = current.icon;
     return <>
       <PageTitle eyebrow="KIBLETEYN" title="Operasyonun nabzı." description="Ekip, ürün ve tasarım akışları tek bir sakin görünümde." action={<button className="ghost-button" onClick={()=>setTeamView(!teamView)}><Users size={15}/>{teamView?'Odak görünümü':'Ekip görünümü'}</button>}/>
-      {teamView?<section className="team-overview">{departments.map((department)=>{const DepartmentIcon=department.icon;const tasks=[...department.tasks,...(state.customDepartmentTasks[department.id]??[])];const done=tasks.filter((_,index)=>state.completed[`dept-${department.id}-${index}`]).length;return <button className="surface" key={department.id} onClick={()=>{setExpandedDepartment(department.id);setTeamView(false);}}><span><DepartmentIcon size={19}/></span><div><strong>{department.title}</strong><small>{done}/{tasks.length} görev tamamlandı</small></div><b>{department.progress}%</b><ChevronRight size={16}/></button>})}</section>:<><div className="department-tabs">{departments.map((department)=>{const DepartmentIcon=department.icon;return <button key={department.id} onClick={()=>setExpandedDepartment(department.id)} className={expandedDepartment===department.id?'active':''}><span><DepartmentIcon size={18}/></span><strong>{department.title}</strong><small>{department.progress}%</small></button>})}</div><section className="surface department-detail"><div className="department-lead"><span className="department-big-icon"><CurrentIcon size={24}/></span><div><span className="eyebrow">AKTİF ÇALIŞMA ALANI</span><h2>{current.title}</h2><p>{current.summary}</p></div><ProgressRing value={current.progress} size="small"/></div><div className="department-task-grid">{currentTasks.map((task,index)=>{const id=`dept-${current.id}-${index}`;return <button key={`${task}-${index}`} onClick={()=>toggle(id)} className={state.completed[id]?'completed':''}><span>{state.completed[id]?<Check size={13}/>:<Circle size={13}/>}</span><span><strong>{task}</strong><small>{index < 2 ? 'Bu hafta' : 'Sırada'}</small></span><ChevronRight size={14}/></button>})}</div><button className="add-department-task" onClick={openDepartmentTask}><Plus size={15}/> {current.title} alanına görev ekle</button></section></>}
-      <section className="surface operation-hero analytics-bottom"><div><span className="status-chip"><i/> Operasyon aktif</span><h2>Bu hafta netlik yüksek.</h2><p>4 çalışma alanında 28 görev ilerliyor. Kritik blokaj görünmüyor.</p><div className="operation-stats"><span><strong>28</strong><small>Açık görev</small></span><span><strong>11</strong><small>Tamamlanan</small></span><span><strong>4</strong><small>Ekip alanı</small></span></div></div><div className="operation-visual"><span className="orbit o1"/><span className="orbit o2"/><span className="core"><Building2 size={28}/></span><i className="node n1"/><i className="node n2"/><i className="node n3"/></div></section>
+      {teamView?<section className="team-overview">{departmentMetrics.map((department)=>{const DepartmentIcon=department.icon;return <button className="surface" key={department.id} onClick={()=>{setExpandedDepartment(department.id);setTeamView(false);}}><span><DepartmentIcon size={19}/></span><div><strong>{department.title}</strong><small>{department.done}/{department.tasks.length} görev tamamlandı</small></div><b>{department.progress}%</b><ChevronRight size={16}/></button>})}</section>:<><div className="department-tabs">{departmentMetrics.map((department)=>{const DepartmentIcon=department.icon;return <button key={department.id} onClick={()=>setExpandedDepartment(department.id)} className={expandedDepartment===department.id?'active':''}><span><DepartmentIcon size={18}/></span><strong>{department.title}</strong><small>{department.progress}%</small></button>})}</div><section className="surface department-detail"><div className="department-lead"><span className="department-big-icon"><CurrentIcon size={24}/></span><div><span className="eyebrow">AKTİF ÇALIŞMA ALANI</span><h2>{current.title}</h2><p>{current.summary}</p></div><ProgressRing value={current.progress} size="small"/></div><div className="department-task-grid">{currentTasks.map((task,index)=>{const id=`dept-${current.id}-${index}`;return <div className={`department-task-row ${state.completed[id]?'completed':''}`} key={`${task}-${index}`}><button onClick={()=>toggle(id)}><span>{state.completed[id]?<Check size={13}/>:<Circle size={13}/>}</span><span><strong>{task}</strong><small>{index < 2 ? 'Bu hafta' : 'Sırada'}</small></span><ChevronRight size={14}/></button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={()=>scheduleItem(task, `Kıbleteyn · ${current.title}`)}><CalendarDays size={14}/></button></div>})}</div><button className="add-department-task" onClick={openDepartmentTask}><Plus size={15}/> {current.title} alanına görev ekle</button></section></>}
+      <section className="surface operation-hero analytics-bottom"><div><span className="status-chip"><i/> Gerçek zamanlı veri</span><h2>{departmentDone ? 'Operasyon ilerliyor.' : 'İlk görevi tamamla.'}</h2><p>{departmentMetrics.length} çalışma alanında {departmentTotal - departmentDone} açık görev bulunuyor.</p><div className="operation-stats"><span><strong>{departmentTotal - departmentDone}</strong><small>Açık görev</small></span><span><strong>{departmentDone}</strong><small>Tamamlanan</small></span><span><strong>{departmentMetrics.length}</strong><small>Çalışma alanı</small></span></div></div><div className="operation-visual"><span className="orbit o1"/><span className="orbit o2"/><span className="core"><Building2 size={28}/></span><i className="node n1"/><i className="node n2"/><i className="node n3"/></div></section>
     </>;
   };
 
   const renderPrograms = () => {
-    const allPrograms = [...programs.map((program) => ({ ...program, ...(state.programEdits[program.id] ?? {}) })), ...state.customPrograms];
+    const allPrograms = metricPrograms;
     const completedPreparations = allPrograms.reduce((total, program) => total + programCategories.reduce((sum, category, categoryIndex) => sum + visibleProgramTasks(program.id, category.name).filter((_, taskIndex) => state.completed[`program-${program.id}-${categoryIndex}-${taskIndex}`]).length, 0), 0);
     const totalPreparations = allPrograms.reduce((total, program) => total + programCategories.reduce((sum, category) => sum + visibleProgramTasks(program.id, category.name).length, 0), 0);
     return <>
       <PageTitle eyebrow="PROGRAMLAR" title="Her turun kendi ritmi." description="Kalabalık listeler yerine, aşama aşama açılan net hazırlık kartları." action={<button className="primary-button compact" onClick={openProgram}><Plus size={15}/> Yeni tur</button>}/>
-      <div className="program-stack">{allPrograms.map((program)=>{const open=expandedProgram===program.id;const done=programCategories.reduce((sum,cat,catIndex)=>sum+visibleProgramTasks(program.id,cat.name).filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length,0);const total=programCategories.reduce((sum,cat)=>sum+visibleProgramTasks(program.id,cat.name).length,0);const progress=Math.max(program.progress, total ? Math.round(done/total*100) : 0);return <article key={program.id} className={`surface program-card ${open?'open':''}`}><button className="program-head" onClick={()=>setExpandedProgram(open?null:program.id)}><span className={`program-date ${program.accent}`}><strong>{program.range.split(' ')[0]}</strong><small>{program.range.split(' ').slice(1).join(' ')}</small></span><span className="program-name"><em>{program.status}</em><h2>{program.title}</h2></span><span className="program-progress"><strong>{progress}%</strong><i><b style={{width:`${progress}%`}}/></i><small>{done}/{total} kontrol</small></span><span className="program-chevron"><ChevronDown size={19}/></span></button><div className="program-content"><div className="category-grid"><div className="program-actions"><button onClick={()=>openProgramEdit(program)}><Settings size={13}/> Turu düzenle</button><button onClick={()=>openProgramTask(program.id)}><Plus size={13}/> Görev ekle</button></div>{programCategories.map((category,catIndex)=>{const CategoryIcon=category.icon;const tasks=visibleProgramTasks(program.id,category.name);const catDone=tasks.filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length;return <details key={category.name} open={catIndex===0&&open}><summary><span className={`category-icon c${catIndex}`}><CategoryIcon size={17}/></span><span><strong>{category.name}</strong><small>{catDone}/{tasks.length} tamamlandı</small></span><b>{tasks.length ? Math.round(catDone/tasks.length*100) : 0}%</b><ChevronDown size={14}/></summary><div className="category-tasks">{tasks.map((task,taskIndex)=>{const id=`program-${program.id}-${catIndex}-${taskIndex}`;return <div className={`program-task-row ${state.completed[id]?'completed':''}`} key={`${task}-${taskIndex}`}><button onClick={()=>toggle(id)}><span>{state.completed[id]&&<Check size={10}/>}</span>{task}<small>{taskIndex<2?'Bugün':'Bu hafta'}</small></button><IconButton label={`${task} görevini kaldır`} onClick={()=>removeProgramTask(program.id,task)}><X size={12}/></IconButton></div>})}<button className="add-program-task" onClick={()=>openProgramTask(program.id,category.name)}><Plus size={12}/> Bu kategoriye görev ekle</button></div></details>})}</div></div></article>})}</div>
+      <div className="program-stack">{allPrograms.map((program)=>{const open=expandedProgram===program.id;const done=programCategories.reduce((sum,cat,catIndex)=>sum+visibleProgramTasks(program.id,cat.name).filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length,0);const total=programCategories.reduce((sum,cat)=>sum+visibleProgramTasks(program.id,cat.name).length,0);const progress=completionRate(done,total);return <article key={program.id} className={`surface program-card ${open?'open':''}`}><button className="program-head" onClick={()=>setExpandedProgram(open?null:program.id)}><span className={`program-date ${program.accent}`}><strong>{program.range.split(' ')[0]}</strong><small>{program.range.split(' ').slice(1).join(' ')}</small></span><span className="program-name"><em>{program.status}</em><h2>{program.title}</h2></span><span className="program-progress"><strong>{progress}%</strong><i><b style={{width:`${progress}%`}}/></i><small>{done}/{total} kontrol</small></span><span className="program-chevron"><ChevronDown size={19}/></span></button><div className="program-content"><div className="category-grid"><div className="program-actions"><button onClick={()=>openProgramEdit(program)}><Settings size={13}/> Turu düzenle</button><button onClick={()=>openProgramTask(program.id)}><Plus size={13}/> Görev ekle</button></div>{programCategories.map((category,catIndex)=>{const CategoryIcon=category.icon;const tasks=visibleProgramTasks(program.id,category.name);const catDone=tasks.filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length;return <details key={category.name} open={catIndex===0&&open}><summary><span className={`category-icon c${catIndex}`}><CategoryIcon size={17}/></span><span><strong>{category.name}</strong><small>{catDone}/{tasks.length} tamamlandı</small></span><b>{completionRate(catDone,tasks.length)}%</b><ChevronDown size={14}/></summary><div className="category-tasks">{tasks.map((task,taskIndex)=>{const id=`program-${program.id}-${catIndex}-${taskIndex}`;return <div className={`program-task-row ${state.completed[id]?'completed':''}`} key={`${task}-${taskIndex}`}><button onClick={()=>toggle(id)}><span>{state.completed[id]&&<Check size={10}/>}</span>{task}<small>{taskIndex<2?'Bugün':'Bu hafta'}</small></button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={()=>scheduleItem(task, `Program · ${program.title} · ${category.name}`)}><CalendarDays size={13}/></button><IconButton label={`${task} görevini kaldır`} onClick={()=>removeProgramTask(program.id,task)}><X size={12}/></IconButton></div>})}<button className="add-program-task" onClick={()=>openProgramTask(program.id,category.name)}><Plus size={12}/> Bu kategoriye görev ekle</button></div></details>})}</div></div></article>})}</div>
       <div className="program-overview analytics-bottom"><div><Plane size={20}/><span><strong>{allPrograms.length}</strong><small>Yaklaşan tur</small></span></div><div><ListTodo size={20}/><span><strong>{totalPreparations - completedPreparations}</strong><small>Açık hazırlık</small></span></div><div><CheckCircle2 size={20}/><span><strong>{completedPreparations}</strong><small>Tamamlanan hazırlık</small></span></div></div>
     </>;
   };
@@ -1291,14 +1463,14 @@ export default function PersonalOS() {
     const leadingDays = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
     const dateKey = (day: number) => `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const selectedDateKey = dateKey(selectedDay);
-    const eventsFor = (day: number) => [...(calendarEvents[dateKey(day)] ?? []), ...(state.calendarEvents[dateKey(day)] ?? [])].sort((a, b) => a.time.localeCompare(b.time));
+    const eventsFor = (day: number) => eventsForDate(dateKey(day));
     const selectedEvents = eventsFor(selectedDay);
-    const changeMonth = (delta: number) => { setCalendarCursor(new Date(year, monthIndex + delta, 1)); setSelectedDay(1); };
-    const goToday = () => { const now = new Date(); setCalendarCursor(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedDay(now.getDate()); };
+    const changeMonth = (delta: number) => { const next = new Date(year, monthIndex + delta, 1); setCalendarCursor(next); setSelectedDay(1); if (googleAccessTokenRef.current) void syncGoogleCalendar(googleAccessTokenRef.current, next); };
+    const goToday = () => { const currentDate = new Date(); const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); setCalendarCursor(next); setSelectedDay(currentDate.getDate()); if (googleAccessTokenRef.current) void syncGoogleCalendar(googleAccessTokenRef.current, next); };
     const selectedWeekday = new Intl.DateTimeFormat('tr-TR', { weekday: 'long' }).format(new Date(year, monthIndex, selectedDay));
     return <>
-      <PageTitle eyebrow="TAKVİM" title="Zamana biraz boşluk bırak." description={`${titleMonth} ${year} · Planların ve ritimlerin tek görünümü.`} action={<button className="primary-button compact" onClick={()=>openEvent(selectedDateKey)}><Plus size={15}/> Etkinlik ekle</button>}/>
-      <div className="calendar-layout"><section className="surface calendar-card"><header><div><IconButton label="Önceki ay" onClick={()=>changeMonth(-1)}><ChevronRight className="flip" size={16}/></IconButton><h2>{titleMonth} <span>{year}</span></h2><IconButton label="Sonraki ay" onClick={()=>changeMonth(1)}><ChevronRight size={16}/></IconButton></div><button className="today-button" onClick={goToday}>Bugün</button></header><div className="calendar-weekdays">{['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'].map((day)=><span key={day}>{day}</span>)}</div><div className="calendar-grid">{Array.from({length:leadingDays},(_,i)=><span className="empty-day" key={`empty-${i}`}/>)}{days.map((day)=>{const events=eventsFor(day);return <button key={day} onClick={()=>setSelectedDay(day)} className={`${dateKey(day) === new Date().toISOString().slice(0, 10) ? 'today' : ''} ${selectedDay===day?'selected':''}`}><span>{day}</span><div>{events.slice(0,2).map((event)=><i key={event.id} className={event.tone}>{event.title}</i>)}</div></button>})}</div></section><aside className="surface day-panel"><span className="eyebrow">SEÇİLİ GÜN</span><div className="day-number"><strong>{selectedDay}</strong><span>{titleMonth}<br/>{year}</span></div><h3>{selectedWeekday.charAt(0).toLocaleUpperCase('tr')+selectedWeekday.slice(1)}</h3><div className="day-events">{selectedEvents.length?selectedEvents.map((event)=><div className="day-event" key={event.id}><i className={event.tone}/><span><strong>{event.title}</strong><small>{event.time} · {event.duration}</small></span>{event.id.startsWith('event-') && <IconButton label="Etkinliği sil" onClick={() => deleteEvent(selectedDateKey, event.id)}><Trash2 size={13}/></IconButton>}</div>):<div className="empty-state"><CalendarDays size={24}/><p>Bu gün henüz boş.<br/>Biraz nefes iyi gelebilir.</p></div>}</div><button className="inline-add" onClick={()=>openEvent(selectedDateKey)}><Plus size={14}/> Bu güne ekle</button></aside></div>
+      <PageTitle eyebrow="TAKVİM" title="Zamana biraz boşluk bırak." description={`${titleMonth} ${year} · Yalnızca kendi planların ve bağlı Google Takvimin.`} action={<div className="calendar-title-actions"><button className={`google-calendar-button ${googleCalendarStatus === 'connected' ? 'connected' : ''}`} onClick={() => googleCalendarStatus === 'connected' ? void syncGoogleCalendar() : (setCalendarConnectDraft(state.calendarIntegration), setModal('calendarConnect'))}><RefreshCw size={14}/>{googleCalendarStatus === 'connected' ? 'Google’ı güncelle' : 'Google Takvim'}</button><button className="primary-button compact" onClick={()=>openEvent(selectedDateKey)}><Plus size={15}/> Etkinlik ekle</button></div>}/>
+      <div className="calendar-layout"><section className="surface calendar-card"><header><div><IconButton label="Önceki ay" onClick={()=>changeMonth(-1)}><ChevronRight className="flip" size={16}/></IconButton><h2>{titleMonth} <span>{year}</span></h2><IconButton label="Sonraki ay" onClick={()=>changeMonth(1)}><ChevronRight size={16}/></IconButton></div><button className="today-button" onClick={goToday}>Bugün</button></header>{googleCalendarStatus === 'syncing' && <div className="calendar-sync-note"><RefreshCw size={13}/> Google Takvim güncelleniyor…</div>}<div className="calendar-weekdays">{['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'].map((day)=><span key={day}>{day}</span>)}</div><div className="calendar-grid">{Array.from({length:leadingDays},(_,i)=><span className="empty-day" key={`empty-${i}`}/>)}{days.map((day)=>{const events=eventsFor(day);return <button key={day} onClick={()=>setSelectedDay(day)} className={`${dateKey(day) === todayKey() ? 'today' : ''} ${selectedDay===day?'selected':''}`}><span>{day}</span><div>{events.slice(0,3).map((event)=><i key={event.id} className={event.tone}>{event.title}</i>)}{events.length>3&&<small>+{events.length-3} daha</small>}</div></button>})}</div></section><aside className="surface day-panel"><span className="eyebrow">SEÇİLİ GÜN</span><div className="day-number"><strong>{selectedDay}</strong><span>{titleMonth}<br/>{year}</span></div><h3>{selectedWeekday.charAt(0).toLocaleUpperCase('tr')+selectedWeekday.slice(1)}</h3><div className="day-events">{selectedEvents.length?selectedEvents.map((event)=><div className="day-event" key={event.id}><i className={event.tone}/><span><strong>{event.title}</strong><small>{event.time} · {event.duration}{event.source ? ` · ${event.source}` : ''}</small></span><span className="day-event-actions"><a href={event.htmlLink ?? googleCalendarTemplateUrl(event, selectedDateKey)} target="_blank" rel="noreferrer" aria-label={`${event.title} etkinliğini Google Takvim'de aç`}><ExternalLink size={13}/></a>{event.id.startsWith('event-') && <IconButton label="Etkinliği sil" onClick={() => deleteEvent(selectedDateKey, event.id)}><Trash2 size={13}/></IconButton>}</span></div>):<div className="empty-state"><CalendarDays size={24}/><p>Bu gün henüz boş.<br/>Biraz nefes iyi gelebilir.</p></div>}</div><button className="inline-add" onClick={()=>openEvent(selectedDateKey)}><Plus size={14}/> Bu güne ekle</button>{googleCalendarStatus === 'connected' && <button className="calendar-disconnect" onClick={disconnectGoogleCalendar}>Google bağlantısını kapat</button>}</aside></div>
     </>;
   };
 
@@ -1351,7 +1523,7 @@ export default function PersonalOS() {
     <>
       <PageTitle eyebrow="AYARLAR" title="Orbit sana uyum sağlasın." description="Görünümü, bildirimleri ve çalışma biçimini kişiselleştir."/>
       <div className="settings-layout"><nav className="surface settings-nav"><button className={settingsTab==='general'?'active':''} onClick={()=>setSettingsTab('general')}><UserRound size={16}/> Genel</button><button className={settingsTab==='appearance'?'active':''} onClick={()=>setSettingsTab('appearance')}><Palette size={16}/> Görünüm</button><button className={settingsTab==='notifications'?'active':''} onClick={()=>setSettingsTab('notifications')}><Bell size={16}/> Bildirimler</button><button className={settingsTab==='data'?'active':''} onClick={()=>setSettingsTab('data')}><Download size={16}/> Veri</button></nav><div className="settings-content">
-        {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">{profileInitials}</div><div><h2>{state.profile.name}</h2><p>{state.profile.workspace}</p></div><button onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><CheckCircle2 size={18} className="setting-ok"/></div></section></>}
+        {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">{profileInitials}</div><div><h2>{state.profile.name}</h2><p>{state.profile.workspace}</p></div><button onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><CheckCircle2 size={18} className="setting-ok"/></div></section><section className="surface settings-section"><header><h3>Takvim bağlantısı</h3><p>Orbit etkinliklerini kendi Google Takviminle birleştir.</p></header><div className="setting-row"><span className="setting-icon"><CalendarDays size={17}/></span><span><strong>Google Takvim</strong><small>{googleCalendarStatus==='connected'?'Bağlı · Etkinlikler okunuyor ve yeni planlar eşitleniyor':state.calendarIntegration.clientId?'Hazır · Yeniden bağlanman gerekiyor':'Bağlantı kurulmadı'}</small></span><button className="settings-edit-button" onClick={()=>googleCalendarStatus==='connected'?disconnectGoogleCalendar():(setCalendarConnectDraft(state.calendarIntegration),setModal('calendarConnect'))}>{googleCalendarStatus==='connected'?'Bağlantıyı kes':'Bağla'}</button></div></section></>}
         {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Altı renk seçeneğinden birini kullan</small></span><div className="color-options">{['violet','blue','mint','sand','rose','slate'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><div className="setting-row density-setting"><span className="setting-icon"><PanelsTopLeft size={17}/></span><span><strong>Bilgi yoğunluğu</strong><small>Ekranda daha ferah veya daha sıkı bir düzen seç</small></span><div className="theme-options" role="group" aria-label="Bilgi yoğunluğu">{([{id:'comfortable',label:'Ferah'},{id:'compact',label:'Kompakt'}] as const).map(({id,label})=><button key={id} className={state.settings.density===id?'selected':''} aria-pressed={state.settings.density===id} onClick={()=>updateSetting('density',id)}><span>{label}</span></button>)}</div></div><div className="setting-row nav-setting"><span className="setting-icon"><Menu size={17}/></span><span><strong>Alt menü</strong><small>Mobil çubuktaki dört sayfayı değiştir</small></span><button className="settings-edit-button" onClick={()=>setModal('navCustomize')}>Düzenle</button></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Buton ve işlem anlarında yumuşak geri bildirim" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/><SettingToggle icon={Smartphone} title="Dokunsal geri bildirim" description="Mobil işlemlerde hafif titreşim kullan" value={state.settings.haptics} onChange={(value)=>updateSetting('haptics',value)}/><button data-feedback-test className="feedback-test-button" onClick={()=>{playFeedback('confirm',true,true,true);notify('Ses ve titreşim denemesi çalıştırıldı.');}}><Volume2 size={16}/><span><strong>Geri bildirimi dene</strong><small>Ses ve titreşim bu cihazda birlikte çalışır</small></span><Zap size={15}/></button></section>}
         {settingsTab==='appearance'&&<section className="surface settings-section sound-settings-section"><header><h3>Ses seviyesi</h3><p>Arayüz efektlerini cihazına göre ayarla.</p></header><div className="sound-level-control"><div className="sound-level-copy"><span className="setting-icon"><Volume1 size={17}/></span><span><strong>Efekt yüksekliği</strong><small>Düşükten ekstra güçlü seviyeye</small></span><em>%{state.settings.soundVolume}</em></div><div className="sound-volume-control"><Volume1 size={14}/><input aria-label="Arayüz ses seviyesi" type="range" min="10" max="150" step="5" value={state.settings.soundVolume} style={{'--sound-fill':`${Math.round(state.settings.soundVolume/1.5)}%`} as CSSProperties} onChange={(event)=>updateSetting('soundVolume',Number(event.target.value))} onPointerUp={()=>playFeedback('confirm',false,true)} onKeyUp={()=>playFeedback('confirm',false,true)}/><Volume2 size={16}/></div></div></section>}
         {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>İzin ve görünüm tercihlerini buradan yönet.</p></header><SettingToggle icon={Bell} title="Akıllı hatırlatmalar" description="Tarayıcı bildirimi iznini aç veya kapat" value={state.settings.notifications} onChange={(value)=>void updateNotifications(value)}/><SettingToggle icon={Eye} title="Tamamlananları göster" description="Personal listelerinde biten işleri görünür tut" value={state.settings.showCompleted} onChange={(value)=>updateSetting('showCompleted',value)}/></section>}
@@ -1387,7 +1559,8 @@ export default function PersonalOS() {
       {modal==='departmentTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">OPERASYON GÖREVİ</span><h2>{departments.find((department)=>department.id===expandedDepartment)?.title} için görev ekle.</h2><label>Görev adı<input autoFocus value={departmentTaskDraft} onChange={(event)=>setDepartmentTaskDraft(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addDepartmentTask()} placeholder="Örn. Tedarikçiden teyit al"/></label><button className="primary-button full" onClick={addDepartmentTask}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='navCustomize'&&<><span className="modal-icon"><Menu size={20}/></span><span className="eyebrow">ALT MENÜ</span><h2>Menüdeki sayfaları seç.</h2><p>Ortadaki hızlı ekle düğmesi sabit kalır; diğer dört alanı istediğin sayfayla değiştirebilirsin.</p><div className="nav-customizer">{state.mobileNav.map((selectedPage,index)=><label key={index}>{index < 2?'Sol':'Sağ'} alan {index % 2 + 1}<select value={selectedPage} onChange={(event)=>updateMobileNavItem(index,event.target.value as PageKey)}>{nav.map((item)=><option key={item.id} value={item.id} disabled={item.id!==selectedPage&&state.mobileNav.includes(item.id)}>{item.label}</option>)}</select></label>)}</div><button className="primary-button full" onClick={()=>{setModal(null);notify('Alt menü güncellendi.')}}>Kaydet <Check size={15}/></button></>}
       {modal==='capture'&&<><span className="modal-icon">{captureMethod==='voice'?<Mic size={20}/>:<StickyNote size={20}/>}</span><span className="eyebrow">{captureMethod==='voice'?'SESLİ KAYIT':'YAZILI KAYIT'}</span><h2>Kaydı tamamla.</h2>{captureMethod==='voice'&&<button className={`capture-mic ${captureListening?'listening':''}`} onClick={startCaptureVoice}><span>{captureListening?<Square size={16}/>:<Mic size={16}/>}</span><span><strong>{captureListening?'Dinliyorum…':'Konuşarak başlık ekle'}</strong><small>İstersen alttan düzenleyebilirsin</small></span></button>}<label>Başlık<input autoFocus value={captureTitle} onChange={(event)=>setCaptureTitle(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&saveCapture()} placeholder="Kaydetmek istediğin şey"/></label><label>Açıklama <small>İsteğe bağlı</small><textarea value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder="Kısa bir ayrıntı ekle..."/></label><div className="capture-destination"><strong>Nereye kaydedilsin?</strong><label>Sayfa<select value={capturePage} onChange={(event)=>{const page=event.target.value as CapturePage;setCapturePage(page);setCaptureArea(captureAreasFor(page)[0]?.value ?? '');}}>{[{value:'personal',label:'Personal'},{value:'rebuild',label:'6 Aylık Rebuild'},{value:'projects',label:'Projeler'},{value:'kibleteyn',label:'Kıbleteyn'},{value:'programs',label:'Programlar'},{value:'calendar',label:'Takvim'},{value:'notes',label:'Notlar'}].map((item)=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label>Alan<select value={captureArea} onChange={(event)=>setCaptureArea(event.target.value)}>{captureAreasFor(capturePage).map((area)=><option key={area.value} value={area.value}>{area.label}</option>)}</select></label></div><button className="primary-button full" onClick={saveCapture}>Seçilen alana kaydet <ArrowRight size={15}/></button></>}
-      {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2><label>Etkinlik adı<input autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat<input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre<input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{['violet','blue','mint','sand','rose','orange'].map((tone)=><option key={tone} value={tone}>{tone}</option>)}</select></label></div><button className="primary-button full" onClick={addEvent}>Takvime ekle <ArrowRight size={15}/></button></>}
+      {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2>{eventDraft.source&&<div className="calendar-source-chip"><Link2 size={13}/>{eventDraft.source}</div>}<label>Etkinlik adı<input autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat<input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre<input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{['violet','blue','mint','sand','rose','orange'].map((tone)=><option key={tone} value={tone}>{tone}</option>)}</select></label></div><label>Açıklama <small>İsteğe bağlı</small><textarea value={eventDraft.description} onChange={(event)=>setEventDraft({...eventDraft,description:event.target.value})} placeholder="Etkinlik ayrıntıları..."/></label><div className={`calendar-save-status ${googleCalendarStatus==='connected'?'connected':''}`}><CalendarDays size={14}/><span><strong>{googleCalendarStatus==='connected'?'Orbit + Google Takvim':'Orbit Takvimi'}</strong><small>{googleCalendarStatus==='connected'?'İki takvime birlikte kaydedilecek':'Kaydettikten sonra Google’a tek dokunuşla aktarabilirsin'}</small></span></div><button className="primary-button full" onClick={()=>void addEvent()}>Takvime ekle <ArrowRight size={15}/></button></>}
+      {modal==='calendarConnect'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">GOOGLE TAKVİM</span><h2>Kendi takvimini bağla.</h2><p>Google hesabındaki etkinlikleri Orbit’te görür, yeni planları iki takvime birlikte kaydedersin. Erişim anahtarı yalnızca açık oturumda tutulur.</p><label>Google OAuth istemci kimliği<input autoFocus value={calendarConnectDraft.clientId} onChange={(event)=>setCalendarConnectDraft({...calendarConnectDraft,clientId:event.target.value})} placeholder="...apps.googleusercontent.com"/></label><label>Takvim kimliği <small>Birincil takvim için primary</small><input value={calendarConnectDraft.calendarId} onChange={(event)=>setCalendarConnectDraft({...calendarConnectDraft,calendarId:event.target.value})} placeholder="primary"/></label><a className="google-setup-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer"><ExternalLink size={13}/> Google Cloud kimlik bilgilerini aç</a><button className="primary-button full" onClick={()=>void connectGoogleCalendar()} disabled={googleCalendarStatus==='connecting'}>{googleCalendarStatus==='connecting'?'Google bekleniyor…':'Google hesabımla bağlan'} <ArrowRight size={15}/></button></>}
       {modal==='profile'&&<><span className="modal-icon"><UserRound size={20}/></span><span className="eyebrow">ÇALIŞMA ALANI</span><h2>Profilini kişiselleştir.</h2><label>İsim<input autoFocus value={profileDraft.name} onChange={(event)=>setProfileDraft({...profileDraft,name:event.target.value})} placeholder="İsmin"/></label><label>Çalışma alanı<input value={profileDraft.workspace} onChange={(event)=>setProfileDraft({...profileDraft,workspace:event.target.value})} placeholder="Örn. Tasarım ve operasyon"/></label><button className="primary-button full" onClick={saveProfile}>Değişiklikleri kaydet <Check size={15}/></button></>}
       {modal==='search'&&<><div className="command-input"><Search size={18}/><input autoFocus value={searchText} onChange={(event)=>setSearchText(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter'&&searchResults[0]){go(searchResults[0].id);setModal(null);setSearchText('');}}} placeholder="Sayfa veya kayıt ara..."/><kbd>ESC</kbd></div><div className="command-results"><span>Hızlı geçiş</span>{searchResults.map((item)=>{const ItemIcon=item.icon;return <button key={item.id} onClick={()=>{go(item.id);setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.label}</strong><small>Sayfaya git</small><ChevronRight size={14}/></button>})}{personalSearchResults.length>0&&<><span>Personal kayıtları</span>{personalSearchResults.map((item)=>{const ItemIcon=personalLists[item.list].icon;return <button key={item.id} onClick={()=>{setPersonalTab(item.list);go('personal');setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.title}</strong><small>{personalLists[item.list].title}</small><ChevronRight size={14}/></button>})}</>}{!searchResults.length&&!personalSearchResults.length&&<p className="empty-inline">Eşleşen sonuç bulunamadı.</p>}</div><div className="command-footer"><span><Command size={12}/> Orbit hızlı arama</span><span>↵ ilk sayfayı aç · esc kapat</span></div></>}
     </section></div>}
