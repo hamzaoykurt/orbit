@@ -51,6 +51,9 @@ type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 type GoogleTokenResponse = { access_token?: string; expires_in?: number; error?: string };
 type GoogleOAuthWindow = Window & { google?: { accounts: { oauth2: { initTokenClient: (config: { client_id: string; scope: string; callback: (response: GoogleTokenResponse) => void; error_callback?: (error: { type?: string }) => void }) => { requestAccessToken: (options: { prompt: string }) => void }; revoke: (token: string, callback: () => void) => void } } } };
 type StoredGoogleSession = { accessToken: string; expiresAt: number; reconnect: boolean };
+type RebuildActivity = { id: string; areaId: string; title: string; date: string; duration: number; note: string; rating: number; createdAt: string };
+type RebuildReview = { weekKey: string; win: string; friction: string; nextFocus: string; energy: number; createdAt: string };
+type RebuildBodyPlan = { name: string; workouts: string[]; nutrition: string[] };
 type PersistedState = {
   completed: Record<string, boolean>;
   customPersonal: Record<string, string[]>;
@@ -70,6 +73,11 @@ type PersistedState = {
   programRemovedTasks: Record<string, string[]>;
   customDepartmentTasks: Record<string, string[]>;
   customRebuildTasks: Record<string, string[]>;
+  rebuildActivities: RebuildActivity[];
+  rebuildReviews: Record<string, RebuildReview>;
+  rebuildSelections: Record<string, string>;
+  rebuildBodyPlan: RebuildBodyPlan;
+  rebuildDailyChecks: Record<string, string[]>;
   calendarEvents: Record<string, CalendarEvent[]>;
   calendarIntegration: GoogleCalendarIntegration;
   archive: ArchiveItem[];
@@ -118,6 +126,11 @@ const defaultState: PersistedState = {
   programRemovedTasks: {},
   customDepartmentTasks: {},
   customRebuildTasks: {},
+  rebuildActivities: [],
+  rebuildReviews: {},
+  rebuildSelections: {},
+  rebuildBodyPlan: { name: 'Glow Up · Temel Program', workouts: ['Program A · Üst vücut', 'Program B · Alt vücut', 'Program C · Full body / kondisyon'], nutrition: ['Protein hedefini tamamla', 'Sebze ve lif ekle', '2–2,5 litre su iç', 'Uyku saatini koru'] },
+  rebuildDailyChecks: {},
   calendarEvents: {},
   calendarIntegration: { clientId: '', calendarId: 'primary' },
   archive: [],
@@ -162,6 +175,11 @@ function mergePersistedState(value: unknown): PersistedState {
     programRemovedTasks: saved.programRemovedTasks && typeof saved.programRemovedTasks === 'object' && !Array.isArray(saved.programRemovedTasks) ? saved.programRemovedTasks : defaultState.programRemovedTasks,
     customDepartmentTasks: saved.customDepartmentTasks && typeof saved.customDepartmentTasks === 'object' && !Array.isArray(saved.customDepartmentTasks) ? saved.customDepartmentTasks : defaultState.customDepartmentTasks,
     customRebuildTasks: saved.customRebuildTasks && typeof saved.customRebuildTasks === 'object' && !Array.isArray(saved.customRebuildTasks) ? saved.customRebuildTasks : defaultState.customRebuildTasks,
+    rebuildActivities: Array.isArray(saved.rebuildActivities) ? saved.rebuildActivities : defaultState.rebuildActivities,
+    rebuildReviews: saved.rebuildReviews && typeof saved.rebuildReviews === 'object' && !Array.isArray(saved.rebuildReviews) ? saved.rebuildReviews : defaultState.rebuildReviews,
+    rebuildSelections: saved.rebuildSelections && typeof saved.rebuildSelections === 'object' && !Array.isArray(saved.rebuildSelections) ? saved.rebuildSelections : defaultState.rebuildSelections,
+    rebuildBodyPlan: saved.rebuildBodyPlan && typeof saved.rebuildBodyPlan === 'object' && !Array.isArray(saved.rebuildBodyPlan) ? { ...defaultState.rebuildBodyPlan, ...saved.rebuildBodyPlan } : defaultState.rebuildBodyPlan,
+    rebuildDailyChecks: saved.rebuildDailyChecks && typeof saved.rebuildDailyChecks === 'object' && !Array.isArray(saved.rebuildDailyChecks) ? saved.rebuildDailyChecks : defaultState.rebuildDailyChecks,
     calendarEvents: saved.calendarEvents && typeof saved.calendarEvents === 'object' && !Array.isArray(saved.calendarEvents) ? saved.calendarEvents : defaultState.calendarEvents,
     calendarIntegration: { ...defaultState.calendarIntegration, ...(saved.calendarIntegration ?? {}) },
     archive: Array.isArray(saved.archive) ? saved.archive : defaultState.archive,
@@ -193,6 +211,11 @@ const numericPrice = (value?: string) => Number((value ?? '').replace(',', '.'))
 const formatPrice = (value: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(value);
 const localDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const todayKey = () => localDateKey(new Date());
+const weekStartKey = (date = new Date()) => {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  return localDateKey(start);
+};
 const completionRate = (done: number, total: number) => total ? Math.round(done / total * 100) : 0;
 const durationInMinutes = (duration: string) => Math.max(15, Number(duration.match(/\d+/)?.[0] ?? 60));
 const compactGoogleDate = (date: Date) => date.toISOString().replace(/[-:]|\.\d{3}/g, '');
@@ -211,15 +234,15 @@ const googleCalendarTemplateUrl = (event: CalendarEvent, date: string) => {
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 };
 
-const rebuildAreas: { title: string; icon: LucideIcon; progress: number; color: string; habits: string[] }[] = [
-  { title: 'Beden', icon: Dumbbell, progress: 72, color: 'mint', habits: ['Haftada 3 spor yap', 'Her antrenmanı 45–60 dakika sürdür', 'İlk 6 hafta performans yerine devamlılığı koru', 'Tekrar düzenli spor yapan biri olmayı hedefle', 'Spor programını yeniden düzenle'] },
-  { title: 'Zihin / Merak', icon: Sparkles, progress: 64, color: 'violet', habits: ['Her hafta seçenekler arasından bir merak konusu seç', 'Merak et → araştır → anla → üret → anlat akışını tamamla', 'Uzay, dinozor, fizik, teknoloji, tasarım veya gelecek araştır', 'Retro-futurism, yapay zekâ, bilim veya teknoloji tarihine bak', 'Araştırmadan görsel, poster, UI, simülasyon, diagram ya da video üret', 'Öğrendiğini 5 dakika kendi cümlelerinle anlat'] },
-  { title: 'Yaratıcılık', icon: Palette, progress: 58, color: 'rose', habits: ['Haftada minimum 3 saat yaratıcı iş yap', 'Para kazanma şartı olmadan sevdiğin bir fikir seç', 'Futuristic UI, retro-futuristic telefon sistemi veya uzay kokpiti dene', 'Dinozor müzesi UI veya gezegen görselleştirmesi üret', 'AI görseli, fotoğraf, color grading veya bilimsel görselleştirme yap', 'Deneysel uygulama ya da interaktif web deneyimi geliştir', 'Kapsamı küçült; kaliteyi küçültme', 'Küçük ama aşırı iyi bitmiş bir çıktı hazırla'] },
-  { title: 'İngilizce ve Diksiyon', icon: Languages, progress: 81, color: 'blue', habits: ['Sevdiğin içerikleri İngilizce tüket', 'Araştırmaların bir kısmını İngilizce yap', 'Haftada 2–3 kez, 15–20 dakika konuş', 'Önce konuş; hataları sonra incele', 'Haftada 2–3 adet, 5–10 dakikalık ses kaydı al', 'Kayıtta tempo, kelime yutma ve “eee / şey / yani” kullanımını kontrol et', 'Cümle netliği ve özgüveni değerlendir', 'Öğrendiğin bir şeyi veya fikrini basitçe anlat', 'Film, oyun veya teknoloji yorumu kaydet', 'Karmaşık bir konuyu ve kendi görüşünü net biçimde açıkla'] },
-  { title: 'Solo Özgüven', icon: Compass, progress: 43, color: 'indigo', habits: ['Haftada en az 1 kez tek başına dışarı çık', 'Fotoğraf yürüyüşü, sahil, yeni semt, kafe veya müze seç', 'Sergi, kitapçı, etkinlik ya da günübirlik gezi dene', 'Her çıkışta en az bir küçük sosyal etkileşim kur', 'Özgüven gelmesini bekleme; yaşadıkça özgüven kazan'] },
-  { title: 'Sosyal Hayat', icon: Users, progress: 46, color: 'orange', habits: ['En az 2 düzenli sosyal ortam oluştur', 'Spor, speaking club, fotoğraf, trekking veya koşu ortamı dene', 'Workshop, teknoloji topluluğu, masa oyunu veya gönüllülüğe bak', 'Ay 1: küçük etkileşimler kur', 'Ay 2: isim öğren ve soru sor', 'Ay 3: sohbeti sürdür ve uygun kişileri sosyal medyada ekle', 'Ay 4+: kahve veya aktivite teklif et'] },
-  { title: 'Kariyer ve Para', icon: BriefcaseBusiness, progress: 69, color: 'sand', habits: ["Şimdilik Kıbleteyn'den ayrılma; gelir tabanını koru", 'Mobil uygulama prototipi, UI/UX veya uygulama tasarımı hizmeti dene', 'Landing page, interaktif web veya AI destekli görsel çalışma üret', 'Küçük bir uygulama geliştirmeyi dışarıya hizmet olarak dene', 'İlk hedef olarak kendi becerinle dışarıdan ilk parayı kazan', 'Sevdiğin konularda kendi ürünlerini geliştir', "Gelir üreten proje oluşursa Kıbleteyn'e bağımlılığı azalt"] },
-  { title: 'Uzay Mühendisliği Testi', icon: Rocket, progress: 35, color: 'indigo', habits: ["KPSS'yi şimdilik öncelik yapma; DGS'yi çocukluk hayalin için test et", 'Uzayı sevmekle uzay mühendisliği yapmayı ayır', 'İlk 3 ay yörünge mekaniği ve itki sistemlerini araştır', 'Aerodinamik, kontrol ve termal sistemleri incele', 'Malzeme ve haberleşme alanlarını test et', 'Interactive Orbit Explorer ile bir simülasyon üret', 'Fiziği ve mühendislik problemlerini sevip sevmediğini gözle', 'UI/simülasyon mu yoksa mühendislik eğitimi mi istediğine karar ver', '3. ay sonunda ciddi eğitime değip değmediğini değerlendir'] },
+const rebuildAreas: { id: string; title: string; icon: LucideIcon; progress: number; color: string; target: number; measure: 'sessions' | 'minutes'; targetLabel: string; quickActions: string[]; habits: string[] }[] = [
+  { id: 'body', title: 'Beden', icon: Dumbbell, progress: 72, color: 'mint', target: 3, measure: 'sessions', targetLabel: '3 antrenman', quickActions: ['Kuvvet antrenmanı', 'Kardiyo / bisiklet', 'Mobilite / yürüyüş'], habits: ['Haftada 3 spor yap', 'Her antrenmanı 45–60 dakika sürdür', 'İlk 6 hafta performans yerine devamlılığı koru', 'Tekrar düzenli spor yapan biri olmayı hedefle', 'Spor programını yeniden düzenle'] },
+  { id: 'curiosity', title: 'Zihin / Merak', icon: Sparkles, progress: 64, color: 'violet', target: 1, measure: 'sessions', targetLabel: '1 merak döngüsü', quickActions: ['Araştırma', 'Anlatım', 'Görsel çıktı'], habits: ['Her hafta seçenekler arasından bir merak konusu seç', 'Merak et → araştır → anla → üret → anlat akışını tamamla', 'Uzay, dinozor, fizik, teknoloji, tasarım veya gelecek araştır', 'Retro-futurism, yapay zekâ, bilim veya teknoloji tarihine bak', 'Araştırmadan görsel, poster, UI, simülasyon, diagram ya da video üret', 'Öğrendiğini 5 dakika kendi cümlelerinle anlat'] },
+  { id: 'creativity', title: 'Yaratıcılık', icon: Palette, progress: 58, color: 'rose', target: 180, measure: 'minutes', targetLabel: '3 saat üretim', quickActions: ['UI deneyi', 'Görsel / poster', 'İnteraktif prototip'], habits: ['Haftada minimum 3 saat yaratıcı iş yap', 'Para kazanma şartı olmadan sevdiğin bir fikir seç', 'Futuristic UI, retro-futuristic telefon sistemi veya uzay kokpiti dene', 'Dinozor müzesi UI veya gezegen görselleştirmesi üret', 'AI görseli, fotoğraf, color grading veya bilimsel görselleştirme yap', 'Deneysel uygulama ya da interaktif web deneyimi geliştir', 'Kapsamı küçült; kaliteyi küçültme', 'Küçük ama aşırı iyi bitmiş bir çıktı hazırla'] },
+  { id: 'language', title: 'İngilizce ve Diksiyon', icon: Languages, progress: 81, color: 'blue', target: 5, measure: 'sessions', targetLabel: '5 kısa pratik', quickActions: ['İngilizce konuşma', 'İngilizce içerik', 'Diksiyon kaydı'], habits: ['Sevdiğin içerikleri İngilizce tüket', 'Araştırmaların bir kısmını İngilizce yap', 'Haftada 2–3 kez, 15–20 dakika konuş', 'Önce konuş; hataları sonra incele', 'Haftada 2–3 adet, 5–10 dakikalık ses kaydı al', 'Kayıtta tempo, kelime yutma ve “eee / şey / yani” kullanımını kontrol et', 'Cümle netliği ve özgüveni değerlendir', 'Öğrendiğin bir şeyi veya fikrini basitçe anlat', 'Film, oyun veya teknoloji yorumu kaydet', 'Karmaşık bir konuyu ve kendi görüşünü net biçimde açıkla'] },
+  { id: 'solo', title: 'Solo Özgüven', icon: Compass, progress: 43, color: 'indigo', target: 1, measure: 'sessions', targetLabel: '1 solo keşif', quickActions: ['Fotoğraf yürüyüşü', 'Yeni bir kafe / semt', 'Müze / sergi'], habits: ['Haftada en az 1 kez tek başına dışarı çık', 'Fotoğraf yürüyüşü, sahil, yeni semt, kafe veya müze seç', 'Sergi, kitapçı, etkinlik ya da günübirlik gezi dene', 'Her çıkışta en az bir küçük sosyal etkileşim kur', 'Özgüven gelmesini bekleme; yaşadıkça özgüven kazan'] },
+  { id: 'social', title: 'Sosyal Hayat', icon: Users, progress: 46, color: 'orange', target: 2, measure: 'sessions', targetLabel: '2 sosyal temas', quickActions: ['Düzenli ortam', 'Kısa sohbet', 'Birlikte aktivite'], habits: ['En az 2 düzenli sosyal ortam oluştur', 'Spor, speaking club, fotoğraf, trekking veya koşu ortamı dene', 'Workshop, teknoloji topluluğu, masa oyunu veya gönüllülüğe bak', 'Ay 1: küçük etkileşimler kur', 'Ay 2: isim öğren ve soru sor', 'Ay 3: sohbeti sürdür ve uygun kişileri sosyal medyada ekle', 'Ay 4+: kahve veya aktivite teklif et'] },
+  { id: 'career', title: 'Kariyer ve Para', icon: BriefcaseBusiness, progress: 69, color: 'sand', target: 150, measure: 'minutes', targetLabel: '2,5 saat deney', quickActions: ['Portföy örneği', 'Hizmet deneyi', 'Gerçek kişiye ulaş'], habits: ["Şimdilik Kıbleteyn'den ayrılma; gelir tabanını koru", 'Mobil uygulama prototipi, UI/UX veya uygulama tasarımı hizmeti dene', 'Landing page, interaktif web veya AI destekli görsel çalışma üret', 'Küçük bir uygulama geliştirmeyi dışarıya hizmet olarak dene', 'İlk hedef olarak kendi becerinle dışarıdan ilk parayı kazan', 'Sevdiğin konularda kendi ürünlerini geliştir', "Gelir üreten proje oluşursa Kıbleteyn'e bağımlılığı azalt"] },
+  { id: 'space', title: 'Uzay Mühendisliği Testi', icon: Rocket, progress: 35, color: 'indigo', target: 90, measure: 'minutes', targetLabel: '90 dk gerçek test', quickActions: ['Konuyu öğren', 'Mini deney yap', 'Deneyimi değerlendir'], habits: ["KPSS'yi şimdilik öncelik yapma; DGS'yi çocukluk hayalin için test et", 'Uzayı sevmekle uzay mühendisliği yapmayı ayır', 'İlk 3 ay yörünge mekaniği ve itki sistemlerini araştır', 'Aerodinamik, kontrol ve termal sistemleri incele', 'Malzeme ve haberleşme alanlarını test et', 'Interactive Orbit Explorer ile bir simülasyon üret', 'Fiziği ve mühendislik problemlerini sevip sevmediğini gözle', 'UI/simülasyon mu yoksa mühendislik eğitimi mi istediğine karar ver', '3. ay sonunda ciddi eğitime değip değmediğini değerlendir'] },
 ];
 
 const roadmapMonths = [
@@ -230,6 +253,48 @@ const roadmapMonths = [
   { month: 'Ocak', phase: 'Money Experiment', focus: 'İlk dış gelir deneyi', detail: 'Tek hizmet seç, 3 örnek hazırla, mini portföy oluştur, gerçek insanlara ulaş ve ilk dış geliri hedefle.', progress: 0 },
   { month: 'Şubat', phase: 'Review', focus: 'Altı ayı dürüstçe değerlendir', detail: 'Üretim, sosyal hayat, İngilizce, spor, uzay mühendisliği, dış gelir ve sonraki 6 ay için karar ver.', progress: 0 },
 ];
+
+const rebuildDecks = {
+  curiosity: {
+    label: 'Merak Destesi', eyebrow: 'SORU SEÇ', icon: Sparkles,
+    prompts: [
+      'Bir gezegenin yörüngesi neden zamanla elipse dönüşür?',
+      'Dinozorların tüyleri olduğunu bugün hangi kanıtlardan biliyoruz?',
+      'Bir roket uzay boşluğunda kendini neye doğru iter?',
+      '1970’lerin gelecek tasarımları bugünkü arayüzleri nasıl etkiledi?',
+      'Yapay zekâ bir görüntünün derinliğini nasıl tahmin eder?',
+      'İnsan gözü renkleri neden bir kameradan farklı algılar?',
+      'GPS konumumuzu bulurken görelilik neden önemlidir?',
+      'Bir uzay aracının Dünya’ya dönüşte yanmamasını ne sağlar?',
+    ],
+  },
+  creative: {
+    label: 'Yaratıcı Deste', eyebrow: 'ÜRETİM SEÇ', icon: Palette,
+    prompts: [
+      'Retro-fütüristik bir telefon ana ekranı tasarla.',
+      'Bir dinozor müzesi için dokunmatik keşif ekranı üret.',
+      'Tek gezegenli, sakin bir yörünge simülasyonu prototiple.',
+      'Bir uzay aracı kokpitinin yalnızca navigasyon ekranını tasarla.',
+      'Bilimsel bir konuyu tek poster ve üç cümleyle anlat.',
+      'Çektiğin bir fotoğrafa sinematik bir renk dili oluştur.',
+      'Gelecekten gelmiş bir günlük uygulamasının bir akışını tasarla.',
+      'Bir fizik kavramını sürükle-bırak ile anlatan mini deney yap.',
+    ],
+  },
+  solo: {
+    label: 'Solo Keşif', eyebrow: 'DIŞARI ÇIK', icon: Compass,
+    prompts: [
+      'Daha önce inmediğin bir durakta in ve 45 dakika yürü.',
+      'Bir kitapçıya git; ilgini çeken üç kapağı fotoğraflandır.',
+      'Gün batımında sahilde telefonsuz 30 dakika geçir.',
+      'Bir müze veya sergide tek bir eser seçip not al.',
+      'Yeni bir kafede tek başına otur ve çevreyi eskizle.',
+      'Fotoğraf yürüyüşünde yalnızca geometrik şekilleri çek.',
+      'Yakındaki bir etkinliğe git ve bir kişiye açık uçlu soru sor.',
+      'Şehrinde turist gibi davranıp daha önce görmediğin bir rotayı gez.',
+    ],
+  },
+} as const;
 
 const projectSeed: Project[] = [
   { id: 'pos', title: 'Personal OS', stage: 1, progress: 68, color: 'violet', due: '31 Ağu', tags: ['Product', 'UI'], tasks: ['Navigasyon ve shell', 'Home etkileşimleri', 'Mobil görünüm', 'Demo veri sistemi'] },
@@ -304,7 +369,7 @@ export default function PersonalOS() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastFeedbackAtRef = useRef(0);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
+  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | 'rebuildActivity' | 'rebuildReview' | 'rebuildBodyPlan' | null>(null);
   const [toast, setToast] = useState('');
   const [expandedProject, setExpandedProject] = useState<string | null>('pos');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -323,6 +388,11 @@ export default function PersonalOS() {
   const personalDragRef = useRef<PersonalDragState | null>(null);
   const personalDragCleanupRef = useRef<(() => void) | null>(null);
   const [rebuildArea, setRebuildArea] = useState('Beden');
+  const [rebuildActivityDraft, setRebuildActivityDraft] = useState({ areaId: 'body', title: 'Kuvvet antrenmanı', date: todayKey(), duration: 50, note: '', rating: 3 });
+  const [rebuildReviewDraft, setRebuildReviewDraft] = useState({ win: '', friction: '', nextFocus: '', energy: 3 });
+  const [rebuildBodyPlanDraft, setRebuildBodyPlanDraft] = useState({ name: defaultState.rebuildBodyPlan.name, workouts: defaultState.rebuildBodyPlan.workouts.join('\n'), nutrition: defaultState.rebuildBodyPlan.nutrition.join('\n') });
+  const [rebuildDeck, setRebuildDeck] = useState<keyof typeof rebuildDecks>('curiosity');
+  const [rebuildDeckOffset, setRebuildDeckOffset] = useState(0);
   const [month, setMonth] = useState(0);
   const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
   const [calendarCursor, setCalendarCursor] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
@@ -399,7 +469,7 @@ export default function PersonalOS() {
   useEffect(() => {
     let cancelled = false;
     void fetch('/api/google-config', { cache: 'no-store' })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Google yapılandırması alınamadı')))
+      .then((response) => response.ok ? response.json() as Promise<{ clientId?: string; calendarId?: string }> : Promise.reject(new Error('Google yapılandırması alınamadı')))
       .then((config: { clientId?: string; calendarId?: string }) => {
         if (cancelled) return;
         setGoogleConfig({
@@ -1382,6 +1452,86 @@ export default function PersonalOS() {
     localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify({ accessToken: token, expiresAt: Date.now() + Math.max(60, expiresIn) * 1000, reconnect: true } satisfies StoredGoogleSession));
   };
 
+  const openRebuildActivity = (areaId: string, title?: string) => {
+    const area = rebuildAreas.find((item) => item.id === areaId) ?? rebuildAreas[0];
+    setRebuildActivityDraft({ areaId: area.id, title: title ?? area.quickActions[0], date: todayKey(), duration: area.measure === 'minutes' ? 45 : 50, note: '', rating: 3 });
+    setModal('rebuildActivity');
+  };
+
+  const saveRebuildActivity = () => {
+    if (!rebuildActivityDraft.title.trim() || !rebuildActivityDraft.date) return;
+    const activity: RebuildActivity = {
+      id: `rebuild-activity-${Date.now()}`,
+      areaId: rebuildActivityDraft.areaId,
+      title: rebuildActivityDraft.title.trim(),
+      date: rebuildActivityDraft.date,
+      duration: Math.max(0, Number(rebuildActivityDraft.duration) || 0),
+      note: rebuildActivityDraft.note.trim(),
+      rating: Math.max(1, Math.min(5, Number(rebuildActivityDraft.rating) || 3)),
+      createdAt: new Date().toISOString(),
+    };
+    setState((current) => ({ ...current, rebuildActivities: [activity, ...current.rebuildActivities] }));
+    setModal(null);
+    notify('Aktivite bu haftanın ritmine eklendi.');
+  };
+
+  const openRebuildReview = () => {
+    const review = state.rebuildReviews[weekStartKey()];
+    setRebuildReviewDraft(review ? { win: review.win, friction: review.friction, nextFocus: review.nextFocus, energy: review.energy } : { win: '', friction: '', nextFocus: '', energy: 3 });
+    setModal('rebuildReview');
+  };
+
+  const saveRebuildReview = () => {
+    if (!rebuildReviewDraft.win.trim() && !rebuildReviewDraft.nextFocus.trim()) return;
+    const weekKey = weekStartKey();
+    const review: RebuildReview = { weekKey, win: rebuildReviewDraft.win.trim(), friction: rebuildReviewDraft.friction.trim(), nextFocus: rebuildReviewDraft.nextFocus.trim(), energy: rebuildReviewDraft.energy, createdAt: new Date().toISOString() };
+    setState((current) => ({ ...current, rebuildReviews: { ...current.rebuildReviews, [weekKey]: review } }));
+    setModal(null);
+    notify('Haftalık değerlendirme kaydedildi.');
+  };
+
+  const chooseRebuildPrompt = (kind: keyof typeof rebuildDecks, prompt: string) => {
+    const key = `${weekStartKey()}-${kind}`;
+    setState((current) => ({ ...current, rebuildSelections: { ...current.rebuildSelections, [key]: prompt } }));
+    notify('Bu haftanın odağı seçildi.');
+  };
+
+  const turnPromptIntoProject = (prompt: string) => {
+    const title = prompt.replace(/[.!?]+$/, '');
+    if ([...projectSeed, ...state.customProjects].some((project) => project.title === title)) { notify('Bu fikir zaten Projeler’de.'); return; }
+    const project: Project = { id: `rebuild-project-${Date.now()}`, title, stage: 0, progress: 0, color: 'rose', due: 'Bu ay', tags: ['Rebuild', 'Yaratıcılık'], tasks: ['Kapsamı tek cümleyle tanımla', 'İlk prototipi üret', 'Çıktıyı değerlendir'], cover: 'aurora' };
+    setState((current) => ({ ...current, customProjects: [...current.customProjects, project], rebuildSelections: { ...current.rebuildSelections, [`${weekStartKey()}-creative`]: prompt } }));
+    notify('Fikir Projeler’e taşındı.');
+  };
+
+  const toggleRebuildDailyCheck = (item: string) => {
+    const date = todayKey();
+    setState((current) => {
+      const currentChecks = current.rebuildDailyChecks[date] ?? [];
+      const nextChecks = currentChecks.includes(item) ? currentChecks.filter((check) => check !== item) : [...currentChecks, item];
+      return { ...current, rebuildDailyChecks: { ...current.rebuildDailyChecks, [date]: nextChecks } };
+    });
+  };
+
+  const openRebuildBodyPlan = () => {
+    setRebuildBodyPlanDraft({ name: state.rebuildBodyPlan.name, workouts: state.rebuildBodyPlan.workouts.join('\n'), nutrition: state.rebuildBodyPlan.nutrition.join('\n') });
+    setModal('rebuildBodyPlan');
+  };
+
+  const saveRebuildBodyPlan = () => {
+    const workouts = rebuildBodyPlanDraft.workouts.split('\n').map((item) => item.trim()).filter(Boolean);
+    const nutrition = rebuildBodyPlanDraft.nutrition.split('\n').map((item) => item.trim()).filter(Boolean);
+    if (!rebuildBodyPlanDraft.name.trim() || !workouts.length) return;
+    setState((current) => ({ ...current, rebuildBodyPlan: { name: rebuildBodyPlanDraft.name.trim(), workouts, nutrition } }));
+    setModal(null);
+    notify('Beden programı güncellendi.');
+  };
+
+  const openFitnessProject = () => {
+    setExpandedProject('fitness');
+    go('projects');
+  };
+
   const requestGoogleAccess = async (prompt = 'select_account', silent = false) => {
     let clientId = googleCalendarClientId;
     if (!clientId) {
@@ -1591,14 +1741,36 @@ export default function PersonalOS() {
   const personalMetricItems = (Object.keys(personalLists) as PersonalListKey[]).flatMap(personalItemsFor);
   const personalDone = personalMetricItems.filter((item) => state.completed[item.id]).length;
   const personalProgress = completionRate(personalDone, personalMetricItems.length);
+  const currentWeekKey = weekStartKey();
   const rebuildMetrics = rebuildAreas.map((area) => {
     const habits = [...area.habits, ...(state.customRebuildTasks[area.title] ?? [])];
-    const done = habits.filter((_, index) => state.completed[`rebuild-${area.title}-${index}`]).length;
-    return { ...area, habits, done, progress: completionRate(done, habits.length) };
+    const activities = state.rebuildActivities.filter((activity) => activity.areaId === area.id && weekStartKey(new Date(`${activity.date}T12:00:00`)) === currentWeekKey);
+    const value = area.measure === 'minutes' ? activities.reduce((sum, activity) => sum + activity.duration, 0) : activities.length;
+    return { ...area, habits, activities, value, done: Math.min(value, area.target), progress: Math.min(100, completionRate(value, area.target)) };
   });
   const rebuildDone = rebuildMetrics.reduce((sum, area) => sum + area.done, 0);
-  const rebuildTotal = rebuildMetrics.reduce((sum, area) => sum + area.habits.length, 0);
+  const rebuildTotal = rebuildMetrics.reduce((sum, area) => sum + area.target, 0);
   const rebuildProgress = completionRate(rebuildDone, rebuildTotal);
+  const currentWeekActivities = state.rebuildActivities.filter((activity) => weekStartKey(new Date(`${activity.date}T12:00:00`)) === currentWeekKey);
+  const currentWeekMinutes = currentWeekActivities.reduce((sum, activity) => sum + activity.duration, 0);
+  const currentWeekReview = state.rebuildReviews[currentWeekKey];
+  const rebuildXp = state.rebuildActivities.length * 20 + Object.keys(state.rebuildReviews).length * 35 + Object.keys(state.rebuildSelections).length * 10 + Object.values(state.rebuildDailyChecks).reduce((sum, checks) => sum + checks.length * 3, 0);
+  const rebuildLevel = Math.floor(rebuildXp / 250) + 1;
+  const rebuildLevelProgress = rebuildXp % 250 / 2.5;
+  const rebuildWeekHistory = Array.from({ length: 6 }, (_, index) => {
+    const anchor = new Date(); anchor.setDate(anchor.getDate() - index * 7);
+    const key = weekStartKey(anchor);
+    const start = new Date(`${key}T12:00:00`); const end = new Date(start); end.setDate(end.getDate() + 6);
+    const activities = state.rebuildActivities.filter((activity) => weekStartKey(new Date(`${activity.date}T12:00:00`)) === key);
+    const areaScores = rebuildAreas.map((area) => {
+      const areaActivities = activities.filter((activity) => activity.areaId === area.id);
+      const value = area.measure === 'minutes' ? areaActivities.reduce((sum, activity) => sum + activity.duration, 0) : areaActivities.length;
+      return Math.min(100, completionRate(value, area.target));
+    });
+    return { key, activities, review: state.rebuildReviews[key], progress: Math.round(areaScores.reduce((sum, score) => sum + score, 0) / areaScores.length), label: `${start.getDate()}–${end.getDate()} ${new Intl.DateTimeFormat('tr-TR', { month: 'short' }).format(end)}` };
+  });
+  let rebuildStreak = 0;
+  for (const week of rebuildWeekHistory) { if (!week.activities.length) break; rebuildStreak += 1; }
   const departmentMetrics = departments.map((department) => {
     const tasks = [...department.tasks, ...(state.customDepartmentTasks[department.id] ?? [])];
     const done = tasks.filter((_, index) => state.completed[`dept-${department.id}-${index}`]).length;
@@ -1620,7 +1792,6 @@ export default function PersonalOS() {
   const overallDone = personalDone + rebuildDone + departmentDone + projectDone + programDone;
   const overallTotal = personalMetricItems.length + rebuildTotal + departmentTotal + projectTotal + programTaskMetrics.length;
   const overallProgress = completionRate(overallDone, overallTotal);
-  const weeklyNotes = state.notes.filter((note) => note.title.toLocaleLowerCase('tr').includes('haftalık')).slice(0, 3);
   const now = new Date();
   const displayDate = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }).format(now);
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
@@ -1706,20 +1877,66 @@ export default function PersonalOS() {
     </>;
   };
 
-  const renderRebuild = () => (
-    <>
-      <PageTitle eyebrow="6 AYLIK REBUILD" title="Değişimi görünür kıl." description="Eylül'den Şubat'a; küçük ritimler, net kilometre taşları." action={<button className="ghost-button" onClick={()=>{setNoteDraft({title:'Haftalık Rebuild kaydı',body:''});setModal('note');}}><BookOpen size={15}/> Haftalık kayıt</button>}/>
-      <div className="rebuild-layout action-first">
-        <section><div className="section-header"><div><span className="eyebrow">BU HAFTA</span><h2>Odak alanları</h2></div><span>{weekLabel}</span></div><div className="area-grid">{rebuildMetrics.map((area) => { const AreaIcon = area.icon; const open = rebuildArea === area.title; return <article key={area.title} className={`surface area-card ${open ? 'open' : ''}`}><button className="area-card-head" onClick={() => setRebuildArea(open ? '' : area.title)}><span className={`area-icon ${area.color}`}><AreaIcon size={19}/></span><span><strong>{area.title}</strong><small>{area.done}/{area.habits.length} tamamlandı</small></span><b>{area.progress}%</b><ChevronDown size={16}/></button><div className="area-progress"><i style={{width:`${area.progress}%`}}/></div><div className="area-details">{area.habits.map((habit,index) => { const id = `rebuild-${area.title}-${index}`; return <div className={`schedulable-task-row ${state.completed[id] ? 'completed' : ''}`} key={`${habit}-${index}`}><button onClick={() => toggle(id)}><span>{state.completed[id] && <Check size={11}/>}</span>{habit}</button><button className="schedule-action" aria-label={`${habit} alışkanlığını takvime ekle`} onClick={() => scheduleItem(habit, `Rebuild · ${area.title}`)}><CalendarDays size={14}/></button></div>})}</div></article>})}</div></section>
-      </div>
-      <section className="surface roadmap-hero analytics-bottom">
-        <div className="roadmap-top"><div><span className="eyebrow">GENEL YOLCULUK</span><h2>6 ayda yeni bir düzen</h2></div><div className="roadmap-score"><strong>{rebuildProgress}</strong><span>% gerçek görev ilerlemesi</span></div></div>
-        <div className="roadmap-track"><span className="track-fill" style={{width:`${rebuildProgress}%`}}/>{roadmapMonths.map((item,index) => <button key={item.month} className={`${index === 0 && rebuildProgress === 100 ? 'passed' : ''} ${month === index ? 'active' : ''}`} onClick={() => setMonth(index)}><i>{index === 0 && rebuildProgress === 100 ? <Check size={12}/> : index + 1}</i><strong>{item.month}</strong><small>{item.phase}</small></button>)}</div>
-        <div className="month-focus"><span>{String(month+1).padStart(2,'0')}</span><div><small>{roadmapMonths[month].month.toLocaleUpperCase('tr')} · {roadmapMonths[month].phase}</small><strong>{roadmapMonths[month].focus}</strong><p>{roadmapMonths[month].detail}</p></div><ProgressRing value={month === 0 ? rebuildProgress : 0} size="small"/></div>
+  const renderRebuild = () => {
+    const deck = rebuildDecks[rebuildDeck];
+    const DeckIcon = deck.icon;
+    const deckPrompts = Array.from({ length: 3 }, (_, index) => deck.prompts[(rebuildDeckOffset + index) % deck.prompts.length]);
+    const selectedPrompt = state.rebuildSelections[`${currentWeekKey}-${rebuildDeck}`];
+    const todayChecks = state.rebuildDailyChecks[todayKey()] ?? [];
+    return <>
+      <PageTitle eyebrow="REBUILD" title="Altı aylık glow up sistemi." description="Her hafta yenilenen pratikler, gerçek kanıtlar ve bir sonraki seviyen." action={<button className="primary-button compact" onClick={()=>openRebuildActivity('body')}><Plus size={15}/> Kayıt ekle</button>}/>
+
+      <section className="surface rebuild-command-center">
+        <div className="rebuild-command-copy"><span className="eyebrow">AY 1 / 6 · REACTIVATION</span><h1>Hayatını tikleme.<br/>Her hafta yeniden inşa et.</h1><p>Hedefler her pazartesi yeniden açılır. Yaptığın her pratik kanıt olarak kalır; altı ay bittiğinde sistem yeni bir döngüyle devam eder.</p><div className="rebuild-command-actions"><button className="primary-button" onClick={()=>openRebuildActivity('body')}><Plus size={15}/> Bugünü kaydet</button><button className="ghost-button" onClick={openRebuildReview}><BookOpen size={15}/>{currentWeekReview?'Değerlendirmeyi aç':'Haftayı değerlendir'}</button></div></div>
+        <div className="rebuild-level-card"><span className="rebuild-level-orbit" style={{'--level-progress':rebuildLevelProgress*3.6} as CSSProperties}><strong>{rebuildLevel}</strong><small>SEVİYE</small></span><div><span>Glow Up seviyesi</span><strong>{rebuildLevel < 3 ? 'Aktivasyon' : rebuildLevel < 6 ? 'İvme' : 'Dönüşüm'}</strong><div className="rebuild-xp-track"><i style={{width:`${rebuildLevelProgress}%`}}/></div><small>{rebuildXp % 250} / 250 XP · yalnızca gerçek kayıtlardan</small></div></div>
+        <div className="rebuild-command-stats"><div><strong>{rebuildProgress}%</strong><small>haftalık ritim</small></div><div><strong>{currentWeekActivities.length}</strong><small>kanıt</small></div><div><strong>{currentWeekMinutes}</strong><small>dakika</small></div><div><strong>{rebuildStreak}</strong><small>hafta seri</small></div></div>
       </section>
-      <aside className="surface weekly-log analytics-bottom"><div className="card-title-row"><div><span className="eyebrow">HAFTALIK KAYITLAR</span><h3>Gerçek notların</h3></div><BookOpen size={18}/></div>{weeklyNotes.length ? weeklyNotes.map((log,index)=><button key={log.id} onClick={()=>{setNoteDraft({title:log.title,body:log.body});setModal('note');}}><span className={`log-dot n${index}`}/><span><strong>{log.title}</strong><small>{log.body || 'Aç ve düzenle'}</small></span><b>{log.date.split('·')[0]}</b><ChevronRight size={14}/></button>) : <p className="empty-inline">Henüz haftalık kayıt yok.</p>}<button className="weekly-new" onClick={() => {setNoteDraft({title:'Haftalık Rebuild kaydı',body:''});setModal('note');}}><Plus size={14}/> Bu haftayı kaydet</button></aside>
-    </>
-  );
+
+      <section className="rebuild-week-section">
+        <div className="section-header"><div><span className="eyebrow">BU HAFTA · {weekLabel.toLocaleUpperCase('tr')}</span><h2>Sekiz gelişim alanı</h2><p>Tik atıp bitmez; kayıt ekledikçe gelişir, yeni haftada yeniden başlar.</p></div><button className="ghost-button" onClick={()=>openRebuildActivity(rebuildAreas.find((area)=>area.title===rebuildArea)?.id??'body')}><Plus size={14}/> Açık alana kayıt</button></div>
+        <div className="area-grid rebuild-area-grid">{rebuildMetrics.map((area) => {
+          const AreaIcon = area.icon;
+          const open = rebuildArea === area.title;
+          const allTime = state.rebuildActivities.filter((activity)=>activity.areaId===area.id);
+          const skillLevel = Math.min(5, Math.floor((area.measure==='minutes'?allTime.reduce((sum,activity)=>sum+activity.duration,0)/180:allTime.length)/4)+1);
+          return <article key={area.title} className={`surface area-card rebuild-area-card ${area.id==='body'?'featured':''} ${open ? 'open' : ''}`}>
+            <button className="area-card-head" onClick={() => setRebuildArea(open ? '' : area.title)}><span className={`area-icon ${area.color}`}><AreaIcon size={19}/></span><span><strong>{area.title}</strong><small>{area.measure === 'minutes' ? `${area.value} / ${area.target} dk` : `${area.value} / ${area.target} kayıt`} · {area.targetLabel}</small></span><b>{area.progress}%</b><ChevronDown size={16}/></button>
+            <div className="area-progress"><i style={{width:`${area.progress}%`}}/></div>
+            <div className="rebuild-area-meta"><span>Yetenek sv. {skillLevel}</span><span>{allTime.length} toplam kanıt</span></div>
+            <div className="area-details"><div className="rebuild-live-detail">
+              {area.id==='body' ? <>
+                <div className="body-plan-head"><div><span className="eyebrow">AKTİF PROGRAM</span><strong>{state.rebuildBodyPlan.name}</strong></div><button onClick={openRebuildBodyPlan}><Pencil size={13}/> Düzenle</button></div>
+                <div className="body-workout-grid">{state.rebuildBodyPlan.workouts.map((workout,index)=><button key={workout} onClick={()=>openRebuildActivity('body',workout)}><span>{String.fromCharCode(65+index)}</span><strong>{workout}</strong><small>Antrenmanı başlat / kaydet</small><ArrowRight size={13}/></button>)}</div>
+                <div className="body-daily"><div><span className="eyebrow">BUGÜN · BESLENME & TOPARLANMA</span><b>{todayChecks.length}/{state.rebuildBodyPlan.nutrition.length}</b></div>{state.rebuildBodyPlan.nutrition.map((item)=><button className={todayChecks.includes(item)?'checked':''} key={item} onClick={()=>toggleRebuildDailyCheck(item)}><span>{todayChecks.includes(item)&&<Check size={11}/>}</span>{item}</button>)}</div>
+                <button className="fitness-project-link" onClick={openFitnessProject}><span><Rocket size={15}/><span><strong>Fitness Uygulaması</strong><small>Egzersiz takibi projesine git</small></span></span><ArrowRight size={15}/></button>
+              </> : <>
+                <p>{area.id==='curiosity'?'Merak → araştır → anla → üret → anlat. Bir soru seç, somut bir çıktı bırak.':area.id==='creativity'?'Saat doldurmak değil, küçük ama güçlü bir çıktı bitirmek amaç.':area.id==='language'?'Ders bitirmek yerine gerçek tüketim, konuşma ve kayıt kanıtı bırak.':area.id==='solo'?'Özgüveni bekleme; yeni ortam ve küçük etkileşimlerle inşa et.':area.id==='social'?'Tek seferlik tanışma değil, düzenli görüştüğün ortamlar kur.':area.id==='career'?'Beceri → örnek iş → mini portföy → gerçek kişiye ulaş → ilk dış gelir.':'Öğren → mini deney yap → gerçekten bu işi sevip sevmediğini kaydet.'}</p>
+                {state.rebuildSelections[`${currentWeekKey}-${area.id==='curiosity'?'curiosity':area.id==='creativity'?'creative':area.id==='solo'?'solo':''}`]&&<div className="area-current-mission"><Flag size={13}/><span><small>BU HAFTANIN GÖREVİ</small><strong>{state.rebuildSelections[`${currentWeekKey}-${area.id==='curiosity'?'curiosity':area.id==='creativity'?'creative':'solo'}`]}</strong></span></div>}
+                <div className="rebuild-quick-actions">{area.quickActions.map((action)=><button key={action} onClick={()=>openRebuildActivity(area.id, action)}><Plus size={13}/>{action}</button>)}</div>
+              </>}
+              {area.activities.length > 0 && <div className="rebuild-recent">{area.activities.slice(0,3).map((activity)=><div key={activity.id}><span><strong>{activity.title}</strong><small>{activity.date} · {activity.duration} dk{activity.note?` · ${activity.note}`:''}</small></span><b>{'●'.repeat(activity.rating)}{'○'.repeat(5-activity.rating)}</b></div>)}</div>}
+              <div className="rebuild-detail-actions"><button className="rebuild-log-button" onClick={()=>openRebuildActivity(area.id)}><NotebookPen size={14}/> Kayıt ekle</button><button className="rebuild-schedule-button" onClick={()=>scheduleItem(area.quickActions[0],`Rebuild · ${area.title}`)}><CalendarDays size={14}/> Planla</button></div>
+              <details className="rebuild-guide"><summary>6 aylık alan rehberi <ChevronDown size={13}/></summary><ul>{area.habits.map((habit)=><li key={habit}>{habit}</li>)}</ul></details>
+            </div></div>
+          </article>;
+        })}</div>
+      </section>
+
+      <section className="surface rebuild-deck-lab analytics-bottom">
+        <div className="rebuild-deck-head"><div><span className="eyebrow">KARARSIZLIĞI AZALTAN LAB</span><h2>Yaratıcı görev desteleri</h2><p>“Bir şey araştır” gibi boş görevler yok. Bir soru, somut çıktı ve başlayacağın ilk adım var.</p></div><span className="rebuild-deck-icon"><DeckIcon size={22}/></span></div>
+        <div className="rebuild-deck-tabs">{(Object.keys(rebuildDecks) as (keyof typeof rebuildDecks)[]).map((kind)=>{const ItemIcon=rebuildDecks[kind].icon;return <button key={kind} className={rebuildDeck===kind?'active':''} onClick={()=>{setRebuildDeck(kind);setRebuildDeckOffset(0)}}><ItemIcon size={14}/>{rebuildDecks[kind].label}</button>})}</div>
+        {selectedPrompt&&<div className="selected-mission"><CheckCircle2 size={16}/><span><small>BU HAFTAYA SEÇİLDİ</small><strong>{selectedPrompt}</strong></span><button onClick={()=>openRebuildActivity(rebuildDeck==='creative'?'creativity':rebuildDeck,selectedPrompt)}>Kayıt aç <ArrowRight size={13}/></button></div>}
+        <div className="rebuild-prompt-grid">{deckPrompts.map((prompt,index)=><article key={prompt} className={selectedPrompt===prompt?'selected':''}><span className="prompt-number">0{index+1}</span><div><small>{deck.eyebrow}</small><h3>{prompt}</h3><p>{rebuildDeck==='curiosity'?'İlk 20 dk: üç güvenilir kaynak bul, cevabını çiz ve 5 dakika kendi cümlelerinle anlat.':rebuildDeck==='creative'?'İlk 20 dk: tek ekran veya tek sahne seç, referans panosu kur ve kaba prototipi çıkar.':'İlk adım: tarihi takvimine koy, rotayı seç ve dönüşte tek cümlelik gözlem bırak.'}</p><span className="prompt-output"><Sparkles size={11}/>{rebuildDeck==='curiosity'?['İnteraktif diyagram','Mini simülasyon','Görsel anlatım'][index]:rebuildDeck==='creative'?['UI prototipi','Poster / görsel','Mikro deney'][index]:['Fotoğraf hikâyesi','Keşif notu','Sosyal kanıt'][index]}</span></div><div className="prompt-actions"><button onClick={()=>chooseRebuildPrompt(rebuildDeck,prompt)}>{selectedPrompt===prompt?<><Check size={13}/> Seçildi</>:<><Flag size={13}/> Bu haftaya seç</>}</button>{rebuildDeck==='creative'&&<button onClick={()=>turnPromptIntoProject(prompt)}><PanelsTopLeft size={13}/> Projeye dönüştür</button>}</div></article>)}</div>
+        <button className="rebuild-shuffle" onClick={()=>setRebuildDeckOffset((current)=>(current+3)%deck.prompts.length)}><RefreshCw size={14}/>{rebuildDeck==='solo'?'Beni şaşırt':'Başka fikirler göster'}</button>
+      </section>
+
+      <section className="surface rebuild-history analytics-bottom"><div className="rebuild-history-head"><div><span className="eyebrow">HAFTALIK TARİHÇE</span><h2>Geçmiş silinmez, yeni hafta yeniden açılır.</h2></div><span>Suçluluk yok · yalnızca veri ve yön</span></div><div className="rebuild-week-strip">{rebuildWeekHistory.map((week,index)=><article key={week.key} className={index===0?'current':''}><span>{index===0?'BU HAFTA':week.label}</span><strong>{week.progress}%</strong><div><i style={{width:`${week.progress}%`}}/></div><small>{week.activities.length} kayıt{week.review?' · değerlendirme var':''}</small></article>)}</div></section>
+
+      <section className="surface roadmap-hero analytics-bottom"><div className="roadmap-top"><div><span className="eyebrow">6 AYLIK ANA HİKÂYE</span><h2>Glow up yol haritası</h2></div><div className="roadmap-score"><strong>{rebuildLevel}</strong><span>yaşam seviyesi</span></div></div><div className="roadmap-track"><span className="track-fill" style={{width:`${Math.max(0,month/5*83)}%`}}/>{roadmapMonths.map((item,index) => <button key={item.month} className={`${index<month?'passed':''} ${month === index ? 'active' : ''}`} onClick={() => setMonth(index)}><i>{index<month?<Check size={12}/>:index+1}</i><strong>{item.month}</strong><small>{item.phase}</small></button>)}</div><div className="month-focus"><span>{String(month+1).padStart(2,'0')}</span><div><small>{roadmapMonths[month].month.toLocaleUpperCase('tr')} · {roadmapMonths[month].phase}</small><strong>{roadmapMonths[month].focus}</strong><p>{roadmapMonths[month].detail}</p></div><ProgressRing value={month===0?rebuildProgress:roadmapMonths[month].progress} size="small"/></div><p className="roadmap-continuity"><RefreshCw size={13}/> Altıncı ay final değil: değerlendirmeden sonra güçlü kalan alanlarla yeni döngü başlar.</p></section>
+
+      <section className="rebuild-review-grid analytics-bottom"><article className="surface rebuild-review-card"><span className="eyebrow">HAFTALIK DEĞERLENDİRME</span><h2>{currentWeekReview?'Bu haftanın pusulası hazır.':'Yalnızca ne yaptığını değil, ne öğrendiğini kaydet.'}</h2>{currentWeekReview?<div className="review-summary"><div><small>KAZANIM</small><p>{currentWeekReview.win||'—'}</p></div><div><small>SÜRTÜNME</small><p>{currentWeekReview.friction||'—'}</p></div><div><small>SONRAKİ ODAK</small><p>{currentWeekReview.nextFocus||'—'}</p></div><span>Enerji {'●'.repeat(currentWeekReview.energy)}{'○'.repeat(5-currentWeekReview.energy)}</span></div>:<p>Bir kazanım, bir sürtünme ve gelecek haftanın tek odağı. Kırmızı uyarı veya suçluluk dili yok.</p>}<button className="primary-button" onClick={openRebuildReview}><BookOpen size={14}/>{currentWeekReview?'Değerlendirmeyi düzenle':'Haftayı değerlendir'}</button></article><aside className="surface rebuild-proof-card"><span className="eyebrow">KANIT KÜTÜPHANESİ</span><h3>{state.rebuildActivities.length} gerçek kayıt</h3><p>İlk kayıt küçük görünebilir. Altı ay sonunda antrenmanlarını, üretim saatlerini, konuşmalarını, keşiflerini ve gelir deneylerini birlikte göreceksin.</p><div>{state.rebuildActivities.slice(0,4).map((activity)=>{const area=rebuildAreas.find((item)=>item.id===activity.areaId);const ItemIcon=area?.icon??Circle;return <span key={activity.id}><i className={`area-icon ${area?.color??'violet'}`}><ItemIcon size={13}/></i><span><strong>{activity.title}</strong><small>{area?.title} · {activity.date}</small></span></span>})}{!state.rebuildActivities.length&&<small>İlk kanıtını “Kayıt ekle” ile oluştur.</small>}</div></aside></section>
+    </>;
+  };
 
   const renderProjects = () => {
     const stages = ['Fikirler', 'Devam ediyor', 'İnceleme', 'Tamamlandı'];
@@ -1960,6 +2177,9 @@ export default function PersonalOS() {
       {modal==='program'&&<><span className="modal-icon"><Plane size={20}/></span><span className="eyebrow">{editingProgramId?'TURU DÜZENLE':'YENİ TUR'}</span><h2>{editingProgramId?'Tur bilgilerini güncelle.':'Turun hazırlık alanını aç.'}</h2><p>Tur, hazırlık kategorileri ve takip edilebilir görevleriyle birlikte oluşturulacak.</p><label>Tur adı<input required autoFocus value={programDraft.title} onChange={(event)=>setProgramDraft({...programDraft,title:event.target.value})} placeholder="Örn. 12–16 Ekim Umre"/></label><label>Tarih aralığı <small>İsteğe bağlı</small><input value={programDraft.range} onChange={(event)=>setProgramDraft({...programDraft,range:event.target.value})} placeholder="Örn. 12–16 Ekim 2026"/></label><div className="form-row"><label>Durum<select value={programDraft.status} onChange={(event)=>setProgramDraft({...programDraft,status:event.target.value})}>{['Taslak','Planlandı','Hazırlanıyor'].map((status)=><option key={status}>{status}</option>)}</select></label><label>Vurgu rengi<select value={programDraft.accent} onChange={(event)=>setProgramDraft({...programDraft,accent:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'}].map((color)=><option key={color.value} value={color.value}>{color.label}</option>)}</select></label></div><button className="primary-button full" disabled={!programDraft.title.trim()} onClick={addProgram}>{editingProgramId?'Değişiklikleri kaydet':'Turu oluştur'} <ArrowRight size={15}/></button></>}
       {modal==='programTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">PROGRAM GÖREVİ</span><h2>Hazırlık adımı ekle.</h2><p>Görev, seçtiğin turun ilgili hazırlık kategorisinde görünecek.</p><label>Kategori<select value={programTaskDraft.category} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,category:event.target.value})}>{programCategories.map((category)=><option key={category.name}>{category.name}</option>)}</select></label><label>Görev adı<input required autoFocus value={programTaskDraft.title} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,title:event.target.value})} onKeyDown={(event)=>event.key==='Enter'&&addProgramTask()} placeholder="Örn. Otel teyidini al"/></label><button className="primary-button full" disabled={!programTaskDraft.title.trim()} onClick={addProgramTask}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='departmentTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">OPERASYON GÖREVİ</span><h2>{departments.find((department)=>department.id===expandedDepartment)?.title} için görev ekle.</h2><p>Yeni görev doğrudan açık departmanın operasyon listesine kaydedilecek.</p><label>Görev adı<input required autoFocus value={departmentTaskDraft} onChange={(event)=>setDepartmentTaskDraft(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addDepartmentTask()} placeholder="Örn. Tedarikçiden teyit al"/></label><button className="primary-button full" disabled={!departmentTaskDraft.trim()} onClick={addDepartmentTask}>Görevi ekle <ArrowRight size={15}/></button></>}
+      {modal==='rebuildActivity'&&<><span className="modal-icon"><RefreshCw size={20}/></span><span className="eyebrow">TEKRARLANAN KAYIT</span><h2>Yaptığını görünür kıl.</h2><p>Bu kayıt yalnızca içinde bulunduğu haftayı ilerletir. Yeni haftada hedef yeniden açılır, kayıt geçmişte kalır.</p><label>Alan<select value={rebuildActivityDraft.areaId} onChange={(event)=>{const area=rebuildAreas.find((item)=>item.id===event.target.value)??rebuildAreas[0];setRebuildActivityDraft({...rebuildActivityDraft,areaId:area.id,title:area.quickActions[0]});}}>{rebuildAreas.map((area)=><option key={area.id} value={area.id}>{area.title}</option>)}</select></label><label>Ne yaptın?<input required autoFocus value={rebuildActivityDraft.title} onChange={(event)=>setRebuildActivityDraft({...rebuildActivityDraft,title:event.target.value})} placeholder="Örn. Kuvvet antrenmanı"/></label><div className="form-row"><label>Tarih<input type="date" value={rebuildActivityDraft.date} onChange={(event)=>setRebuildActivityDraft({...rebuildActivityDraft,date:event.target.value})}/></label><label>Süre <small>dakika</small><input type="number" min="0" inputMode="numeric" value={rebuildActivityDraft.duration} onChange={(event)=>setRebuildActivityDraft({...rebuildActivityDraft,duration:Number(event.target.value)})}/></label></div><label>Nasıl geçti?<select value={rebuildActivityDraft.rating} onChange={(event)=>setRebuildActivityDraft({...rebuildActivityDraft,rating:Number(event.target.value)})}><option value="1">1 · Zorlandım</option><option value="2">2 · Düşük</option><option value="3">3 · Normal</option><option value="4">4 · İyi</option><option value="5">5 · Çok iyi</option></select></label><label>Kısa kanıt / not <small>İsteğe bağlı</small><textarea value={rebuildActivityDraft.note} onChange={(event)=>setRebuildActivityDraft({...rebuildActivityDraft,note:event.target.value})} placeholder="Ne yaptın, ne fark ettin, bir sonraki adım ne?"/></label><button className="primary-button full" disabled={!rebuildActivityDraft.title.trim()||!rebuildActivityDraft.date} onClick={saveRebuildActivity}>Haftaya kaydet <Check size={15}/></button></>}
+      {modal==='rebuildReview'&&<><span className="modal-icon"><BookOpen size={20}/></span><span className="eyebrow">HAFTALIK PUSULA</span><h2>Haftayı yargılama, çözümle.</h2><p>Üç kısa cevap gelecek haftayı otomatik olarak daha net hale getirir.</p><label>Bu haftanın gerçek kazanımı neydi?<textarea autoFocus value={rebuildReviewDraft.win} onChange={(event)=>setRebuildReviewDraft({...rebuildReviewDraft,win:event.target.value})} placeholder="Küçük de olsa gerçekten ilerleyen şey..."/></label><label>En çok nerede sürtünme yaşadın?<textarea value={rebuildReviewDraft.friction} onChange={(event)=>setRebuildReviewDraft({...rebuildReviewDraft,friction:event.target.value})} placeholder="Zaman, enerji, belirsizlik, ortam..."/></label><label>Gelecek haftanın tek ana odağı<input value={rebuildReviewDraft.nextFocus} onChange={(event)=>setRebuildReviewDraft({...rebuildReviewDraft,nextFocus:event.target.value})} placeholder="Örn. Üç antrenmanı takvime baştan koy"/></label><label>Genel enerji<select value={rebuildReviewDraft.energy} onChange={(event)=>setRebuildReviewDraft({...rebuildReviewDraft,energy:Number(event.target.value)})}><option value="1">1 · Çok düşük</option><option value="2">2 · Düşük</option><option value="3">3 · Dengeli</option><option value="4">4 · İyi</option><option value="5">5 · Çok yüksek</option></select></label><button className="primary-button full" disabled={!rebuildReviewDraft.win.trim()&&!rebuildReviewDraft.nextFocus.trim()} onClick={saveRebuildReview}>Pusulayı kaydet <Check size={15}/></button></>}
+      {modal==='rebuildBodyPlan'&&<><span className="modal-icon"><Dumbbell size={20}/></span><span className="eyebrow">BEDEN SİSTEMİ</span><h2>Kendi programını Orbit’e bağla.</h2><p>Her satır açık Beden kartında tek dokunuşla başlatılabilen bir antrenman veya günlük beslenme hedefi olur.</p><label>Program adı<input required autoFocus value={rebuildBodyPlanDraft.name} onChange={(event)=>setRebuildBodyPlanDraft({...rebuildBodyPlanDraft,name:event.target.value})} placeholder="Örn. Push / Pull / Legs"/></label><label>Antrenman günleri <small>Her satıra bir gün</small><textarea value={rebuildBodyPlanDraft.workouts} onChange={(event)=>setRebuildBodyPlanDraft({...rebuildBodyPlanDraft,workouts:event.target.value})} placeholder={'Push · Göğüs / omuz / triceps\nPull · Sırt / biceps\nLegs · Bacak / core'}/></label><label>Beslenme ve toparlanma hedefleri <small>Her satıra bir hedef</small><textarea value={rebuildBodyPlanDraft.nutrition} onChange={(event)=>setRebuildBodyPlanDraft({...rebuildBodyPlanDraft,nutrition:event.target.value})} placeholder={'Protein hedefini tamamla\n2–2,5 litre su iç\nUyku saatini koru'}/></label><button className="primary-button full" disabled={!rebuildBodyPlanDraft.name.trim()||!rebuildBodyPlanDraft.workouts.trim()} onClick={saveRebuildBodyPlan}>Programı kaydet <Check size={15}/></button></>}
       {modal==='navCustomize'&&<><span className="modal-icon"><Menu size={20}/></span><span className="eyebrow">ALT MENÜ</span><h2>Hızlı erişimlerini seç.</h2><p>Ana Sayfa her açılışta başlangıç ekranıdır ve üç çizgili menüde kalır. Burada gün içinde en çok kullandığın dört bölümü seç.</p><div className="nav-customizer">{state.mobileNav.map((selectedPage,index)=><label key={index}>{index < 2?'Sol':'Sağ'} alan {index % 2 + 1}<select value={selectedPage} onChange={(event)=>updateMobileNavItem(index,event.target.value as PageKey)}>{nav.filter((item)=>item.id!=='home').map((item)=><option key={item.id} value={item.id} disabled={item.id!==selectedPage&&state.mobileNav.includes(item.id)}>{item.label}</option>)}</select></label>)}</div><button className="primary-button full" onClick={()=>{setModal(null);notify('Alt menü güncellendi.')}}>Kaydet <Check size={15}/></button></>}
       {modal==='capture'&&renderCaptureModal()}
       {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2><p>Önce zamanını belirle; bağlantı açıksa Google Takvim’e de otomatik eklenecek.</p>{eventDraft.source&&<div className="calendar-source-chip"><Link2 size={13}/>{eventDraft.source}</div>}<label>Etkinlik adı<input required autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input required type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat <small>İsteğe bağlı</small><input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre <small>İsteğe bağlı</small><input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'},{value:'orange',label:'Turuncu'}].map((tone)=><option key={tone.value} value={tone.value}>{tone.label}</option>)}</select></label></div><label>Açıklama <small>İsteğe bağlı</small><textarea value={eventDraft.description} onChange={(event)=>setEventDraft({...eventDraft,description:event.target.value})} placeholder="Etkinlik ayrıntıları..."/></label><div className={`calendar-save-status ${googleCalendarStatus==='connected'?'connected':''}`}><CalendarDays size={14}/><span><strong>{googleCalendarStatus==='connected'?'Orbit + Google Takvim':'Orbit Takvimi'}</strong><small>{googleCalendarStatus==='connected'?'İki takvime birlikte kaydedilecek':'Kaydettikten sonra Google’a tek dokunuşla aktarabilirsin'}</small></span></div><button className="primary-button full" disabled={!eventDraft.title.trim()||!eventDraft.date} onClick={()=>void addEvent()}>Takvime ekle <ArrowRight size={15}/></button></>}
