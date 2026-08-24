@@ -29,6 +29,14 @@ type GoogleCalendarIntegration = { clientId: string; calendarId: string };
 type ArchiveItem = { id: string; title: string; type: 'project' | 'program' | 'note'; label: string; date: string; source?: Project | Program | Note };
 type ThemePreference = 'light' | 'dark' | 'system';
 type CapturePage = 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes';
+type CaptureMethod = 'text' | 'voice' | 'ai';
+type CaptureStage = 'compose' | 'listening' | 'destination' | 'processing';
+type CaptureExtras = { price: string; link: string; locationUrl: string; priority: 'normal' | 'important'; date: string; time: string; duration: string };
+type AiCaptureItem = {
+  kind: 'todo' | 'buy' | 'visit' | 'project' | 'project_task' | 'rebuild_task' | 'department_task' | 'program_task' | 'calendar_event' | 'note';
+  title: string; details: string; targetId: string; category: string; price: string; link: string; locationUrl: string;
+  date: string; time: string; duration: string; tags: string[]; subtasks: string[];
+};
 type BrowserSpeechRecognition = {
   lang: string;
   interimResults: boolean;
@@ -326,10 +334,12 @@ export default function PersonalOS() {
   const [focusSeconds, setFocusSeconds] = useState(50 * 60);
   const [projectQuery, setProjectQuery] = useState('');
   const [teamView, setTeamView] = useState(false);
-  const [captureMethod, setCaptureMethod] = useState<'text' | 'voice'>('text');
+  const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('text');
+  const [captureStage, setCaptureStage] = useState<CaptureStage>('compose');
   const [captureListening, setCaptureListening] = useState(false);
   const [captureTitle, setCaptureTitle] = useState('');
   const [captureDetails, setCaptureDetails] = useState('');
+  const [captureExtras, setCaptureExtras] = useState<CaptureExtras>({ price: '', link: '', locationUrl: '', priority: 'normal', date: todayKey(), time: '10:00', duration: '60 dk' });
   const [capturePage, setCapturePage] = useState<CapturePage>('personal');
   const [captureArea, setCaptureArea] = useState('todo');
   const [captureMenuOpen, setCaptureMenuOpen] = useState(false);
@@ -1014,8 +1024,18 @@ export default function PersonalOS() {
     setCaptureMenuOpen((open) => !open);
   };
 
-  const beginCapture = (method: 'text' | 'voice') => {
-    setCaptureMethod(method); setCaptureListening(false); setCaptureMenuOpen(false); setCaptureTitle(''); setCaptureDetails(''); setCapturePage('personal'); setCaptureArea('todo'); setModal('capture');
+  const beginCapture = (method: CaptureMethod) => {
+    setCaptureMethod(method);
+    setCaptureListening(false);
+    setCaptureMenuOpen(false);
+    setCaptureTitle('');
+    setCaptureDetails('');
+    setCaptureExtras({ price: '', link: '', locationUrl: '', priority: 'normal', date: todayKey(), time: '10:00', duration: '60 dk' });
+    setCapturePage('personal');
+    setCaptureArea('todo');
+    setCaptureStage(method === 'voice' ? 'listening' : 'compose');
+    setModal('capture');
+    if (method === 'voice') startCaptureVoice();
   };
 
   const updateMobileNavItem = (index: number, page: PageKey) => {
@@ -1028,54 +1048,138 @@ export default function PersonalOS() {
     });
   };
 
-  const startCaptureVoice = () => {
+  function startCaptureVoice() {
     const recognitionWindow = window as Window & { SpeechRecognition?: BrowserSpeechRecognitionConstructor; webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor };
     const Recognition = recognitionWindow.SpeechRecognition ?? recognitionWindow.webkitSpeechRecognition;
-    if (!Recognition) { notify('Bu tarayıcı sesli yazmayı desteklemiyor; kaydı yazılı olarak girebilirsin.'); return; }
+    if (!Recognition) { setCaptureMethod('text'); setCaptureStage('compose'); notify('Bu tarayıcı sesli yazmayı desteklemiyor; kaydı yazılı olarak girebilirsin.'); return; }
     const recognition = new Recognition();
     recognition.lang = 'tr-TR'; recognition.interimResults = false; recognition.continuous = false;
+    let heardSpeech = false;
     recognition.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript?.trim() ?? '';
-      if (transcript) setCaptureTitle((current) => current || transcript);
+      if (transcript) {
+        heardSpeech = true;
+        setCaptureTitle(transcript.slice(0, 140));
+        setCaptureDetails(transcript);
+        setCaptureStage('destination');
+      }
       setCaptureListening(false);
     };
-    recognition.onerror = () => { setCaptureListening(false); notify('Ses kaydı alınamadı; metni yazılı girebilirsin.'); };
-    recognition.onend = () => setCaptureListening(false);
+    recognition.onerror = () => { setCaptureListening(false); setCaptureStage('listening'); notify('Ses kaydı alınamadı; tekrar dokunarak deneyebilirsin.'); };
+    recognition.onend = () => { setCaptureListening(false); if (!heardSpeech) setCaptureStage('listening'); };
+    setCaptureStage('listening');
     setCaptureListening(true); recognition.start();
+  }
+
+  const pageForAiKind = (kind: AiCaptureItem['kind']): CapturePage => {
+    if (['todo', 'buy', 'visit'].includes(kind)) return 'personal';
+    if (['project', 'project_task'].includes(kind)) return 'projects';
+    if (kind === 'rebuild_task') return 'rebuild';
+    if (kind === 'department_task') return 'kibleteyn';
+    if (kind === 'program_task') return 'programs';
+    if (kind === 'calendar_event') return 'calendar';
+    return 'notes';
+  };
+
+  const applyAiCaptureItems = (items: AiCaptureItem[]) => {
+    const now = Date.now();
+    setState((current) => {
+      const next: PersistedState = {
+        ...current,
+        customPersonal: { ...current.customPersonal, todo: [...current.customPersonal.todo], buy: [...current.customPersonal.buy], visit: [...current.customPersonal.visit] },
+        personalItemDetails: { ...current.personalItemDetails },
+        customProjects: [...current.customProjects], projectExtraTasks: { ...current.projectExtraTasks },
+        customRebuildTasks: { ...current.customRebuildTasks }, customDepartmentTasks: { ...current.customDepartmentTasks },
+        programExtraTasks: { ...current.programExtraTasks }, calendarEvents: { ...current.calendarEvents }, notes: [...current.notes],
+      };
+
+      items.forEach((item, index) => {
+        if (item.kind === 'todo' || item.kind === 'buy' || item.kind === 'visit') {
+          const list: PersonalListKey = item.kind === 'buy' ? 'buy' : item.kind === 'visit' ? 'visit' : 'todo';
+          const itemIndex = personalLists[list].items.length + next.customPersonal[list].length;
+          const id = `personal-${list}-${itemIndex}`;
+          next.customPersonal[list].push(item.title);
+          next.personalItemDetails[id] = { title: item.title, note: item.details, priority: 'normal', ...(list === 'buy' ? { price: item.price, link: item.link } : {}), ...(list === 'visit' ? { locationUrl: item.locationUrl } : {}) };
+        } else if (item.kind === 'project') {
+          next.customProjects.push({ id: `ai-project-${now}-${index}`, title: item.title, stage: 0, progress: 0, color: 'violet', due: item.date || 'Planlanacak', tags: item.tags, tasks: item.subtasks.length ? item.subtasks : item.details ? [item.details] : [], cover: 'aurora' });
+        } else if (item.kind === 'project_task') {
+          const targetId = allCaptureProjects.some((project) => project.id === item.targetId) ? item.targetId : allCaptureProjects[0]?.id;
+          if (targetId) next.projectExtraTasks[targetId] = [...(next.projectExtraTasks[targetId] ?? []), item.title, ...item.subtasks.map((task) => `> ${task}`)];
+        } else if (item.kind === 'rebuild_task') {
+          const target = rebuildAreas.some((area) => area.title === item.targetId) ? item.targetId : rebuildAreas[0].title;
+          next.customRebuildTasks[target] = [...(next.customRebuildTasks[target] ?? []), item.title];
+        } else if (item.kind === 'department_task') {
+          const target = departments.some((department) => department.id === item.targetId) ? item.targetId : departments[0].id;
+          next.customDepartmentTasks[target] = [...(next.customDepartmentTasks[target] ?? []), item.title];
+        } else if (item.kind === 'program_task') {
+          const programId = allCapturePrograms.some((program) => program.id === item.targetId) ? item.targetId : allCapturePrograms[0]?.id;
+          const category = programCategories.some((entry) => entry.name === item.category) ? item.category : programCategories[0].name;
+          if (programId) next.programExtraTasks[programId] = { ...(next.programExtraTasks[programId] ?? {}), [category]: [...(next.programExtraTasks[programId]?.[category] ?? []), item.title] };
+        } else if (item.kind === 'calendar_event') {
+          const date = /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : todayKey();
+          const event: CalendarEvent = { id: `ai-event-${now}-${index}`, title: item.title, tone: 'blue', time: item.time || 'Tüm gün', duration: item.duration || '60 dk', description: item.details, source: 'Orbit AI' };
+          next.calendarEvents[date] = [...(next.calendarEvents[date] ?? []), event];
+        } else {
+          next.notes.unshift({ id: `ai-note-${now}-${index}`, title: item.title, body: item.details || item.title, date: 'Şimdi · Orbit AI', tone: 'violet' });
+        }
+      });
+      return next;
+    });
+    const destination = pageForAiKind(items[0]?.kind ?? 'note');
+    setModal(null); go(destination); notify(`${items.length} kayıt AI ile düzenlenip yerleştirildi.`);
+  };
+
+  const organizeCapture = async () => {
+    const text = (captureDetails.trim() || captureTitle.trim());
+    if (!text) { notify('AI’nin düzenlemesi için bir metin yaz veya konuş.'); return; }
+    setCaptureStage('processing');
+    try {
+      const response = await fetch('/api/organize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, context: { projects: allCaptureProjects.map(({ id, title }) => ({ id, title })), rebuildAreas: rebuildAreas.map(({ title }) => title), departments: departments.map(({ id, title }) => ({ id, title })), programs: allCapturePrograms.map(({ id, title }) => ({ id, title })), programCategories: programCategories.map(({ name }) => name) } }),
+      });
+      const payload = await response.json() as { items?: AiCaptureItem[]; error?: string };
+      if (!response.ok || !payload.items?.length) throw new Error(payload.error || 'AI kayıt planı oluşturamadı.');
+      applyAiCaptureItems(payload.items);
+    } catch (error) {
+      setCaptureStage(captureMethod === 'voice' ? 'destination' : 'compose');
+      notify(error instanceof Error ? error.message : 'AI şu anda kullanılamıyor.');
+    }
   };
 
   const saveCapture = () => {
-    const title = captureTitle.trim();
+    const title = captureTitle.trim() || captureDetails.trim().split(/\n|[.!?]/)[0]?.trim();
     if (!title) { notify('Kaydetmeden önce bir başlık gir.'); return; }
     if (capturePage === 'personal') {
-      setState((current) => ({ ...current, customPersonal: { ...current.customPersonal, [captureArea]: [...(current.customPersonal[captureArea] ?? []), title] } }));
-      setPersonalTab(captureArea as keyof typeof personalLists);
+      const list = captureArea as PersonalListKey;
+      setState((current) => {
+        const index = personalLists[list].items.length + (current.customPersonal[list]?.length ?? 0);
+        const id = `personal-${list}-${index}`;
+        return { ...current, customPersonal: { ...current.customPersonal, [list]: [...(current.customPersonal[list] ?? []), title] }, personalItemDetails: { ...current.personalItemDetails, [id]: { title, note: captureDetails.trim(), priority: captureExtras.priority, ...(list === 'buy' ? { price: captureExtras.price.trim(), link: captureExtras.link.trim() } : {}), ...(list === 'visit' ? { locationUrl: captureExtras.locationUrl.trim() } : {}) } } };
+      });
+      setPersonalTab(list);
     }
     if (capturePage === 'rebuild') {
-      setState((current) => ({ ...current, customRebuildTasks: { ...current.customRebuildTasks, [captureArea]: [...(current.customRebuildTasks[captureArea] ?? []), title] } }));
-      setRebuildArea(captureArea);
+      setState((current) => ({ ...current, customRebuildTasks: { ...current.customRebuildTasks, [captureArea]: [...(current.customRebuildTasks[captureArea] ?? []), title] } })); setRebuildArea(captureArea);
     }
     if (capturePage === 'projects') {
-      setState((current) => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title] } }));
-      setExpandedProject(captureArea);
+      const extraLines = captureDetails.split('\n').map((line) => line.trim()).filter((line) => line && line !== title);
+      setState((current) => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title, ...extraLines.map((line) => line.startsWith('>') ? line : `> ${line}`)] } })); setExpandedProject(captureArea);
     }
     if (capturePage === 'kibleteyn') {
-      setState((current) => ({ ...current, customDepartmentTasks: { ...current.customDepartmentTasks, [captureArea]: [...(current.customDepartmentTasks[captureArea] ?? []), title] } }));
-      setExpandedDepartment(captureArea);
+      setState((current) => ({ ...current, customDepartmentTasks: { ...current.customDepartmentTasks, [captureArea]: [...(current.customDepartmentTasks[captureArea] ?? []), title] } })); setExpandedDepartment(captureArea);
     }
     if (capturePage === 'programs') {
       const [programId, category] = captureArea.split('::');
-      setState((current) => ({ ...current, programExtraTasks: { ...current.programExtraTasks, [programId]: { ...(current.programExtraTasks[programId] ?? {}), [category]: [...(current.programExtraTasks[programId]?.[category] ?? []), title] } } }));
-      setExpandedProgram(programId);
+      setState((current) => ({ ...current, programExtraTasks: { ...current.programExtraTasks, [programId]: { ...(current.programExtraTasks[programId] ?? {}), [category]: [...(current.programExtraTasks[programId]?.[category] ?? []), title] } } })); setExpandedProgram(programId);
     }
     if (capturePage === 'calendar') {
-      const event: CalendarEvent = { id: `event-${Date.now()}`, title, tone: captureMethod === 'voice' ? 'blue' : 'violet', time: 'Tüm gün', duration: 'Tüm gün', description: captureDetails.trim(), source: captureMethod === 'voice' ? 'Sesli hızlı kayıt' : 'Yazılı hızlı kayıt' };
-      setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [captureArea]: [...(current.calendarEvents[captureArea] ?? []), event] } }));
-      if (googleAccessTokenRef.current) void createGoogleCalendarEvent(event, captureArea).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [captureArea]: (current.calendarEvents[captureArea] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Hızlı kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
+      const event: CalendarEvent = { id: `event-${Date.now()}`, title, tone: captureMethod === 'voice' ? 'blue' : 'violet', time: captureExtras.time || 'Tüm gün', duration: captureExtras.duration || '60 dk', description: captureDetails.trim(), source: captureMethod === 'voice' ? 'Sesli hızlı kayıt' : 'Yazılı hızlı kayıt' };
+      const date = captureExtras.date || captureArea;
+      setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: [...(current.calendarEvents[date] ?? []), event] } }));
+      if (googleAccessTokenRef.current) void createGoogleCalendarEvent(event, date).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
     }
-    if (capturePage === 'notes') {
-      setState((current) => ({ ...current, notes: [{ id: `note-${Date.now()}`, title, body: captureDetails.trim() || (captureMethod === 'voice' ? 'Sesli kayıt' : 'Hızlı kayıt'), date: 'Şimdi', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
-    }
+    if (capturePage === 'notes') setState((current) => ({ ...current, notes: [{ id: `note-${Date.now()}`, title, body: captureDetails.trim() || 'Hızlı kayıt', date: 'Şimdi', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
     setModal(null); go(capturePage); notify('Kayıt seçtiğin alana eklendi.');
   };
 
@@ -1585,6 +1689,37 @@ export default function PersonalOS() {
     </>
   );
 
+  const renderCaptureDestination = () => {
+    const areas = captureAreasFor(capturePage);
+    const isBuy = capturePage === 'personal' && captureArea === 'buy';
+    const isVisit = capturePage === 'personal' && captureArea === 'visit';
+    const acceptsDetails = capturePage === 'personal' || capturePage === 'projects' || capturePage === 'calendar' || capturePage === 'notes';
+    const changeCapturePage = (page: CapturePage) => {
+      const firstArea = captureAreasFor(page)[0]?.value ?? '';
+      setCapturePage(page); setCaptureArea(firstArea);
+      if (page === 'calendar') setCaptureExtras((current) => ({ ...current, date: selectedCalendarDate }));
+    };
+
+    return <>
+      <div className="capture-destination compact"><strong>Nereye kaydedilsin?</strong><div className="capture-route-grid"><label>Sayfa<select value={capturePage} onChange={(event)=>changeCapturePage(event.target.value as CapturePage)}>{[{value:'personal',label:'Personal'},{value:'rebuild',label:'6 Aylık Rebuild'},{value:'projects',label:'Projeler'},{value:'kibleteyn',label:'Kıbleteyn'},{value:'programs',label:'Programlar'},{value:'calendar',label:'Takvim'},{value:'notes',label:'Notlar'}].map((item)=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{capturePage!=='calendar'&&capturePage!=='notes'&&<label>Alan<select value={captureArea} onChange={(event)=>setCaptureArea(event.target.value)}>{areas.map((area)=><option key={area.value} value={area.value}>{area.label}</option>)}</select></label>}</div></div>
+      <label>{capturePage==='projects'?'Görev başlığı':capturePage==='calendar'?'Etkinlik adı':capturePage==='notes'?'Not başlığı':'Başlık'}<input autoFocus={captureMethod==='text'} value={captureTitle} onChange={(event)=>setCaptureTitle(event.target.value)} placeholder={isBuy?'Örn. Monitör kolu':isVisit?'Örn. Efes Antik Kenti':capturePage==='projects'?'Projeye eklenecek görev':'Kaydetmek istediğin şey'}/></label>
+      {isBuy&&<div className="form-row"><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={captureExtras.price} onChange={(event)=>setCaptureExtras({...captureExtras,price:event.target.value})} placeholder="1250"/></label><label>Ürün bağlantısı<input type="url" value={captureExtras.link} onChange={(event)=>setCaptureExtras({...captureExtras,link:event.target.value})} placeholder="https://..."/></label></div>}
+      {isVisit&&<label>Google Haritalar konumu<input type="url" value={captureExtras.locationUrl} onChange={(event)=>setCaptureExtras({...captureExtras,locationUrl:event.target.value})} placeholder="https://maps.google.com/..."/></label>}
+      {capturePage==='personal'&&<label>Öncelik<select value={captureExtras.priority} onChange={(event)=>setCaptureExtras({...captureExtras,priority:event.target.value as 'normal'|'important'})}><option value="normal">Normal</option><option value="important">Önemli</option></select></label>}
+      {capturePage==='calendar'&&<><div className="form-row"><label>Tarih<input type="date" value={captureExtras.date} onChange={(event)=>setCaptureExtras({...captureExtras,date:event.target.value})}/></label><label>Saat<input type="time" value={captureExtras.time} onChange={(event)=>setCaptureExtras({...captureExtras,time:event.target.value})}/></label></div><label>Süre<select value={captureExtras.duration} onChange={(event)=>setCaptureExtras({...captureExtras,duration:event.target.value})}>{['15 dk','30 dk','45 dk','60 dk','90 dk','2 saat'].map((duration)=><option key={duration}>{duration}</option>)}</select></label></>}
+      {acceptsDetails&&<label>{capturePage==='projects'?'Alt görevler':capturePage==='notes'?'Not':'Açıklama'} <small>İsteğe bağlı</small><textarea value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder={capturePage==='projects'?'Her satıra bir alt görev':capturePage==='notes'?'Düşünceni ayrıntılı yaz...':'Kısa bir ayrıntı ekle...'}/></label>}
+      <button className="primary-button full" onClick={saveCapture}>Bu alana kaydet <ArrowRight size={15}/></button>
+    </>;
+  };
+
+  const renderCaptureModal = () => {
+    if (captureStage === 'processing') return <div className="capture-processing"><span className="ai-orbit"><Sparkles size={24}/></span><span className="eyebrow">ORBIT AI</span><h2>Metni düzenliyorum.</h2><p>Kayıtları ayırıyor ve doğru alanlarla eşleştiriyorum…</p></div>;
+    if (captureMethod === 'ai') return <><span className="modal-icon ai"><Sparkles size={20}/></span><span className="eyebrow">ORBIT AI</span><h2>Aklındakileri olduğu gibi bırak.</h2><p>Uzun metni görev, proje, not, alışveriş, konum veya takvim kaydına dönüştürüp doğru yerlere yerleştiririm.</p><label>Metnin<textarea className="ai-capture-input" autoFocus value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder={'Örn. Yarın 14:00’te Fatih ile toplantı yap. Monitör kolu al, fiyatı 1.250 TL. İzmir gezisi için Efes’i kaydet. Yeni portfolyo uygulamasının araştırma ve tasarım görevlerini oluştur.'}/></label><button className="primary-button full ai-submit" onClick={()=>void organizeCapture()}><Sparkles size={16}/> AI ile düzenle ve yerleştir</button></>;
+    if (captureMethod === 'voice' && captureStage === 'listening') return <div className="voice-command"><span className="eyebrow">SESLİ KOMUT</span><h2>{captureListening?'Dinliyorum…':'Seni duyamadım.'}</h2><p>{captureListening?'Ne eklemek istediğini doğal biçimde anlat. Konuşman bitince hedef ekranı açılacak.':'Mikrofona dokunup tekrar konuş.'}</p><button className={`voice-command-orb ${captureListening?'listening':''}`} onClick={startCaptureVoice} aria-label="Sesli komutu yeniden başlat"><Mic size={28}/><i/><i/><i/></button><small>{captureListening?'Konuşman bittiğinde otomatik durur':'Tekrar dinle'}</small></div>;
+    if (captureMethod === 'voice') return <><span className="modal-icon voice"><Mic size={20}/></span><span className="eyebrow">SESLİ KOMUT ALINDI</span><h2>Nereye kaydedelim?</h2><div className="voice-transcript"><Mic size={15}/><p>{captureDetails}</p><button onClick={startCaptureVoice} aria-label="Yeniden konuş"><RefreshCw size={14}/></button></div><button className="capture-ai-auto" onClick={()=>void organizeCapture()}><Sparkles size={17}/><span><strong>AI otomatik yerleştirsin</strong><small>Metni anlayıp uygun alanlara kendisi kaydeder</small></span><ArrowRight size={15}/></button><div className="capture-choice-separator"><span>veya kendin seç</span></div>{renderCaptureDestination()}</>;
+    return <><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YAZILI KAYIT</span><h2>Doğru biçimde kaydet.</h2><p>Önce hedefi seç; form o alanın ihtiyaçlarına göre değişsin.</p>{renderCaptureDestination()}</>;
+  };
+
   const renderPage = () => {
     switch (active) {
       case 'personal': return renderPersonal(); case 'rebuild': return renderRebuild(); case 'projects': return renderProjects();
@@ -1601,7 +1736,7 @@ export default function PersonalOS() {
     <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><CircleDot size={18}/></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item)=>{const NavIcon=item.icon;const isNested=Boolean(item.parent);const isSectionActive=item.id==='kibleteyn'&&active==='programs';return <button key={item.id} className={`${active===item.id?'active ':''}${isNested?'nav-child ':''}${isSectionActive?'section-active':''}`.trim()} onClick={()=>go(item.id)} aria-current={active===item.id?'page':undefined}><span><NavIcon size={isNested?15:17}/></span>{item.label}{item.id==='programs'&&<em>{metricPrograms.length}</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>beginCapture('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli kayıt ekle</small></span><ArrowUpRight size={14}/></button><button className="sidebar-profile" onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}><div className="avatar">{profileInitials}</div><span><strong>{state.profile.name}</strong><small>{state.profile.workspace}</small></span><MoreHorizontal size={16}/></button></aside>
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
     <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli kayıt" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><main ref={pageContentRef} tabIndex={-1} key={active} className={`content page-${active}`}>{renderPage()}</main></section>
-    <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
+    <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action ai" aria-label="AI ile akıllı kayıt ekle" onClick={()=>beginCapture('ai')}><Sparkles size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
     {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi" onKeyDownCapture={handleModalKeyDown} onChangeCapture={handleModalChange} onFocusCapture={handleModalFocus}><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button key={key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='personalItem'&&<><span className="modal-icon">{personalItemDraft.list==='visit'?<MapPin size={20}/>:personalItemDraft.list==='buy'?<ShoppingBag size={20}/>:<ListTodo size={20}/>}</span><span className="eyebrow">{editingPersonalItemId?'KAYDI DÜZENLE':'YENİ KAYIT'}</span><h2>{personalLists[personalItemDraft.list].title}</h2><label>Başlık<input autoFocus value={personalItemDraft.title} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,title:event.target.value})} placeholder={personalItemDraft.list==='visit'?'Örn. Efes Antik Kenti':personalItemDraft.list==='buy'?'Örn. Monitör kolu':'Yapılacak iş'}/></label>{personalItemDraft.list==='buy'&&<><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={personalItemDraft.price} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,price:event.target.value})} placeholder="1250"/></label><label>Ürün bağlantısı<input type="url" value={personalItemDraft.link} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,link:event.target.value})} placeholder="https://..."/></label></>}{personalItemDraft.list==='visit'&&<label>Google Haritalar konum bağlantısı<input type="url" value={personalItemDraft.locationUrl} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,locationUrl:event.target.value})} placeholder="https://maps.google.com/..."/></label>}<label>Kısa not <small>İsteğe bağlı</small><textarea value={personalItemDraft.note} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,note:event.target.value})} placeholder="Kısa bir ayrıntı ekle..."/></label><label>Öncelik<select value={personalItemDraft.priority} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,priority:event.target.value as 'normal'|'important'})}><option value="normal">Normal</option><option value="important">Önemli</option></select></label>{editingPersonalItemId&&<button className="personal-delete-button" onClick={removePersonalItem}><Trash2 size={15}/> Kaydı kaldır</button>}<button className="primary-button full" onClick={savePersonalItem}>{editingPersonalItemId?'Değişiklikleri kaydet':'Listeye ekle'} <ArrowRight size={15}/></button></>}
@@ -1611,7 +1746,7 @@ export default function PersonalOS() {
       {modal==='programTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">PROGRAM GÖREVİ</span><h2>Hazırlık adımı ekle.</h2><label>Kategori<select value={programTaskDraft.category} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,category:event.target.value})}>{programCategories.map((category)=><option key={category.name}>{category.name}</option>)}</select></label><label>Görev adı<input autoFocus value={programTaskDraft.title} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,title:event.target.value})} onKeyDown={(event)=>event.key==='Enter'&&addProgramTask()} placeholder="Örn. Otel teyidini al"/></label><button className="primary-button full" onClick={addProgramTask}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='departmentTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">OPERASYON GÖREVİ</span><h2>{departments.find((department)=>department.id===expandedDepartment)?.title} için görev ekle.</h2><label>Görev adı<input autoFocus value={departmentTaskDraft} onChange={(event)=>setDepartmentTaskDraft(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addDepartmentTask()} placeholder="Örn. Tedarikçiden teyit al"/></label><button className="primary-button full" onClick={addDepartmentTask}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='navCustomize'&&<><span className="modal-icon"><Menu size={20}/></span><span className="eyebrow">ALT MENÜ</span><h2>Menüdeki sayfaları seç.</h2><p>Ortadaki hızlı ekle düğmesi sabit kalır; diğer dört alanı istediğin sayfayla değiştirebilirsin.</p><div className="nav-customizer">{state.mobileNav.map((selectedPage,index)=><label key={index}>{index < 2?'Sol':'Sağ'} alan {index % 2 + 1}<select value={selectedPage} onChange={(event)=>updateMobileNavItem(index,event.target.value as PageKey)}>{nav.map((item)=><option key={item.id} value={item.id} disabled={item.id!==selectedPage&&state.mobileNav.includes(item.id)}>{item.label}</option>)}</select></label>)}</div><button className="primary-button full" onClick={()=>{setModal(null);notify('Alt menü güncellendi.')}}>Kaydet <Check size={15}/></button></>}
-      {modal==='capture'&&<><span className="modal-icon">{captureMethod==='voice'?<Mic size={20}/>:<StickyNote size={20}/>}</span><span className="eyebrow">{captureMethod==='voice'?'SESLİ KAYIT':'YAZILI KAYIT'}</span><h2>Kaydı tamamla.</h2>{captureMethod==='voice'&&<button className={`capture-mic ${captureListening?'listening':''}`} onClick={startCaptureVoice}><span>{captureListening?<Square size={16}/>:<Mic size={16}/>}</span><span><strong>{captureListening?'Dinliyorum…':'Konuşarak başlık ekle'}</strong><small>İstersen alttan düzenleyebilirsin</small></span></button>}<label>Başlık<input autoFocus value={captureTitle} onChange={(event)=>setCaptureTitle(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&saveCapture()} placeholder="Kaydetmek istediğin şey"/></label><label>Açıklama <small>İsteğe bağlı</small><textarea value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder="Kısa bir ayrıntı ekle..."/></label><div className="capture-destination"><strong>Nereye kaydedilsin?</strong><label>Sayfa<select value={capturePage} onChange={(event)=>{const page=event.target.value as CapturePage;setCapturePage(page);setCaptureArea(captureAreasFor(page)[0]?.value ?? '');}}>{[{value:'personal',label:'Personal'},{value:'rebuild',label:'6 Aylık Rebuild'},{value:'projects',label:'Projeler'},{value:'kibleteyn',label:'Kıbleteyn'},{value:'programs',label:'Programlar'},{value:'calendar',label:'Takvim'},{value:'notes',label:'Notlar'}].map((item)=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label>Alan<select value={captureArea} onChange={(event)=>setCaptureArea(event.target.value)}>{captureAreasFor(capturePage).map((area)=><option key={area.value} value={area.value}>{area.label}</option>)}</select></label></div><button className="primary-button full" onClick={saveCapture}>Seçilen alana kaydet <ArrowRight size={15}/></button></>}
+      {modal==='capture'&&renderCaptureModal()}
       {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2>{eventDraft.source&&<div className="calendar-source-chip"><Link2 size={13}/>{eventDraft.source}</div>}<label>Etkinlik adı<input autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat<input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre<input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{['violet','blue','mint','sand','rose','orange'].map((tone)=><option key={tone} value={tone}>{tone}</option>)}</select></label></div><label>Açıklama <small>İsteğe bağlı</small><textarea value={eventDraft.description} onChange={(event)=>setEventDraft({...eventDraft,description:event.target.value})} placeholder="Etkinlik ayrıntıları..."/></label><div className={`calendar-save-status ${googleCalendarStatus==='connected'?'connected':''}`}><CalendarDays size={14}/><span><strong>{googleCalendarStatus==='connected'?'Orbit + Google Takvim':'Orbit Takvimi'}</strong><small>{googleCalendarStatus==='connected'?'İki takvime birlikte kaydedilecek':'Kaydettikten sonra Google’a tek dokunuşla aktarabilirsin'}</small></span></div><button className="primary-button full" onClick={()=>void addEvent()}>Takvime ekle <ArrowRight size={15}/></button></>}
       {modal==='calendarConnect'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">GOOGLE TAKVİM</span><h2>Kendi takvimini bağla.</h2><p>Google hesabındaki etkinlikleri Orbit’te görür, yeni planları iki takvime birlikte kaydedersin. Erişim anahtarı yalnızca açık oturumda tutulur.</p><label>Google OAuth istemci kimliği<input autoFocus value={calendarConnectDraft.clientId} onChange={(event)=>setCalendarConnectDraft({...calendarConnectDraft,clientId:event.target.value})} placeholder="...apps.googleusercontent.com"/></label><label>Takvim kimliği <small>Birincil takvim için primary</small><input value={calendarConnectDraft.calendarId} onChange={(event)=>setCalendarConnectDraft({...calendarConnectDraft,calendarId:event.target.value})} placeholder="primary"/></label><a className="google-setup-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer"><ExternalLink size={13}/> Google Cloud kimlik bilgilerini aç</a><button className="primary-button full" onClick={()=>void connectGoogleCalendar()} disabled={googleCalendarStatus==='connecting'}>{googleCalendarStatus==='connecting'?'Google bekleniyor…':'Google hesabımla bağlan'} <ArrowRight size={15}/></button></>}
       {modal==='profile'&&<><span className="modal-icon"><UserRound size={20}/></span><span className="eyebrow">ÇALIŞMA ALANI</span><h2>Profilini kişiselleştir.</h2><label>İsim<input autoFocus value={profileDraft.name} onChange={(event)=>setProfileDraft({...profileDraft,name:event.target.value})} placeholder="İsmin"/></label><label>Çalışma alanı<input value={profileDraft.workspace} onChange={(event)=>setProfileDraft({...profileDraft,workspace:event.target.value})} placeholder="Örn. Tasarım ve operasyon"/></label><button className="primary-button full" onClick={saveProfile}>Değişiklikleri kaydet <Check size={15}/></button></>}
