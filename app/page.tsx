@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
 import {
@@ -11,7 +12,7 @@ import {
   Menu, Mic, Monitor, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
   Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
   Smartphone, Sparkles, Square, StickyNote, Sun, Trash2, Undo2, UserRound, Users,
-  Volume2, X, Zap,
+  Volume1, Volume2, X, Zap,
 } from 'lucide-react';
 
 type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
@@ -51,7 +52,7 @@ type PersistedState = {
   notes: Note[];
   mobileNav: PageKey[];
   profile: { name: string; workspace: string };
-  settings: { notifications: boolean; motion: boolean; sound: boolean; haptics: boolean; feedbackVersion: number; autoArchive: boolean; accent: string; theme: ThemePreference; density: 'comfortable' | 'compact'; showCompleted: boolean };
+  settings: { notifications: boolean; motion: boolean; sound: boolean; soundVolume: number; haptics: boolean; feedbackVersion: number; autoArchive: boolean; accent: string; theme: ThemePreference; density: 'comfortable' | 'compact'; showCompleted: boolean };
 };
 const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: HomeIcon },
@@ -89,14 +90,14 @@ const defaultState: PersistedState = {
   ],
   mobileNav: ['home', 'personal', 'rebuild', 'projects'],
   profile: { name: 'Emir Güney', workspace: 'Kişisel çalışma alanı' },
-  settings: { notifications: true, motion: true, sound: true, haptics: true, feedbackVersion: 2, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
+  settings: { notifications: true, motion: true, sound: true, soundVolume: 85, haptics: true, feedbackVersion: 3, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
 };
 
 function mergePersistedState(value: unknown): PersistedState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultState;
   const saved = value as Partial<PersistedState>;
   const savedSettings = saved.settings ?? {};
-  const needsFeedbackMigration = savedSettings.feedbackVersion !== 2;
+  const needsFeedbackMigration = savedSettings.feedbackVersion !== 3;
 
   return {
     completed: { ...defaultState.completed, ...(saved.completed ?? {}) },
@@ -120,7 +121,7 @@ function mergePersistedState(value: unknown): PersistedState {
     notes: Array.isArray(saved.notes) ? saved.notes : defaultState.notes,
     mobileNav: Array.isArray(saved.mobileNav) && saved.mobileNav.length === 4 && saved.mobileNav.every((page): page is PageKey => typeof page === 'string' && nav.some((item) => item.id === page)) && new Set(saved.mobileNav).size === 4 ? saved.mobileNav : defaultState.mobileNav,
     profile: { ...defaultState.profile, ...(saved.profile ?? {}) },
-    settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, haptics: true, feedbackVersion: 2 } : {}) },
+    settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, soundVolume: 85, haptics: true, feedbackVersion: 3 } : {}) },
   };
 }
 
@@ -388,11 +389,13 @@ export default function PersonalOS() {
           const isConfirm = tone === 'confirm';
           const isSelect = tone === 'select';
           const duration = isConfirm ? 0.14 : isSelect ? 0.105 : 0.085;
+          const volume = Math.max(0.1, Math.min(1, state.settings.soundVolume / 100));
+          const peak = (isConfirm ? 0.24 : isSelect ? 0.17 : 0.13) * volume;
           oscillator.type = isConfirm ? 'sine' : 'triangle';
           oscillator.frequency.setValueAtTime(isConfirm ? 480 : isSelect ? 390 : 285, now);
           oscillator.frequency.exponentialRampToValueAtTime(isConfirm ? 760 : isSelect ? 560 : 230, now + duration * 0.7);
           gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.exponentialRampToValueAtTime(isConfirm ? 0.09 : isSelect ? 0.066 : 0.048, now + 0.012);
+          gain.gain.exponentialRampToValueAtTime(peak, now + 0.012);
           gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
           oscillator.connect(gain).connect(context.destination);
           oscillator.start(now); oscillator.stop(now + duration + 0.01);
@@ -406,7 +409,7 @@ export default function PersonalOS() {
     if (shouldVibrate && (state.settings.haptics || forceHaptics) && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(tone === 'confirm' ? [10, 28, 14] : tone === 'select' ? 10 : 7);
     }
-  }, [state.settings.haptics, state.settings.sound]);
+  }, [state.settings.haptics, state.settings.sound, state.settings.soundVolume]);
 
   useEffect(() => {
     const feedbackFor = (element: Element) => {
@@ -910,7 +913,7 @@ export default function PersonalOS() {
     </>;
   };
 
-  const updateSetting = (key: Exclude<keyof PersistedState['settings'], 'feedbackVersion'>, value: boolean | string) => {
+  const updateSetting = (key: Exclude<keyof PersistedState['settings'], 'feedbackVersion'>, value: boolean | string | number) => {
     setState((current) => ({ ...current, settings: { ...current.settings, [key]: value } }));
     if (key === 'sound' && value === true) playFeedback('confirm', state.settings.haptics, true);
     if (key === 'haptics' && value === true && typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate([10, 28, 14]);
@@ -936,6 +939,7 @@ export default function PersonalOS() {
       <div className="settings-layout"><nav className="surface settings-nav"><button className={settingsTab==='general'?'active':''} onClick={()=>setSettingsTab('general')}><UserRound size={16}/> Genel</button><button className={settingsTab==='appearance'?'active':''} onClick={()=>setSettingsTab('appearance')}><Palette size={16}/> Görünüm</button><button className={settingsTab==='notifications'?'active':''} onClick={()=>setSettingsTab('notifications')}><Bell size={16}/> Bildirimler</button><button className={settingsTab==='data'?'active':''} onClick={()=>setSettingsTab('data')}><Download size={16}/> Veri</button></nav><div className="settings-content">
         {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">{profileInitials}</div><div><h2>{state.profile.name}</h2><p>{state.profile.workspace}</p></div><button onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><CheckCircle2 size={18} className="setting-ok"/></div></section></>}
         {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Altı renk seçeneğinden birini kullan</small></span><div className="color-options">{['violet','blue','mint','sand','rose','slate'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><div className="setting-row density-setting"><span className="setting-icon"><PanelsTopLeft size={17}/></span><span><strong>Bilgi yoğunluğu</strong><small>Ekranda daha ferah veya daha sıkı bir düzen seç</small></span><div className="theme-options" role="group" aria-label="Bilgi yoğunluğu">{([{id:'comfortable',label:'Ferah'},{id:'compact',label:'Kompakt'}] as const).map(({id,label})=><button key={id} className={state.settings.density===id?'selected':''} aria-pressed={state.settings.density===id} onClick={()=>updateSetting('density',id)}><span>{label}</span></button>)}</div></div><div className="setting-row nav-setting"><span className="setting-icon"><Menu size={17}/></span><span><strong>Alt menü</strong><small>Mobil çubuktaki dört sayfayı değiştir</small></span><button className="settings-edit-button" onClick={()=>setModal('navCustomize')}>Düzenle</button></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Buton ve işlem anlarında yumuşak geri bildirim" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/><SettingToggle icon={Smartphone} title="Dokunsal geri bildirim" description="Mobil işlemlerde hafif titreşim kullan" value={state.settings.haptics} onChange={(value)=>updateSetting('haptics',value)}/><button data-feedback-test className="feedback-test-button" onClick={()=>{playFeedback('confirm',true,true,true);notify('Ses ve titreşim denemesi çalıştırıldı.');}}><Volume2 size={16}/><span><strong>Geri bildirimi dene</strong><small>Ses ve titreşim bu cihazda birlikte çalışır</small></span><Zap size={15}/></button></section>}
+        {settingsTab==='appearance'&&<section className="surface settings-section sound-settings-section"><header><h3>Ses seviyesi</h3><p>Arayüz efektlerini cihazına göre ayarla.</p></header><div className="sound-level-control"><div className="sound-level-copy"><span className="setting-icon"><Volume1 size={17}/></span><span><strong>Efekt yüksekliği</strong><small>Düşükten belirgin seviyeye</small></span><em>%{state.settings.soundVolume}</em></div><div className="sound-volume-control"><Volume1 size={14}/><input aria-label="Arayüz ses seviyesi" type="range" min="10" max="100" step="5" value={state.settings.soundVolume} style={{'--sound-fill':`${state.settings.soundVolume}%`} as CSSProperties} onChange={(event)=>updateSetting('soundVolume',Number(event.target.value))} onPointerUp={()=>playFeedback('confirm',false,true)} onKeyUp={()=>playFeedback('confirm',false,true)}/><Volume2 size={16}/></div></div></section>}
         {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>İzin ve görünüm tercihlerini buradan yönet.</p></header><SettingToggle icon={Bell} title="Akıllı hatırlatmalar" description="Tarayıcı bildirimi iznini aç veya kapat" value={state.settings.notifications} onChange={(value)=>void updateNotifications(value)}/><SettingToggle icon={Eye} title="Tamamlananları göster" description="Personal listelerinde biten işleri görünür tut" value={state.settings.showCompleted} onChange={(value)=>updateSetting('showCompleted',value)}/></section>}
         {settingsTab==='data'&&<><section className="surface settings-section"><header><h3>Uygulama olarak kullan</h3><p>Orbit’i ana ekranına ekleyip tarayıcı çubuğu olmadan aç.</p></header><InstallOrbit/></section><section className="surface settings-section"><header><h3>Verini dışa aktar</h3><p>Orbit’teki yerel demo verisinin taşınabilir bir kopyasını al.</p></header><button className="data-export" onClick={exportDemoData}><Download size={16}/><span><strong>JSON yedeğini indir</strong><small>Görevler, notlar, proje aşamaları ve tercihler</small></span><ArrowRight size={15}/></button></section><section className="surface settings-section danger-section"><header><h3>Demo verisi</h3><p>Yerel değişiklikleri silip başlangıç verisine dön.</p></header><button onClick={()=>{if(window.confirm('Tüm yerel demo değişiklikleri sıfırlansın mı?')){setState(defaultState);notify('Demo verisi sıfırlandı.')}}}><RotateCcw size={15}/> Demo verisini sıfırla</button></section></>}
       </div></div>
