@@ -339,3 +339,16 @@ html[data-theme=dark] .modal-card:not(.search) .modal-close{border-color:rgba(25
 html[data-theme=dark] .modal-card:not(.search) .modal-options button{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.04)}
 html[data-theme=dark] .modal-card:not(.search) .capture-destination{border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.025)}
 @media(max-width:560px){.modal-card:not(.search) .modal-options{grid-template-columns:1fr 1fr}.modal-card:not(.search) .modal-options button{min-height:50px;font-size:11px}.modal-card:not(.search) .capture-destination{padding:14px}.modal-card:not(.search) .calendar-save-status{margin-top:18px}}
+
+/* Kıbleteyn is one workspace with two closely related views. */
+.kibleteyn-nav{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:4px 0 22px;padding:6px 2px 13px;border-bottom:1px solid var(--line)}
+.kibleteyn-nav>div:first-child{min-width:0}
+.kibleteyn-nav .eyebrow{display:block;margin:0 0 9px;color:var(--accent);font-size:8px;font-weight:850;letter-spacing:.16em}
+.kibleteyn-nav nav{display:flex;align-items:center;gap:7px}
+.kibleteyn-nav nav button{min-height:40px;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--muted);padding:0 13px;display:inline-flex;align-items:center;gap:7px;font-size:10px;font-weight:760;transition:.18s ease}
+.kibleteyn-nav nav button:hover{color:var(--ink);background:rgba(var(--accent-rgb),.055)}
+.kibleteyn-nav nav button.active{border-color:rgba(var(--accent-rgb),.16);background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 1px rgba(255,255,255,.45)}
+.kibleteyn-nav nav button em{min-width:19px;border-radius:7px;background:rgba(var(--accent-rgb),.12);padding:3px 5px;color:var(--accent);font-size:8px;font-style:normal;text-align:center}
+.kibleteyn-nav-action{flex:0 0 auto}
+html[data-theme=dark] .kibleteyn-nav nav button.active{border-color:rgba(var(--accent-rgb),.27);box-shadow:inset 0 1px rgba(255,255,255,.05)}
+@media(max-width:560px){.kibleteyn-nav{align-items:stretch;margin:0 0 17px;padding:4px 0 12px;flex-direction:column;gap:10px}.kibleteyn-nav nav{display:grid;grid-template-columns:1fr 1fr}.kibleteyn-nav nav button{min-height:48px;justify-content:center;font-size:11px}.kibleteyn-nav-action>*{width:100%;min-height:44px;justify-content:center}}
