@@ -46,8 +46,9 @@ type BrowserSpeechRecognition = {
   onend: () => void;
 };
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
-type GoogleTokenResponse = { access_token?: string; error?: string };
+type GoogleTokenResponse = { access_token?: string; expires_in?: number; error?: string };
 type GoogleOAuthWindow = Window & { google?: { accounts: { oauth2: { initTokenClient: (config: { client_id: string; scope: string; callback: (response: GoogleTokenResponse) => void; error_callback?: (error: { type?: string }) => void }) => { requestAccessToken: (options: { prompt: string }) => void }; revoke: (token: string, callback: () => void) => void } } } };
+type StoredGoogleSession = { accessToken: string; expiresAt: number; reconnect: boolean };
 type PersistedState = {
   completed: Record<string, boolean>;
   customPersonal: Record<string, string[]>;
@@ -88,6 +89,7 @@ const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] 
 ];
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? '';
 const GOOGLE_CALENDAR_ID = process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_ID?.trim() ?? '';
+const GOOGLE_SESSION_KEY = 'orbit-google-calendar-session';
 
 const defaultState: PersistedState = {
   completed: { 'routine-1': true, 'personal-1': true, 'program-14': true, 'project-pos-1': true, 'rebuild-2': true },
@@ -326,6 +328,7 @@ export default function PersonalOS() {
   const googleCalendarClientId = googleConfig.clientId || state.calendarIntegration.clientId.trim();
   const googleCalendarId = googleConfig.calendarId || state.calendarIntegration.calendarId.trim() || 'primary';
   const googleAccessTokenRef = useRef('');
+  const googleRestoreStartedRef = useRef(false);
   const [profileDraft, setProfileDraft] = useState(defaultState.profile);
   const [noteSearch, setNoteSearch] = useState('');
   const [noteFilter, setNoteFilter] = useState<'all' | 'ideas' | 'logs'>('all');
@@ -1223,7 +1226,12 @@ export default function PersonalOS() {
     }
   });
 
-  const requestGoogleAccess = async () => {
+  const rememberGoogleAccess = (token: string, expiresIn = 3600) => {
+    googleAccessTokenRef.current = token;
+    localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify({ accessToken: token, expiresAt: Date.now() + Math.max(60, expiresIn) * 1000, reconnect: true } satisfies StoredGoogleSession));
+  };
+
+  const requestGoogleAccess = async (prompt = 'select_account', silent = false) => {
     let clientId = googleCalendarClientId;
     if (!clientId) {
       const response = await fetch('/api/google-config', { cache: 'no-store' }).catch(() => null);
@@ -1242,13 +1250,19 @@ export default function PersonalOS() {
         const client = googleWindow.google!.accounts.oauth2.initTokenClient({
           client_id: clientId,
           scope: 'https://www.googleapis.com/auth/calendar.events',
-          callback: (response) => response.access_token ? resolve(response.access_token) : reject(new Error(response.error ?? 'Google bağlantısı reddedildi')),
+          callback: (response) => {
+            if (!response.access_token) { reject(new Error(response.error ?? 'Google bağlantısı reddedildi')); return; }
+            rememberGoogleAccess(response.access_token, response.expires_in);
+            resolve(response.access_token);
+          },
           error_callback: (error) => reject(new Error(error.type ?? 'Google penceresi kapatıldı')),
         });
-        client.requestAccessToken({ prompt: 'select_account' });
+        client.requestAccessToken({ prompt });
       });
     } catch {
-      setGoogleCalendarStatus('error'); notify('Google Takvim bağlantısı tamamlanamadı. Yeniden deneyebilirsin.'); return null;
+      setGoogleCalendarStatus(silent ? 'disconnected' : 'error');
+      if (!silent) notify('Google Takvim bağlantısı tamamlanamadı. Yeniden deneyebilirsin.');
+      return null;
     }
   };
 
@@ -1285,7 +1299,6 @@ export default function PersonalOS() {
     if (googleCalendarStatus === 'connecting') return;
     const token = await requestGoogleAccess();
     if (!token) return;
-    googleAccessTokenRef.current = token;
     await syncGoogleCalendar(token, calendarCursor, googleCalendarId);
     notify('Google Takvim bağlandı ve güncellendi.');
   };
@@ -1294,9 +1307,34 @@ export default function PersonalOS() {
     const token = googleAccessTokenRef.current;
     const googleWindow = window as GoogleOAuthWindow;
     if (token && googleWindow.google?.accounts.oauth2) googleWindow.google.accounts.oauth2.revoke(token, () => undefined);
+    localStorage.removeItem(GOOGLE_SESSION_KEY);
+    googleRestoreStartedRef.current = false;
     googleAccessTokenRef.current = ''; setGoogleCalendarEvents({}); setGoogleCalendarStatus('disconnected');
     notify('Google Takvim bağlantısı kapatıldı.');
   };
+
+  useEffect(() => {
+    if (!googleConfig.loaded || !googleCalendarClientId || googleRestoreStartedRef.current) return;
+    googleRestoreStartedRef.current = true;
+
+    let stored: StoredGoogleSession | null = null;
+    try { stored = JSON.parse(localStorage.getItem(GOOGLE_SESSION_KEY) ?? 'null') as StoredGoogleSession | null; } catch { localStorage.removeItem(GOOGLE_SESSION_KEY); }
+    if (!stored?.reconnect) return;
+    const session = stored;
+
+    const restoreConnection = async () => {
+      if (session.accessToken && session.expiresAt > Date.now() + 60_000) {
+        googleAccessTokenRef.current = session.accessToken;
+        await syncGoogleCalendar(session.accessToken, calendarCursor, googleCalendarId);
+        return;
+      }
+
+      const token = await requestGoogleAccess('', true);
+      if (token) await syncGoogleCalendar(token, calendarCursor, googleCalendarId);
+    };
+
+    void restoreConnection();
+  }, [googleConfig.loaded, googleCalendarClientId]);
 
   const createGoogleCalendarEvent = async (event: CalendarEvent, date: string) => {
     const token = googleAccessTokenRef.current;
