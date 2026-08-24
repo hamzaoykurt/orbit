@@ -51,7 +51,7 @@ type PersistedState = {
   notes: Note[];
   mobileNav: PageKey[];
   profile: { name: string; workspace: string };
-  settings: { notifications: boolean; motion: boolean; sound: boolean; autoArchive: boolean; accent: string; theme: ThemePreference; density: 'comfortable' | 'compact'; showCompleted: boolean };
+  settings: { notifications: boolean; motion: boolean; sound: boolean; haptics: boolean; autoArchive: boolean; accent: string; theme: ThemePreference; density: 'comfortable' | 'compact'; showCompleted: boolean };
 };
 const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: HomeIcon },
@@ -89,12 +89,14 @@ const defaultState: PersistedState = {
   ],
   mobileNav: ['home', 'personal', 'rebuild', 'projects'],
   profile: { name: 'Emir Güney', workspace: 'Kişisel çalışma alanı' },
-  settings: { notifications: true, motion: true, sound: false, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
+  settings: { notifications: true, motion: true, sound: true, haptics: true, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
 };
 
 function mergePersistedState(value: unknown): PersistedState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultState;
   const saved = value as Partial<PersistedState>;
+  const savedSettings = saved.settings ?? {};
+  const needsFeedbackMigration = !Object.prototype.hasOwnProperty.call(savedSettings, 'haptics');
 
   return {
     completed: { ...defaultState.completed, ...(saved.completed ?? {}) },
@@ -118,7 +120,7 @@ function mergePersistedState(value: unknown): PersistedState {
     notes: Array.isArray(saved.notes) ? saved.notes : defaultState.notes,
     mobileNav: Array.isArray(saved.mobileNav) && saved.mobileNav.length === 4 && saved.mobileNav.every((page): page is PageKey => typeof page === 'string' && nav.some((item) => item.id === page)) && new Set(saved.mobileNav).size === 4 ? saved.mobileNav : defaultState.mobileNav,
     profile: { ...defaultState.profile, ...(saved.profile ?? {}) },
-    settings: { ...defaultState.settings, ...(saved.settings ?? {}) },
+    settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, haptics: true } : {}) },
   };
 }
 
@@ -229,8 +231,9 @@ export default function PersonalOS() {
   const [hydrated, setHydrated] = useState(false);
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
   const lastSyncedState = useRef('');
+  const audioContextRef = useRef<AudioContext | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [modal, setModal] = useState<'quick' | 'voice' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
+  const [modal, setModal] = useState<'quick' | 'search' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
   const [toast, setToast] = useState('');
   const [expandedProject, setExpandedProject] = useState<string | null>('pos');
   const [expandedProgram, setExpandedProgram] = useState<string | null>('p1');
@@ -255,8 +258,10 @@ export default function PersonalOS() {
   const [archiveFilter, setArchiveFilter] = useState<'all' | 'project' | 'program' | 'note'>('all');
   const [settingsTab, setSettingsTab] = useState<'general' | 'appearance' | 'notifications' | 'data'>('general');
   const [searchText, setSearchText] = useState('');
-  const [voiceStep, setVoiceStep] = useState<'idle' | 'listening' | 'done'>('idle');
   const [focusActive, setFocusActive] = useState(false);
+  const [focusMode, setFocusMode] = useState<'countdown' | 'stopwatch'>('countdown');
+  const [focusMinutes, setFocusMinutes] = useState(50);
+  const [focusSeconds, setFocusSeconds] = useState(50 * 60);
   const [projectQuery, setProjectQuery] = useState('');
   const [teamView, setTeamView] = useState(false);
   const [captureMethod, setCaptureMethod] = useState<'text' | 'voice'>('text');
@@ -344,6 +349,11 @@ export default function PersonalOS() {
   }, [hydrated, state.settings.theme]);
 
   useEffect(() => {
+    if (!hydrated) return;
+    document.documentElement.dataset.motion = state.settings.motion ? 'full' : 'reduced';
+  }, [hydrated, state.settings.motion]);
+
+  useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === '/' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); setModal('search'); }
       if (event.key === 'Escape') { setModal(null); setMobileMenu(false); setCaptureMenuOpen(false); }
@@ -357,8 +367,76 @@ export default function PersonalOS() {
     window.setTimeout(() => setToast(''), 2400);
   }, []);
 
+  const playFeedback = useCallback((tone: 'tap' | 'confirm', shouldVibrate = false) => {
+    if (state.settings.sound) {
+      try {
+        const context = audioContextRef.current ?? new AudioContext();
+        audioContextRef.current = context;
+        if (context.state === 'suspended') void context.resume();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const now = context.currentTime;
+        oscillator.type = tone === 'confirm' ? 'sine' : 'triangle';
+        oscillator.frequency.setValueAtTime(tone === 'confirm' ? 540 : 310, now);
+        oscillator.frequency.exponentialRampToValueAtTime(tone === 'confirm' ? 720 : 250, now + 0.06);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(tone === 'confirm' ? 0.042 : 0.025, now + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + (tone === 'confirm' ? 0.1 : 0.065));
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start(now); oscillator.stop(now + (tone === 'confirm' ? 0.11 : 0.075));
+      } catch { /* audio feedback is optional */ }
+    }
+    if (shouldVibrate && state.settings.haptics && 'vibrate' in navigator) navigator.vibrate(tone === 'confirm' ? [8, 22, 10] : 7);
+  }, [state.settings.haptics, state.settings.sound]);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const button = event.target.closest('button');
+      if (!button || button.disabled) return;
+      const isImportant = button.matches('.primary-button,.quick-capture-trigger,.capture-action,.task-item,.switch,.move-project,.add-department-task,.add-program-task,.add-card,.focus-main-button,.focus-reset-button');
+      playFeedback(isImportant ? 'confirm' : 'tap', isImportant);
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [playFeedback]);
+
+  useEffect(() => {
+    if (!focusActive) return;
+    const timer = window.setInterval(() => {
+      setFocusSeconds((current) => focusMode === 'countdown' ? Math.max(0, current - 1) : current + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [focusActive, focusMode]);
+
+  useEffect(() => {
+    if (focusMode === 'countdown' && focusActive && focusSeconds === 0) {
+      setFocusActive(false); playFeedback('confirm', true); notify('Odak seansı tamamlandı.');
+    }
+  }, [focusActive, focusMode, focusSeconds, notify, playFeedback]);
+
   const go = (page: PageKey) => {
     setActive(page); setMobileMenu(false); setCaptureMenuOpen(false); localStorage.setItem('orbit-active-page', page); window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const setFocusLength = (minutes: number) => {
+    setFocusActive(false); setFocusMode('countdown'); setFocusMinutes(minutes); setFocusSeconds(minutes * 60);
+  };
+
+  const changeFocusMode = (mode: 'countdown' | 'stopwatch') => {
+    setFocusActive(false); setFocusMode(mode); setFocusSeconds(mode === 'countdown' ? focusMinutes * 60 : 0);
+  };
+
+  const toggleFocusSession = () => {
+    if (focusMode === 'countdown' && focusSeconds === 0) setFocusSeconds(focusMinutes * 60);
+    setFocusActive((active) => {
+      notify(active ? 'Odak seansı duraklatıldı.' : 'Odak seansı başladı.');
+      return !active;
+    });
+  };
+
+  const resetFocusSession = () => {
+    setFocusActive(false); setFocusSeconds(focusMode === 'countdown' ? focusMinutes * 60 : 0); notify('Odak sayacı sıfırlandı.');
   };
 
   const toggle = (id: string) => setState((current) => ({ ...current, completed: { ...current.completed, [id]: !current.completed[id] } }));
@@ -631,16 +709,6 @@ export default function PersonalOS() {
     notify(`${item.title} geri yüklendi.`);
   };
 
-  const startVoice = () => {
-    setVoiceStep('listening');
-    window.setTimeout(() => setVoiceStep('done'), 1800);
-  };
-
-  const acceptVoice = () => {
-    setState((current) => ({ ...current, customPersonal: { ...current.customPersonal, todo: [...current.customPersonal.todo, 'Yarın 14:00 için tasarım değerlendirmesi'] } }));
-    setVoiceStep('idle'); setModal(null); notify('Sesli komut demo görevi oluşturdu.');
-  };
-
   const exportDemoData = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -653,13 +721,15 @@ export default function PersonalOS() {
   const completedCount = Object.values(state.completed).filter(Boolean).length;
   const displayDate = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }).format(new Date(2026, 7, 23));
   const profileInitials = state.profile.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('tr') || 'O';
+  const focusDisplay = `${String(Math.floor(focusSeconds / 60)).padStart(2, '0')}:${String(focusSeconds % 60).padStart(2, '0')}`;
+  const focusProgress = focusMode === 'countdown' ? Math.max(0, Math.min(100, (1 - focusSeconds / (focusMinutes * 60)) * 100)) : Math.min(100, focusSeconds / (focusMinutes * 60) * 100);
   const renderHome = () => (
     <>
       <div className="dashboard-grid">
         <article className={`surface focus-card ${focusActive ? 'is-focusing' : ''}`}>
-          <div className="card-heading"><div><span className="eyebrow">BUGÜNÜN ODAĞI</span><h2>Personal OS<br/>ana akışını bitir</h2></div><span className="focus-number">01</span></div>
-          <p>Günün geri kalanını sadeleştirecek tek önemli adım.</p>
-          <div className="focus-actions"><button className="primary-button" onClick={() => { setFocusActive(!focusActive); notify(focusActive ? 'Odak oturumu duraklatıldı.' : '90 dakikalık odak oturumu başladı.'); }}>{focusActive ? <Square size={14}/> : <Play size={14} fill="currentColor"/>}<span>{focusActive ? 'Oturumu duraklat' : 'Odaklanmaya başla'}</span><ArrowUpRight size={16}/></button><span className="time-chip">{focusActive ? '89:42' : '90 dk'}</span></div>
+          <div className="focus-session-head"><div><span className="eyebrow">ODAK SEANSI</span><strong>{focusActive ? 'Derin çalışma sürüyor' : 'Tek işe yer aç.'}</strong></div><div className="focus-mode-toggle" role="group" aria-label="Odak sayacı türü"><button className={focusMode==='countdown'?'active':''} onClick={()=>changeFocusMode('countdown')}>Sayaç</button><button className={focusMode==='stopwatch'?'active':''} onClick={()=>changeFocusMode('stopwatch')}>Kronometre</button></div></div>
+          <div className="focus-timer" style={{ '--focus-progress': `${focusProgress * 3.6}deg` } as React.CSSProperties}><div><small>{focusMode==='countdown' ? 'KALAN SÜRE' : 'GEÇEN SÜRE'}</small><strong>{focusDisplay}</strong><p>Personal OS ana akışını bitir</p></div></div>
+          <div className="focus-session-footer"><div className="focus-presets" aria-label="Odak süresi">{[25,50,90].map((minutes)=><button key={minutes} onClick={()=>setFocusLength(minutes)} className={focusMode==='countdown'&&focusMinutes===minutes?'active':''}>{minutes} dk</button>)}</div><div className="focus-session-actions"><button className="focus-main-button" onClick={toggleFocusSession}>{focusActive?<Square size={17}/>:<Play size={17} fill="currentColor"/>}{focusActive?'Duraklat':'Başlat'}</button><button className="focus-reset-button" onClick={resetFocusSession} aria-label="Odak sayacını sıfırla"><RotateCcw size={16}/></button></div></div>
           <div className="ambient-orb"><span/></div>
         </article>
         <article className="surface today-card">
@@ -673,7 +743,7 @@ export default function PersonalOS() {
         <article className="surface quick-card">
           <span className="eyebrow">HIZLI EKLE</span><h3>Aklındakini bırak.</h3>
           <div className="quick-actions"><button onClick={() => setModal('quick')}><ListTodo size={15}/> Görev</button><button onClick={() => setModal('note')}><StickyNote size={15}/> Not</button><button onClick={() => { setModal('note'); setNoteDraft({title:'Yeni fikir',body:''}); }}><Sparkles size={15}/> Fikir</button></div>
-          <button className="voice-button" onClick={() => { setVoiceStep('idle'); setModal('voice'); }}><span><Mic size={16}/></span><span><strong>Sesli komut</strong><small>“Yarın için görev ekle...”</small></span><Volume2 size={17}/></button>
+          <button className="voice-button" onClick={() => beginCapture('voice')}><span><Mic size={16}/></span><span><strong>Sesli kayıt</strong><small>Konuş, ardından kaydın yerini seç.</small></span><Volume2 size={17}/></button>
         </article>
       </div>
       <section className="surface north-star">
@@ -804,8 +874,16 @@ export default function PersonalOS() {
 
   const updateSetting = (key: keyof PersistedState['settings'], value: boolean | string) => setState((current)=>({...current,settings:{...current.settings,[key]:value}}));
 
+  const updateNotifications = async (enabled: boolean) => {
+    if (enabled && 'Notification' in window && Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') { updateSetting('notifications', false); notify('Bildirim izni verilmedi.'); return; }
+    }
+    updateSetting('notifications', enabled); notify(enabled ? 'Bildirimler açıldı.' : 'Bildirimler kapatıldı.');
+  };
+
   const saveProfile = () => {
-    if (!profileDraft.name.trim() || !profileDraft.workspace.trim()) return;
+    if (!profileDraft.name.trim() || !profileDraft.workspace.trim()) { notify('İsim ve çalışma alanını doldur.'); return; }
     setState((current) => ({ ...current, profile: { name: profileDraft.name.trim(), workspace: profileDraft.workspace.trim() } }));
     setModal(null); notify('Profil bilgileri kaydedildi.');
   };
@@ -815,8 +893,8 @@ export default function PersonalOS() {
       <PageTitle eyebrow="AYARLAR" title="Orbit sana uyum sağlasın." description="Görünümü, bildirimleri ve çalışma biçimini kişiselleştir."/>
       <div className="settings-layout"><nav className="surface settings-nav"><button className={settingsTab==='general'?'active':''} onClick={()=>setSettingsTab('general')}><UserRound size={16}/> Genel</button><button className={settingsTab==='appearance'?'active':''} onClick={()=>setSettingsTab('appearance')}><Palette size={16}/> Görünüm</button><button className={settingsTab==='notifications'?'active':''} onClick={()=>setSettingsTab('notifications')}><Bell size={16}/> Bildirimler</button><button className={settingsTab==='data'?'active':''} onClick={()=>setSettingsTab('data')}><Download size={16}/> Veri</button></nav><div className="settings-content">
         {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">{profileInitials}</div><div><h2>{state.profile.name}</h2><p>{state.profile.workspace}</p></div><button onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><CheckCircle2 size={18} className="setting-ok"/></div></section></>}
-        {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Altı renk seçeneğinden birini kullan</small></span><div className="color-options">{['violet','blue','mint','sand','rose','slate'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><div className="setting-row density-setting"><span className="setting-icon"><PanelsTopLeft size={17}/></span><span><strong>Bilgi yoğunluğu</strong><small>Ekranda daha ferah veya daha sıkı bir düzen seç</small></span><div className="theme-options" role="group" aria-label="Bilgi yoğunluğu">{([{id:'comfortable',label:'Ferah'},{id:'compact',label:'Kompakt'}] as const).map(({id,label})=><button key={id} className={state.settings.density===id?'selected':''} aria-pressed={state.settings.density===id} onClick={()=>updateSetting('density',id)}><span>{label}</span></button>)}</div></div><div className="setting-row nav-setting"><span className="setting-icon"><Menu size={17}/></span><span><strong>Alt menü</strong><small>Mobil çubuktaki dört sayfayı değiştir</small></span><button className="settings-edit-button" onClick={()=>setModal('navCustomize')}>Düzenle</button></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Tamamlama anlarında hafif ses geri bildirimi" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/></section>}
-        {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>Sistem senin adına ne kadar takip etsin?</p></header><SettingToggle icon={Bell} title="Akıllı hatırlatmalar" description="Yaklaşan görev ve programlar için sakin bildirimler" value={state.settings.notifications} onChange={(value)=>updateSetting('notifications',value)}/><SettingToggle icon={Archive} title="Otomatik arşiv" description="Tamamlanan öğeleri 7 gün sonra arşivle" value={state.settings.autoArchive} onChange={(value)=>updateSetting('autoArchive',value)}/><SettingToggle icon={Eye} title="Tamamlananları göster" description="Personal listelerinde biten işleri görünür tut" value={state.settings.showCompleted} onChange={(value)=>updateSetting('showCompleted',value)}/></section>}
+        {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Altı renk seçeneğinden birini kullan</small></span><div className="color-options">{['violet','blue','mint','sand','rose','slate'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><div className="setting-row density-setting"><span className="setting-icon"><PanelsTopLeft size={17}/></span><span><strong>Bilgi yoğunluğu</strong><small>Ekranda daha ferah veya daha sıkı bir düzen seç</small></span><div className="theme-options" role="group" aria-label="Bilgi yoğunluğu">{([{id:'comfortable',label:'Ferah'},{id:'compact',label:'Kompakt'}] as const).map(({id,label})=><button key={id} className={state.settings.density===id?'selected':''} aria-pressed={state.settings.density===id} onClick={()=>updateSetting('density',id)}><span>{label}</span></button>)}</div></div><div className="setting-row nav-setting"><span className="setting-icon"><Menu size={17}/></span><span><strong>Alt menü</strong><small>Mobil çubuktaki dört sayfayı değiştir</small></span><button className="settings-edit-button" onClick={()=>setModal('navCustomize')}>Düzenle</button></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Buton ve işlem anlarında yumuşak geri bildirim" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/><SettingToggle icon={Smartphone} title="Dokunsal geri bildirim" description="Önemli mobil işlemlerde hafif titreşim kullan" value={state.settings.haptics} onChange={(value)=>updateSetting('haptics',value)}/></section>}
+        {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>İzin ve görünüm tercihlerini buradan yönet.</p></header><SettingToggle icon={Bell} title="Akıllı hatırlatmalar" description="Tarayıcı bildirimi iznini aç veya kapat" value={state.settings.notifications} onChange={(value)=>void updateNotifications(value)}/><SettingToggle icon={Eye} title="Tamamlananları göster" description="Personal listelerinde biten işleri görünür tut" value={state.settings.showCompleted} onChange={(value)=>updateSetting('showCompleted',value)}/></section>}
         {settingsTab==='data'&&<><section className="surface settings-section"><header><h3>Uygulama olarak kullan</h3><p>Orbit’i ana ekranına ekleyip tarayıcı çubuğu olmadan aç.</p></header><InstallOrbit/></section><section className="surface settings-section"><header><h3>Verini dışa aktar</h3><p>Orbit’teki yerel demo verisinin taşınabilir bir kopyasını al.</p></header><button className="data-export" onClick={exportDemoData}><Download size={16}/><span><strong>JSON yedeğini indir</strong><small>Görevler, notlar, proje aşamaları ve tercihler</small></span><ArrowRight size={15}/></button></section><section className="surface settings-section danger-section"><header><h3>Demo verisi</h3><p>Yerel değişiklikleri silip başlangıç verisine dön.</p></header><button onClick={()=>{if(window.confirm('Tüm yerel demo değişiklikleri sıfırlansın mı?')){setState(defaultState);notify('Demo verisi sıfırlandı.')}}}><RotateCcw size={15}/> Demo verisini sıfırla</button></section></>}
       </div></div>
     </>
@@ -834,11 +912,11 @@ export default function PersonalOS() {
 
   return <main className="app-shell">
     <div className="ambient-background" aria-hidden="true"><i/><i/><i/></div>
-    <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><CircleDot size={18}/></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item)=>{const NavIcon=item.icon;const isNested=Boolean(item.parent);const isSectionActive=item.id==='kibleteyn'&&active==='programs';return <button key={item.id} className={`${active===item.id?'active ':''}${isNested?'nav-child ':''}${isSectionActive?'section-active':''}`.trim()} onClick={()=>go(item.id)} aria-current={active===item.id?'page':undefined}><span><NavIcon size={isNested?15:17}/></span>{item.label}{item.id==='programs'&&<em>{programs.length + state.customPrograms.length}</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>setModal('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli komutu dene</small></span><ArrowUpRight size={14}/></button><button className="sidebar-profile" onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}><div className="avatar">{profileInitials}</div><span><strong>{state.profile.name}</strong><small>{state.profile.workspace}</small></span><MoreHorizontal size={16}/></button></aside>
+    <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><CircleDot size={18}/></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item)=>{const NavIcon=item.icon;const isNested=Boolean(item.parent);const isSectionActive=item.id==='kibleteyn'&&active==='programs';return <button key={item.id} className={`${active===item.id?'active ':''}${isNested?'nav-child ':''}${isSectionActive?'section-active':''}`.trim()} onClick={()=>go(item.id)} aria-current={active===item.id?'page':undefined}><span><NavIcon size={isNested?15:17}/></span>{item.label}{item.id==='programs'&&<em>{programs.length + state.customPrograms.length}</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>beginCapture('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli kayıt ekle</small></span><ArrowUpRight size={14}/></button><button className="sidebar-profile" onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}><div className="avatar">{profileInitials}</div><span><strong>{state.profile.name}</strong><small>{state.profile.workspace}</small></span><MoreHorizontal size={16}/></button></aside>
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
-    <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli komut" onClick={()=>setModal('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
+    <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli kayıt" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label="Bildirimler" onClick={()=>notify('Yeni bildirimin yok.')}><Bell size={16}/><i className="notification-dot"/></IconButton></div></header><div key={active} className={`content page-${active}`}>{renderPage()}</div></section>
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={active===item.id?'active':''}><NavIcon size={19}/><small>{item.label==='Ana Sayfa'?'Ana':item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
-    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setModal(null)}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi"><IconButton label="Kapat" className="modal-close" onClick={()=>{setModal(null);setVoiceStep('idle')}}><X size={17}/></IconButton>
+    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setModal(null)}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi"><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button key={key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='note'&&<><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YENİ NOT</span><h2>Bir düşünce yakala.</h2><label>Başlık<input autoFocus value={noteDraft.title} onChange={(event)=>setNoteDraft({...noteDraft,title:event.target.value})} placeholder="Not başlığı"/></label><label>Not<textarea value={noteDraft.body} onChange={(event)=>setNoteDraft({...noteDraft,body:event.target.value})} placeholder="Buraya yaz..."/></label><button className="primary-button full" onClick={addNote}>Notu kaydet <Check size={15}/></button></>}
       {modal==='project'&&<><span className="modal-icon"><PanelsTopLeft size={20}/></span><span className="eyebrow">YENİ PROJE</span><h2>Fikre net bir başlangıç ver.</h2><label>Proje adı<input autoFocus value={projectDraft.title} onChange={(event)=>setProjectDraft({...projectDraft,title:event.target.value})} placeholder="Örn. Seyahat planlama uygulaması"/></label><div className="form-row"><label>Aşama<select value={projectDraft.stage} onChange={(event)=>setProjectDraft({...projectDraft,stage:Number(event.target.value)})}>{['Fikirler','Devam ediyor','İnceleme','Tamamlandı'].map((label,index)=><option value={index} key={label}>{label}</option>)}</select></label><label>Renk<select value={projectDraft.color} onChange={(event)=>setProjectDraft({...projectDraft,color:event.target.value})}>{['violet','blue','mint','sand','rose'].map((color)=><option key={color} value={color}>{color}</option>)}</select></label></div><label>Hedef tarih<input value={projectDraft.due} onChange={(event)=>setProjectDraft({...projectDraft,due:event.target.value})} placeholder="Örn. 18 Eyl"/></label><label>Etiketler <small>Virgülle ayır</small><input value={projectDraft.tags} onChange={(event)=>setProjectDraft({...projectDraft,tags:event.target.value})} placeholder="UI, Mobil, Araştırma"/></label><label>İlk görevler <small>Her satıra bir görev</small><textarea value={projectDraft.tasks} onChange={(event)=>setProjectDraft({...projectDraft,tasks:event.target.value})} placeholder={'Kullanıcı akışını çıkar\nİlk ekranı tasarla'}/></label><button className="primary-button full" onClick={addProject}>Projeyi oluştur <ArrowRight size={15}/></button></>}
@@ -849,7 +927,6 @@ export default function PersonalOS() {
       {modal==='capture'&&<><span className="modal-icon">{captureMethod==='voice'?<Mic size={20}/>:<StickyNote size={20}/>}</span><span className="eyebrow">{captureMethod==='voice'?'SESLİ KAYIT':'YAZILI KAYIT'}</span><h2>Kaydı tamamla.</h2>{captureMethod==='voice'&&<button className={`capture-mic ${captureListening?'listening':''}`} onClick={startCaptureVoice}><span>{captureListening?<Square size={16}/>:<Mic size={16}/>}</span><span><strong>{captureListening?'Dinliyorum…':'Konuşarak başlık ekle'}</strong><small>İstersen alttan düzenleyebilirsin</small></span></button>}<label>Başlık<input autoFocus value={captureTitle} onChange={(event)=>setCaptureTitle(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&saveCapture()} placeholder="Kaydetmek istediğin şey"/></label><label>Açıklama <small>İsteğe bağlı</small><textarea value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder="Kısa bir ayrıntı ekle..."/></label><div className="capture-destination"><strong>Nereye kaydedilsin?</strong><label>Sayfa<select value={capturePage} onChange={(event)=>{const page=event.target.value as CapturePage;setCapturePage(page);setCaptureArea(captureAreasFor(page)[0]?.value ?? '');}}>{[{value:'personal',label:'Personal'},{value:'rebuild',label:'6 Aylık Rebuild'},{value:'projects',label:'Projeler'},{value:'kibleteyn',label:'Kıbleteyn'},{value:'programs',label:'Programlar'},{value:'calendar',label:'Takvim'},{value:'notes',label:'Notlar'}].map((item)=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label>Alan<select value={captureArea} onChange={(event)=>setCaptureArea(event.target.value)}>{captureAreasFor(capturePage).map((area)=><option key={area.value} value={area.value}>{area.label}</option>)}</select></label></div><button className="primary-button full" onClick={saveCapture}>Seçilen alana kaydet <ArrowRight size={15}/></button></>}
       {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2><label>Etkinlik adı<input autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat<input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre<input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{['violet','blue','mint','sand','rose','orange'].map((tone)=><option key={tone} value={tone}>{tone}</option>)}</select></label></div><button className="primary-button full" onClick={addEvent}>Takvime ekle <ArrowRight size={15}/></button></>}
       {modal==='profile'&&<><span className="modal-icon"><UserRound size={20}/></span><span className="eyebrow">ÇALIŞMA ALANI</span><h2>Profilini kişiselleştir.</h2><label>İsim<input autoFocus value={profileDraft.name} onChange={(event)=>setProfileDraft({...profileDraft,name:event.target.value})} placeholder="İsmin"/></label><label>Çalışma alanı<input value={profileDraft.workspace} onChange={(event)=>setProfileDraft({...profileDraft,workspace:event.target.value})} placeholder="Örn. Tasarım ve operasyon"/></label><button className="primary-button full" onClick={saveProfile}>Değişiklikleri kaydet <Check size={15}/></button></>}
-      {modal==='voice'&&<VoiceModal step={voiceStep} onStart={startVoice} onAccept={acceptVoice}/>} 
       {modal==='search'&&<><div className="command-input"><Search size={18}/><input autoFocus value={searchText} onChange={(event)=>setSearchText(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter'&&searchResults[0]){go(searchResults[0].id);setModal(null);setSearchText('');}}} placeholder="Sayfa veya özellik ara..."/><kbd>ESC</kbd></div><div className="command-results"><span>Hızlı geçiş</span>{searchResults.length?searchResults.map((item)=>{const ItemIcon=item.icon;return <button key={item.id} onClick={()=>{go(item.id);setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.label}</strong><small>Sayfaya git</small><ChevronRight size={14}/></button>}):<p className="empty-inline">Eşleşen sayfa bulunamadı.</p>}</div><div className="command-footer"><span><Command size={12}/> Orbit hızlı arama</span><span>↵ ilk sonucu aç · esc kapat</span></div></>}
     </section></div>}
     <div className={`toast ${toast?'show':''}`} role="status"><CheckCircle2 size={16}/>{toast}</div>
@@ -860,6 +937,3 @@ function SettingToggle({icon:Icon,title,description,value,onChange}:{icon:Lucide
   return <div className="setting-row"><span className="setting-icon"><Icon size={17}/></span><span><strong>{title}</strong><small>{description}</small></span><button aria-label={`${title} ${value?'kapat':'aç'}`} className={`switch ${value?'on':''}`} onClick={()=>onChange(!value)}><i/></button></div>;
 }
 
-function VoiceModal({step,onStart,onAccept}:{step:'idle'|'listening'|'done';onStart:()=>void;onAccept:()=>void}) {
-  return <div className="voice-demo"><span className="eyebrow">ORBIT ASSISTANT · DEMO</span><h2>{step==='idle'?'Seni dinlemeye hazırım.':step==='listening'?'Dinliyorum...':'Bunu mu demek istedin?'}</h2><p>{step==='done'?'“Yarın 14:00 için tasarım değerlendirmesi ekle.”':'Bir görev, not veya plan söyle. Bu sürüm deneyimi simüle eder.'}</p><div className={`voice-visual ${step}`}><i/><i/><i/><i/><button onClick={step==='done'?onAccept:onStart}>{step==='listening'?<Square size={19}/>:step==='done'?<Check size={21}/>:<Mic size={21}/>}</button><i/><i/><i/><i/></div>{step==='idle'&&<small>Mikrofona dokun ve konuş</small>}{step==='listening'&&<small>Ses algılanıyor · demo</small>}{step==='done'&&<div className="voice-confirm"><button onClick={onStart}>Tekrar dene</button><button onClick={onAccept}>Görevi oluştur <ArrowRight size={14}/></button></div>}</div>;
-}
