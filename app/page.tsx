@@ -320,8 +320,9 @@ export default function PersonalOS() {
   const [eventDraft, setEventDraft] = useState({ title: '', date: todayKey(), time: '10:00', duration: '60 dk', tone: 'violet', description: '', source: '' });
   const [googleCalendarEvents, setGoogleCalendarEvents] = useState<Record<string, CalendarEvent[]>>({});
   const [googleCalendarStatus, setGoogleCalendarStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'>('disconnected');
-  const googleCalendarClientId = GOOGLE_CLIENT_ID || state.calendarIntegration.clientId.trim();
-  const googleCalendarId = GOOGLE_CALENDAR_ID || state.calendarIntegration.calendarId.trim() || 'primary';
+  const [googleConfig, setGoogleConfig] = useState({ clientId: GOOGLE_CLIENT_ID, calendarId: GOOGLE_CALENDAR_ID || 'primary', loaded: Boolean(GOOGLE_CLIENT_ID) });
+  const googleCalendarClientId = googleConfig.clientId || state.calendarIntegration.clientId.trim();
+  const googleCalendarId = googleConfig.calendarId || state.calendarIntegration.calendarId.trim() || 'primary';
   const googleAccessTokenRef = useRef('');
   const [profileDraft, setProfileDraft] = useState(defaultState.profile);
   const [noteSearch, setNoteSearch] = useState('');
@@ -375,6 +376,24 @@ export default function PersonalOS() {
     }
 
     void hydrate();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/google-config', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Google yapılandırması alınamadı')))
+      .then((config: { clientId?: string; calendarId?: string }) => {
+        if (cancelled) return;
+        setGoogleConfig({
+          clientId: config.clientId?.trim() || GOOGLE_CLIENT_ID,
+          calendarId: config.calendarId?.trim() || GOOGLE_CALENDAR_ID || 'primary',
+          loaded: true,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setGoogleConfig((current) => ({ ...current, loaded: true }));
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -1203,7 +1222,13 @@ export default function PersonalOS() {
   });
 
   const requestGoogleAccess = async () => {
-    if (!googleCalendarClientId) {
+    let clientId = googleCalendarClientId;
+    if (!clientId) {
+      const response = await fetch('/api/google-config', { cache: 'no-store' }).catch(() => null);
+      const config = response?.ok ? await response.json() as { clientId?: string } : null;
+      clientId = config?.clientId?.trim() ?? '';
+    }
+    if (!clientId) {
       setGoogleCalendarStatus('error');
       notify('Google bağlantısı henüz uygulama ayarlarında yapılandırılmamış.');
       return null;
@@ -1213,7 +1238,7 @@ export default function PersonalOS() {
       const googleWindow = await loadGoogleIdentity();
       return await new Promise<string>((resolve, reject) => {
         const client = googleWindow.google!.accounts.oauth2.initTokenClient({
-          client_id: googleCalendarClientId,
+          client_id: clientId,
           scope: 'https://www.googleapis.com/auth/calendar.events',
           callback: (response) => response.access_token ? resolve(response.access_token) : reject(new Error(response.error ?? 'Google bağlantısı reddedildi')),
           error_callback: (error) => reject(new Error(error.type ?? 'Google penceresi kapatıldı')),
