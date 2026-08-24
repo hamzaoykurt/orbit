@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "Orbit — Personal OS",
+  "short_name": "Orbit",
+  "description": "Hayatın, projelerin, programların ve hedeflerin için kişisel çalışma alanı.",
+  "lang": "tr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#18151f",
+  "theme_color": "#7564dc",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

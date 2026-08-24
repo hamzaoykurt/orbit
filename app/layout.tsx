@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
+import { PwaRegister } from './pwa-register';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -31,6 +32,13 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(origin),
     title,
     description,
+    manifest: '/manifest.webmanifest',
+    icons: {
+      icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+      shortcut: '/favicon.svg',
+      apple: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    },
+    appleWebApp: { capable: true, title: 'Orbit', statusBarStyle: 'black-translucent' },
     openGraph: { title, description, type: 'website', locale: 'tr_TR', images: [{ url: image, width: 1672, height: 941, alt: 'Orbit Personal OS' }] },
     twitter: { card: 'summary_large_image', title, description, images: [image] },
   };
@@ -47,6 +55,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <PwaRegister />
         {children}
       </body>
     </html>
