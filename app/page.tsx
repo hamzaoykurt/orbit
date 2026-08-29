@@ -1883,16 +1883,61 @@ export default function PersonalOS() {
     const deckPrompts = Array.from({ length: 3 }, (_, index) => deck.prompts[(rebuildDeckOffset + index) % deck.prompts.length]);
     const selectedPrompt = state.rebuildSelections[`${currentWeekKey}-${rebuildDeck}`];
     const todayChecks = state.rebuildDailyChecks[todayKey()] ?? [];
+    const areaById = (id: string) => rebuildMetrics.find((area)=>area.id===id) ?? rebuildMetrics[0];
+    const bodyArea = areaById('body');
+    const languageArea = areaById('language');
+    const soloArea = areaById('solo');
+    const socialArea = areaById('social');
+    const careerArea = areaById('career');
+    const spaceArea = areaById('space');
+    const focusArea = rebuildMetrics.find((area)=>area.title===rebuildArea) ?? rebuildMetrics.reduce((lowest,area)=>area.progress<lowest.progress?area:lowest,rebuildMetrics[0]);
+    const FocusIcon = focusArea.icon;
+    const studioPrompt = selectedPrompt ?? deckPrompts[0];
+    const currentDayIndex = (new Date().getDay()+6)%7;
     return <>
-      <PageTitle eyebrow="REBUILD" title="Altı aylık glow up sistemi." description="Her hafta yenilenen pratikler, gerçek kanıtlar ve bir sonraki seviyen." action={<button className="primary-button compact" onClick={()=>openRebuildActivity('body')}><Plus size={15}/> Kayıt ekle</button>}/>
+      <header className="rebuild-v2-title"><div><span className="eyebrow">6 AYLIK REBUILD · AY {month+1}</span><h1>Hayatını yönetme.<br/><em>Yönünü geri kazan.</em></h1><p>Bu ekran bir kontrol listesi değil. Bugün enerjini nereye vereceğini gösteren yaşayan bir çalışma alanı.</p></div><div className="rebuild-v2-phase"><span>{String(month+1).padStart(2,'0')}</span><div><small>ŞİMDİKİ FAZ</small><strong>{roadmapMonths[month].phase}</strong><em>{weekLabel}</em></div></div></header>
 
-      <section className="surface rebuild-command-center">
-        <div className="rebuild-command-copy"><span className="eyebrow">AY 1 / 6 · REACTIVATION</span><h1>Hayatını tikleme.<br/>Her hafta yeniden inşa et.</h1><p>Hedefler her pazartesi yeniden açılır. Yaptığın her pratik kanıt olarak kalır; altı ay bittiğinde sistem yeni bir döngüyle devam eder.</p><div className="rebuild-command-actions"><button className="primary-button" onClick={()=>openRebuildActivity('body')}><Plus size={15}/> Bugünü kaydet</button><button className="ghost-button" onClick={openRebuildReview}><BookOpen size={15}/>{currentWeekReview?'Değerlendirmeyi aç':'Haftayı değerlendir'}</button></div></div>
-        <div className="rebuild-level-card"><span className="rebuild-level-orbit" style={{'--level-progress':rebuildLevelProgress*3.6} as CSSProperties}><strong>{rebuildLevel}</strong><small>SEVİYE</small></span><div><span>Glow Up seviyesi</span><strong>{rebuildLevel < 3 ? 'Aktivasyon' : rebuildLevel < 6 ? 'İvme' : 'Dönüşüm'}</strong><div className="rebuild-xp-track"><i style={{width:`${rebuildLevelProgress}%`}}/></div><small>{rebuildXp % 250} / 250 XP · yalnızca gerçek kayıtlardan</small></div></div>
-        <div className="rebuild-command-stats"><div><strong>{rebuildProgress}%</strong><small>haftalık ritim</small></div><div><strong>{currentWeekActivities.length}</strong><small>kanıt</small></div><div><strong>{currentWeekMinutes}</strong><small>dakika</small></div><div><strong>{rebuildStreak}</strong><small>hafta seri</small></div></div>
+      <section className="surface rebuild-v2-now">
+        <div className="rebuild-v2-focus"><span className={`area-icon ${focusArea.color}`}><FocusIcon size={21}/></span><div><span className="eyebrow">BUGÜNÜN YÖNÜ</span><h2>{focusArea.quickActions[0]}</h2><p>{focusArea.title} alanında küçük ve gerçek bir iz bırak. Kusursuz olması gerekmiyor; başlamış olması yeter.</p><button onClick={()=>openRebuildActivity(focusArea.id,focusArea.quickActions[0])}>Buradan başla <ArrowRight size={14}/></button></div></div>
+        <div className="rebuild-v2-week"><div className="rebuild-v2-week-ring" style={{'--week-progress':`${rebuildProgress*3.6}deg`} as CSSProperties}><strong>{rebuildProgress}%</strong><small>BU HAFTA</small></div><div className="rebuild-v2-days">{['P','S','Ç','P','C','C','P'].map((day,index)=><span key={`${day}-${index}`} className={`${index===currentDayIndex?'today ':''}${index<currentDayIndex?'past':''}`.trim()}><i>{day}</i><b>{currentWeekActivities.some((activity)=>{const d=new Date(`${activity.date}T12:00:00`);return (d.getDay()+6)%7===index})&&<Check size={10}/>}</b></span>)}</div></div>
+        <div className="rebuild-v2-signal"><span><strong>{currentWeekActivities.length}</strong><small>gerçek iz</small></span><span><strong>{currentWeekMinutes}</strong><small>odak dakikası</small></span><span><strong>{rebuildStreak}</strong><small>haftalık seri</small></span><button onClick={openRebuildReview}><BookOpen size={14}/>{currentWeekReview?'Pusulayı aç':'Haftayı çözümle'}</button></div>
       </section>
 
-      <section className="rebuild-week-section">
+      <section className="rebuild-v2-world">
+        <article className="surface rebuild-v2-body">
+          <header><span className="rebuild-v2-zone-icon"><Dumbbell size={20}/></span><div><span className="eyebrow">BEDEN · ENERJİ TABANI</span><h2>{state.rebuildBodyPlan.name}</h2></div><strong>{bodyArea.progress}%</strong><button aria-label="Beden programını düzenle" onClick={openRebuildBodyPlan}><Pencil size={14}/></button></header>
+          <div className="rebuild-v2-workouts">{state.rebuildBodyPlan.workouts.map((workout,index)=><button key={workout} onClick={()=>openRebuildActivity('body',workout)}><span>{String.fromCharCode(65+index)}</span><div><small>ANTRENMAN {index+1}</small><strong>{workout}</strong></div><Play size={14}/></button>)}</div>
+          <div className="rebuild-v2-recovery"><div><span className="eyebrow">BUGÜNÜN TABANI</span><strong>{todayChecks.length}/{state.rebuildBodyPlan.nutrition.length}</strong></div>{state.rebuildBodyPlan.nutrition.map((item)=><button className={todayChecks.includes(item)?'checked':''} key={item} onClick={()=>toggleRebuildDailyCheck(item)}><span>{todayChecks.includes(item)&&<Check size={11}/>}</span>{item}</button>)}</div>
+          <footer><span>Bu hafta {bodyArea.value}/{bodyArea.target} antrenman</span><button onClick={openFitnessProject}>Fitness projesini aç <ArrowRight size={13}/></button></footer>
+        </article>
+
+        <article className="surface rebuild-v2-studio">
+          <header><div><span className="eyebrow">ÜRETİM STÜDYOSU</span><h2>Meraktan çıktıya.</h2></div><span className="rebuild-v2-zone-icon studio"><DeckIcon size={20}/></span></header>
+          <nav>{(Object.keys(rebuildDecks) as (keyof typeof rebuildDecks)[]).map((kind)=>{const ItemIcon=rebuildDecks[kind].icon;return <button key={kind} className={rebuildDeck===kind?'active':''} onClick={()=>{setRebuildDeck(kind);setRebuildDeckOffset(0)}}><ItemIcon size={13}/>{rebuildDecks[kind].label}</button>})}</nav>
+          <div className="rebuild-v2-studio-card"><span>{deck.eyebrow}</span><h3>{studioPrompt}</h3><p>{rebuildDeck==='curiosity'?'Bir cevap bulma; anlayabildiğini gösterecek küçük bir çıktı üret.':rebuildDeck==='creative'?'Tek ekran, tek sahne veya tek görsel. Kapsamı değil kaliteyi koru.':'Rotayı seç, dışarı çık ve döndüğünde tek bir gözlem bırak.'}</p><div><button onClick={()=>chooseRebuildPrompt(rebuildDeck,studioPrompt)}>{selectedPrompt===studioPrompt?<><Check size={13}/> Bu haftanın işi</>:<><Flag size={13}/> Bu haftaya al</>}</button><button onClick={()=>openRebuildActivity(rebuildDeck==='creative'?'creativity':rebuildDeck,studioPrompt)}>Üretime geç <ArrowRight size={13}/></button></div></div>
+          <button className="rebuild-v2-shuffle" onClick={()=>setRebuildDeckOffset((current)=>(current+1)%deck.prompts.length)}><RefreshCw size={13}/> Başka bir kıvılcım</button>
+          <div className="rebuild-v2-voice"><span><Mic size={17}/></span><div><small>İNGİLİZCE & DİKSİYON</small><strong>15 dakikalık ses provası</strong><em>Bu hafta {languageArea.value}/{languageArea.target} pratik</em></div><button onClick={()=>openRebuildActivity('language','15 dakikalık ses provası')}><Play size={13}/></button></div>
+        </article>
+
+        <article className="surface rebuild-v2-outside">
+          <header><div><span className="eyebrow">DIŞ DÜNYA</span><h2>Özgüven içeride hazırlanmaz.</h2></div><Compass size={22}/></header>
+          <div className="rebuild-v2-outside-route"><span>BU HAFTANIN ROTASI</span><h3>{state.rebuildSelections[`${currentWeekKey}-solo`]??'Yeni bir semtte 45 dakikalık fotoğraf yürüyüşü'}</h3><p>Tek başına çık, çevreyi gözlemle ve en az bir küçük etkileşim kur.</p><button onClick={()=>scheduleItem(state.rebuildSelections[`${currentWeekKey}-solo`]??soloArea.quickActions[0],'Rebuild · Solo keşif')}>Takvimde yer aç <CalendarDays size={14}/></button></div>
+          <div className="rebuild-v2-social-pulse"><span><Users size={17}/></span><div><small>SOSYAL NABIZ</small><strong>{socialArea.value}/{socialArea.target} temas</strong><em>Düzenli ortam kur, tek seferlik kalma.</em></div><button onClick={()=>openRebuildActivity('social','Yeni bir sosyal temas')}><Plus size={14}/></button></div>
+        </article>
+
+        <article className="surface rebuild-v2-future">
+          <header><span className="eyebrow">UZUN OYUN</span><h2>Geleceğe iki gerçek deney.</h2></header>
+          <div className="rebuild-v2-bet career"><span><BriefcaseBusiness size={19}/></span><div><small>KARİYER & PARA</small><strong>İlk dış gelir deneyi</strong><p>Beceri → örnek iş → gerçek kişiye ulaş.</p><i><b style={{width:`${careerArea.progress}%`}}/></i></div><button onClick={()=>openRebuildActivity('career','Gerçek kişiye ulaş')}><ArrowUpRight size={14}/></button></div>
+          <div className="rebuild-v2-bet space"><span><Rocket size={19}/></span><div><small>UZAY MÜHENDİSLİĞİ TESTİ</small><strong>Seviyor muyum, dene.</strong><p>Teori değil; 90 dakikalık gerçek mini deney.</p><i><b style={{width:`${spaceArea.progress}%`}}/></i></div><button onClick={()=>openRebuildActivity('space','90 dakikalık mühendislik testi')}><ArrowUpRight size={14}/></button></div>
+        </article>
+
+        <aside className="surface rebuild-v2-evidence">
+          <header><div><span className="eyebrow">BU HAFTANIN İZLERİ</span><h2>{currentWeekActivities.length?`${currentWeekActivities.length} kez ortaya çıktın.`:'İlk izi bugün bırak.'}</h2></div><span>{currentWeekMinutes} dk</span></header>
+          <div>{currentWeekActivities.slice(0,5).map((activity)=>{const area=rebuildAreas.find((item)=>item.id===activity.areaId);const ItemIcon=area?.icon??Circle;return <article key={activity.id}><i className={`area-icon ${area?.color??'violet'}`}><ItemIcon size={14}/></i><span><strong>{activity.title}</strong><small>{area?.title} · {activity.date}</small></span><em>{activity.duration} dk</em></article>})}{!currentWeekActivities.length&&<div className="rebuild-v2-empty-evidence"><Sparkles size={18}/><p>Yukarıdaki bölgelerden birine dokun. Sistem seni boş bir forma değil, doğrudan o işe götürsün.</p></div>}</div>
+        </aside>
+      </section>
+
+      <section className="rebuild-week-section legacy-rebuild-week">
         <div className="section-header"><div><span className="eyebrow">BU HAFTA · {weekLabel.toLocaleUpperCase('tr')}</span><h2>Sekiz gelişim alanı</h2><p>Tik atıp bitmez; kayıt ekledikçe gelişir, yeni haftada yeniden başlar.</p></div><button className="ghost-button" onClick={()=>openRebuildActivity(rebuildAreas.find((area)=>area.title===rebuildArea)?.id??'body')}><Plus size={14}/> Açık alana kayıt</button></div>
         <div className="area-grid rebuild-area-grid">{rebuildMetrics.map((area) => {
           const AreaIcon = area.icon;
@@ -1922,7 +1967,7 @@ export default function PersonalOS() {
         })}</div>
       </section>
 
-      <section className="surface rebuild-deck-lab analytics-bottom">
+      <section className="surface rebuild-deck-lab analytics-bottom legacy-rebuild-deck">
         <div className="rebuild-deck-head"><div><span className="eyebrow">KARARSIZLIĞI AZALTAN LAB</span><h2>Yaratıcı görev desteleri</h2><p>“Bir şey araştır” gibi boş görevler yok. Bir soru, somut çıktı ve başlayacağın ilk adım var.</p></div><span className="rebuild-deck-icon"><DeckIcon size={22}/></span></div>
         <div className="rebuild-deck-tabs">{(Object.keys(rebuildDecks) as (keyof typeof rebuildDecks)[]).map((kind)=>{const ItemIcon=rebuildDecks[kind].icon;return <button key={kind} className={rebuildDeck===kind?'active':''} onClick={()=>{setRebuildDeck(kind);setRebuildDeckOffset(0)}}><ItemIcon size={14}/>{rebuildDecks[kind].label}</button>})}</div>
         {selectedPrompt&&<div className="selected-mission"><CheckCircle2 size={16}/><span><small>BU HAFTAYA SEÇİLDİ</small><strong>{selectedPrompt}</strong></span><button onClick={()=>openRebuildActivity(rebuildDeck==='creative'?'creativity':rebuildDeck,selectedPrompt)}>Kayıt aç <ArrowRight size={13}/></button></div>}
