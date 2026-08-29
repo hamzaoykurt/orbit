@@ -54,6 +54,7 @@ type StoredGoogleSession = { accessToken: string; expiresAt: number; reconnect: 
 type RebuildActivity = { id: string; areaId: string; title: string; date: string; duration: number; note: string; rating: number; createdAt: string };
 type RebuildReview = { weekKey: string; win: string; friction: string; nextFocus: string; energy: number; createdAt: string };
 type RebuildBodyPlan = { name: string; workouts: string[]; nutrition: string[] };
+type ResearchIdea = { id: string; title: string; kind: 'curiosity' | 'creative' | 'solo'; status: 'spark' | 'exploring' | 'making'; createdAt: string };
 type PersistedState = {
   completed: Record<string, boolean>;
   customPersonal: Record<string, string[]>;
@@ -76,6 +77,7 @@ type PersistedState = {
   rebuildActivities: RebuildActivity[];
   rebuildReviews: Record<string, RebuildReview>;
   rebuildSelections: Record<string, string>;
+  researchIdeas: ResearchIdea[];
   rebuildBodyPlan: RebuildBodyPlan;
   rebuildDailyChecks: Record<string, string[]>;
   calendarEvents: Record<string, CalendarEvent[]>;
@@ -129,6 +131,7 @@ const defaultState: PersistedState = {
   rebuildActivities: [],
   rebuildReviews: {},
   rebuildSelections: {},
+  researchIdeas: [],
   rebuildBodyPlan: { name: 'Glow Up · Temel Program', workouts: ['Program A · Üst vücut', 'Program B · Alt vücut', 'Program C · Full body / kondisyon'], nutrition: ['Protein hedefini tamamla', 'Sebze ve lif ekle', '2–2,5 litre su iç', 'Uyku saatini koru'] },
   rebuildDailyChecks: {},
   calendarEvents: {},
@@ -178,6 +181,7 @@ function mergePersistedState(value: unknown): PersistedState {
     rebuildActivities: Array.isArray(saved.rebuildActivities) ? saved.rebuildActivities : defaultState.rebuildActivities,
     rebuildReviews: saved.rebuildReviews && typeof saved.rebuildReviews === 'object' && !Array.isArray(saved.rebuildReviews) ? saved.rebuildReviews : defaultState.rebuildReviews,
     rebuildSelections: saved.rebuildSelections && typeof saved.rebuildSelections === 'object' && !Array.isArray(saved.rebuildSelections) ? saved.rebuildSelections : defaultState.rebuildSelections,
+    researchIdeas: Array.isArray(saved.researchIdeas) ? saved.researchIdeas : defaultState.researchIdeas,
     rebuildBodyPlan: saved.rebuildBodyPlan && typeof saved.rebuildBodyPlan === 'object' && !Array.isArray(saved.rebuildBodyPlan) ? { ...defaultState.rebuildBodyPlan, ...saved.rebuildBodyPlan } : defaultState.rebuildBodyPlan,
     rebuildDailyChecks: saved.rebuildDailyChecks && typeof saved.rebuildDailyChecks === 'object' && !Array.isArray(saved.rebuildDailyChecks) ? saved.rebuildDailyChecks : defaultState.rebuildDailyChecks,
     calendarEvents: saved.calendarEvents && typeof saved.calendarEvents === 'object' && !Array.isArray(saved.calendarEvents) ? saved.calendarEvents : defaultState.calendarEvents,
@@ -258,40 +262,50 @@ const rebuildDecks = {
   curiosity: {
     label: 'Merak Destesi', eyebrow: 'SORU SEÇ', icon: Sparkles,
     prompts: [
-      'Bir gezegenin yörüngesi neden zamanla elipse dönüşür?',
-      'Dinozorların tüyleri olduğunu bugün hangi kanıtlardan biliyoruz?',
-      'Bir roket uzay boşluğunda kendini neye doğru iter?',
-      '1970’lerin gelecek tasarımları bugünkü arayüzleri nasıl etkiledi?',
-      'Yapay zekâ bir görüntünün derinliğini nasıl tahmin eder?',
-      'İnsan gözü renkleri neden bir kameradan farklı algılar?',
-      'GPS konumumuzu bulurken görelilik neden önemlidir?',
-      'Bir uzay aracının Dünya’ya dönüşte yanmamasını ne sağlar?',
+      'Bir gezegenin gün batımı renginden atmosferinin kimyasını anlayabilir miyiz?',
+      'Dinozorların gece avlanıp avlanmadığını yalnızca kafataslarından nasıl çıkarırız?',
+      'Bir şehir yalnızca seslerinden haritalansaydı hangi mahalleler birbirine benzerdi?',
+      'Uzayda yön duygusu olmayan bir astronot “yukarıyı” nasıl yeniden öğrenir?',
+      'Bir yapay zekâ görseline “gelecekten gelmiş” hissi veren görünmez kurallar neler?',
+      'Okyanusun altında GPS olmadan bir robot nerede olduğunu nasıl bilir?',
+      'Bir ısı kalkanı yanarken uzay aracını nasıl soğuk tutar?',
+      'Zamanı sayı kullanmadan bir arayüzde nasıl görünür hale getirebiliriz?',
+      'Bir kara deliği doğrudan göremiyorsak fotoğrafını gerçekte nasıl çekiyoruz?',
+      'Kuş sürüleri merkezi bir lider olmadan neden tek organizma gibi hareket eder?',
+      'Mars toprağının kokusunu Dünya’da bilimsel olarak yeniden üretebilir miyiz?',
+      'İnsan hafızası bir dosya sistemi olsaydı en çok hangi tasarım hatasını yapardı?',
     ],
   },
   creative: {
     label: 'Yaratıcı Deste', eyebrow: 'ÜRETİM SEÇ', icon: Palette,
     prompts: [
-      'Retro-fütüristik bir telefon ana ekranı tasarla.',
-      'Bir dinozor müzesi için dokunmatik keşif ekranı üret.',
-      'Tek gezegenli, sakin bir yörünge simülasyonu prototiple.',
-      'Bir uzay aracı kokpitinin yalnızca navigasyon ekranını tasarla.',
-      'Bilimsel bir konuyu tek poster ve üç cümleyle anlat.',
-      'Çektiğin bir fotoğrafa sinematik bir renk dili oluştur.',
-      'Gelecekten gelmiş bir günlük uygulamasının bir akışını tasarla.',
-      'Bir fizik kavramını sürükle-bırak ile anlatan mini deney yap.',
+      'Europa’nın buz altı okyanusuna inen robot için keşif konsolu tasarla.',
+      'Bir dinozor fosilinin zaman katmanlarını dokunarak açan müze deneyimi üret.',
+      'Gezegen yörüngelerini sese dönüştüren sakin bir müzik arayüzü prototiple.',
+      'Ay üssü için ışık kullanmadan çalışan sessiz acil durum ekranı tasarla.',
+      'İstanbul 2080 için toplu taşıma kartı ve tek ekranlık yolculuk deneyimi üret.',
+      'Kullanıcının merak yönüne göre büyüyen canlı bir bilgi haritası tasarla.',
+      'Bir kara deliğin yakınında zamanı hissettiren tek sahnelik mikro deney yap.',
+      'Retro-fütüristik bir hava durumu cihazını ürün ve arayüz olarak tasarla.',
+      'Bir uzay aracının yalnızca gölgelerle çalışan navigasyon ekranını üret.',
+      'Fotoğraflarından kişisel bir renk gezegeni oluşturan görsel araç tasarla.',
+      'Bir fizik kavramını hiç metin kullanmadan öğreten sürükle-bırak deneyi yap.',
+      'Gelecekten bulunmuş bir kişisel işletim sisteminin kayıp ekranını tasarla.',
     ],
   },
   solo: {
     label: 'Solo Keşif', eyebrow: 'DIŞARI ÇIK', icon: Compass,
     prompts: [
-      'Daha önce inmediğin bir durakta in ve 45 dakika yürü.',
-      'Bir kitapçıya git; ilgini çeken üç kapağı fotoğraflandır.',
-      'Gün batımında sahilde telefonsuz 30 dakika geçir.',
-      'Bir müze veya sergide tek bir eser seçip not al.',
-      'Yeni bir kafede tek başına otur ve çevreyi eskizle.',
-      'Fotoğraf yürüyüşünde yalnızca geometrik şekilleri çek.',
-      'Yakındaki bir etkinliğe git ve bir kişiye açık uçlu soru sor.',
-      'Şehrinde turist gibi davranıp daha önce görmediğin bir rotayı gez.',
+      'Daha önce inmediğin bir durakta in; dönüş yolunu yalnızca dikkatini çeken renklerle kur.',
+      'Bir kitapçıda aynı konuya ait üç zıt kapağı bul ve nedenlerini fotoğrafla.',
+      'Gün batımında sahilde 30 dakika boyunca yalnızca değişen sesleri kaydet.',
+      'Bir müzede herkesin geçtiği ama kimsenin durmadığı tek eseri seç.',
+      'Yeni bir kafede otur ve mekânın gelecekteki arayüzünü peçeteye çiz.',
+      'Fotoğraf yürüyüşünde şehrin tesadüfen oluşmuş “uzay gemisi parçalarını” bul.',
+      'Yakındaki bir etkinlikte bir kişiye bugün öğrendiği en tuhaf şeyi sor.',
+      'Şehrinde bir film karakterinin tek günlük rotasını tasarla ve ilk durağına git.',
+      'Bir semti yalnızca tabelalarının tipografisine bakarak keşfet.',
+      'Bir saat boyunca telefon haritasını açmadan üç küçük keşif noktası bul.',
     ],
   },
 } as const;
@@ -1496,6 +1510,24 @@ export default function PersonalOS() {
     notify('Bu haftanın odağı seçildi.');
   };
 
+  const saveResearchIdea = (kind: ResearchIdea['kind'], prompt: string) => {
+    if (state.researchIdeas.some((idea)=>idea.title===prompt)) { notify('Bu fikir zaten Araştırma Kuyruğu’nda.'); return; }
+    const idea: ResearchIdea = { id: `research-${Date.now()}`, title: prompt, kind, status: 'spark', createdAt: new Date().toISOString() };
+    setState((current)=>({...current,researchIdeas:[idea,...current.researchIdeas]}));
+    notify('Fikir Araştırma Kuyruğu’na kaydedildi.');
+  };
+
+  const advanceResearchIdea = (id: string) => {
+    const labels: Record<ResearchIdea['status'],string> = { spark:'Araştırmaya alındı.', exploring:'Çıktı aşamasına geçti.', making:'Fikir yeniden kıvılcım alanına taşındı.' };
+    setState((current)=>({...current,researchIdeas:current.researchIdeas.map((idea)=>idea.id===id?{...idea,status:idea.status==='spark'?'exploring':idea.status==='exploring'?'making':'spark'}:idea)}));
+    const currentIdea=state.researchIdeas.find((idea)=>idea.id===id);if(currentIdea)notify(labels[currentIdea.status]);
+  };
+
+  const removeResearchIdea = (id: string) => {
+    setState((current)=>({...current,researchIdeas:current.researchIdeas.filter((idea)=>idea.id!==id)}));
+    notify('Fikir kuyruktan kaldırıldı.');
+  };
+
   const turnPromptIntoProject = (prompt: string) => {
     const title = prompt.replace(/[.!?]+$/, '');
     if ([...projectSeed, ...state.customProjects].some((project) => project.title === title)) { notify('Bu fikir zaten Projeler’de.'); return; }
@@ -1914,7 +1946,7 @@ export default function PersonalOS() {
         <article className="surface rebuild-v2-studio">
           <header><div><span className="eyebrow">ÜRETİM STÜDYOSU</span><h2>Meraktan çıktıya.</h2></div><span className="rebuild-v2-zone-icon studio"><DeckIcon size={20}/></span></header>
           <nav>{(Object.keys(rebuildDecks) as (keyof typeof rebuildDecks)[]).map((kind)=>{const ItemIcon=rebuildDecks[kind].icon;return <button key={kind} className={rebuildDeck===kind?'active':''} onClick={()=>{setRebuildDeck(kind);setRebuildDeckOffset(0)}}><ItemIcon size={13}/>{rebuildDecks[kind].label}</button>})}</nav>
-          <div className="rebuild-v2-studio-card"><span>{deck.eyebrow}</span><h3>{studioPrompt}</h3><p>{rebuildDeck==='curiosity'?'Bir cevap bulma; anlayabildiğini gösterecek küçük bir çıktı üret.':rebuildDeck==='creative'?'Tek ekran, tek sahne veya tek görsel. Kapsamı değil kaliteyi koru.':'Rotayı seç, dışarı çık ve döndüğünde tek bir gözlem bırak.'}</p><div><button onClick={()=>chooseRebuildPrompt(rebuildDeck,studioPrompt)}>{selectedPrompt===studioPrompt?<><Check size={13}/> Bu haftanın işi</>:<><Flag size={13}/> Bu haftaya al</>}</button><button onClick={()=>openRebuildActivity(rebuildDeck==='creative'?'creativity':rebuildDeck,studioPrompt)}>Üretime geç <ArrowRight size={13}/></button></div></div>
+          <div className="rebuild-v2-studio-card"><span>{deck.eyebrow}</span><h3>{studioPrompt}</h3><p>{rebuildDeck==='curiosity'?'Bir cevap bulma; anlayabildiğini gösterecek küçük bir çıktı üret.':rebuildDeck==='creative'?'Tek ekran, tek sahne veya tek görsel. Kapsamı değil kaliteyi koru.':'Rotayı seç, dışarı çık ve döndüğünde tek bir gözlem bırak.'}</p><div><button onClick={()=>chooseRebuildPrompt(rebuildDeck,studioPrompt)}>{selectedPrompt===studioPrompt?<><Check size={13}/> Bu haftanın işi</>:<><Flag size={13}/> Bu haftaya al</>}</button>{rebuildDeck==='creative'?<button onClick={()=>turnPromptIntoProject(studioPrompt)}><PanelsTopLeft size={13}/> Projeye kaydet</button>:<button onClick={()=>saveResearchIdea(rebuildDeck,studioPrompt)}><BookOpen size={13}/> {rebuildDeck==='solo'?'Keşiflere kaydet':'Araştırmaya kaydet'}</button>}<button onClick={()=>openRebuildActivity(rebuildDeck==='creative'?'creativity':rebuildDeck,studioPrompt)}>Başla <ArrowRight size={13}/></button></div></div>
           <button className="rebuild-v2-shuffle" onClick={()=>setRebuildDeckOffset((current)=>(current+1)%deck.prompts.length)}><RefreshCw size={13}/> Başka bir kıvılcım</button>
           <div className="rebuild-v2-voice"><span><Mic size={17}/></span><div><small>İNGİLİZCE & DİKSİYON</small><strong>15 dakikalık ses provası</strong><em>Bu hafta {languageArea.value}/{languageArea.target} pratik</em></div><button onClick={()=>openRebuildActivity('language','15 dakikalık ses provası')}><Play size={13}/></button></div>
         </article>
@@ -1935,6 +1967,12 @@ export default function PersonalOS() {
           <header><div><span className="eyebrow">BU HAFTANIN İZLERİ</span><h2>{currentWeekActivities.length?`${currentWeekActivities.length} kez ortaya çıktın.`:'İlk izi bugün bırak.'}</h2></div><span>{currentWeekMinutes} dk</span></header>
           <div>{currentWeekActivities.slice(0,5).map((activity)=>{const area=rebuildAreas.find((item)=>item.id===activity.areaId);const ItemIcon=area?.icon??Circle;return <article key={activity.id}><i className={`area-icon ${area?.color??'violet'}`}><ItemIcon size={14}/></i><span><strong>{activity.title}</strong><small>{area?.title} · {activity.date}</small></span><em>{activity.duration} dk</em></article>})}{!currentWeekActivities.length&&<div className="rebuild-v2-empty-evidence"><Sparkles size={18}/><p>Yukarıdaki bölgelerden birine dokun. Sistem seni boş bir forma değil, doğrudan o işe götürsün.</p></div>}</div>
         </aside>
+      </section>
+
+      <section className="surface research-vault">
+        <header><div><span className="eyebrow">ARAŞTIRMA KUYRUĞU</span><h2>Merakı kaybetme; bir çıktıya dönüştür.</h2><p>İlgini çeken fikirleri önce sakla, sonra araştırmaya al ve öğrendiğini görünür bir şeye çevir.</p></div><div className="research-vault-count"><strong>{state.researchIdeas.length}</strong><span>saklı fikir</span></div></header>
+        <div className="research-vault-flow"><span><i>01</i>Kıvılcım</span><ArrowRight size={13}/><span><i>02</i>Araştırılıyor</span><ArrowRight size={13}/><span><i>03</i>Çıktıya dönüşüyor</span></div>
+        <div className="research-vault-lanes">{([{id:'spark',label:'KIVILCIM',empty:'Merak destesinden sakladığın fikirler burada birikir.'},{id:'exploring',label:'ARAŞTIRMADA',empty:'Bir fikri araştırmaya aldığında kaynak ve bağlantıları burada büyür.'},{id:'making',label:'ÇIKTI MASASI',empty:'Anladığını diyagram, simülasyon veya anlatıma dönüştür.'}] as const).map((lane)=><section key={lane.id} className={`research-lane ${lane.id}`}><header><span>{lane.label}</span><b>{state.researchIdeas.filter((idea)=>idea.status===lane.id).length}</b></header><div>{state.researchIdeas.filter((idea)=>idea.status===lane.id).map((idea)=>{const IdeaIcon=idea.kind==='curiosity'?Sparkles:idea.kind==='creative'?Palette:Compass;return <article key={idea.id}><div><span className={`research-kind ${idea.kind}`}><IdeaIcon size={13}/>{idea.kind==='curiosity'?'Merak':idea.kind==='creative'?'Yaratıcı':'Keşif'}</span><button aria-label="Fikri kaldır" onClick={()=>removeResearchIdea(idea.id)}><X size={12}/></button></div><h3>{idea.title}</h3><p>{idea.kind==='curiosity'?'Önerilen çıktı · İnteraktif diyagram veya görsel anlatım':idea.kind==='creative'?'Önerilen çıktı · Tek sahnelik prototip': 'Önerilen çıktı · Fotoğraf hikâyesi ve keşif notu'}</p>{idea.status==='making'?<button className="research-card-action evidence" onClick={()=>openRebuildActivity(idea.kind==='creative'?'creativity':idea.kind,idea.title)}><CheckCircle2 size={13}/> Çıktıyı kaydet</button>:<button className="research-card-action" onClick={()=>advanceResearchIdea(idea.id)}>{idea.status==='spark'?<><BookOpen size={13}/> Araştırmaya al</>:<><PanelsTopLeft size={13}/> Çıktıya dönüştür</>}<ArrowRight size={12}/></button>}</article>})}{!state.researchIdeas.some((idea)=>idea.status===lane.id)&&<div className="research-lane-empty"><CircleDot size={15}/><p>{lane.empty}</p></div>}</div></section>)}</div>
       </section>
 
       <section className="rebuild-week-section legacy-rebuild-week">
