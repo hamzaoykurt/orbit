@@ -67,6 +67,7 @@ type PersistedState = {
   projectEdits: Record<string, Partial<Project>>;
   projectExtraTasks: Record<string, string[]>;
   projectRemovedTasks: Record<string, string[]>;
+  projectSubtasks: Record<string, PersonalSubtask[]>;
   customPrograms: Program[];
   removedProgramIds: string[];
   programEdits: Record<string, Partial<Program>>;
@@ -121,6 +122,7 @@ const defaultState: PersistedState = {
   projectEdits: {},
   projectExtraTasks: {},
   projectRemovedTasks: {},
+  projectSubtasks: {},
   customPrograms: [],
   removedProgramIds: [],
   programEdits: {},
@@ -171,6 +173,7 @@ function mergePersistedState(value: unknown): PersistedState {
     projectEdits: saved.projectEdits && typeof saved.projectEdits === 'object' && !Array.isArray(saved.projectEdits) ? saved.projectEdits : defaultState.projectEdits,
     projectExtraTasks: saved.projectExtraTasks && typeof saved.projectExtraTasks === 'object' && !Array.isArray(saved.projectExtraTasks) ? saved.projectExtraTasks : defaultState.projectExtraTasks,
     projectRemovedTasks: saved.projectRemovedTasks && typeof saved.projectRemovedTasks === 'object' && !Array.isArray(saved.projectRemovedTasks) ? saved.projectRemovedTasks : defaultState.projectRemovedTasks,
+    projectSubtasks: saved.projectSubtasks && typeof saved.projectSubtasks === 'object' && !Array.isArray(saved.projectSubtasks) ? saved.projectSubtasks : defaultState.projectSubtasks,
     customPrograms: Array.isArray(saved.customPrograms) ? saved.customPrograms : defaultState.customPrograms,
     removedProgramIds: Array.isArray(saved.removedProgramIds) ? saved.removedProgramIds : defaultState.removedProgramIds,
     programEdits: saved.programEdits && typeof saved.programEdits === 'object' && !Array.isArray(saved.programEdits) ? saved.programEdits : defaultState.programEdits,
@@ -387,6 +390,8 @@ export default function PersonalOS() {
   const [toast, setToast] = useState('');
   const [expandedProject, setExpandedProject] = useState<string | null>('pos');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [projectSubtaskParent, setProjectSubtaskParent] = useState<string | null>(null);
+  const [projectSubtaskDraft, setProjectSubtaskDraft] = useState('');
   const [projectDrag, setProjectDrag] = useState<ProjectDragState | null>(null);
   const projectDragRef = useRef<ProjectDragState | null>(null);
   const projectDragTimerRef = useRef<number | null>(null);
@@ -1121,6 +1126,19 @@ export default function PersonalOS() {
     ...project.tasks,
     ...(state.projectExtraTasks[project.id] ?? []),
   ].filter((task) => !(state.projectRemovedTasks[project.id] ?? []).includes(task));
+
+  const addProjectSubtask = (projectId: string, taskIndex: number) => {
+    if (!projectSubtaskDraft.trim()) return;
+    const key = `${projectId}:${taskIndex}`;
+    const subtask: PersonalSubtask = { id: `project-subtask-${Date.now()}`, title: projectSubtaskDraft.trim() };
+    setState((current)=>({...current,projectSubtasks:{...current.projectSubtasks,[key]:[...(current.projectSubtasks[key]??[]),subtask]}}));
+    setProjectSubtaskDraft('');setProjectSubtaskParent(null);notify('Alt görev eklendi.');
+  };
+
+  const removeProjectSubtask = (key: string, subtask: PersonalSubtask) => {
+    setState((current)=>({...current,projectSubtasks:{...current.projectSubtasks,[key]:(current.projectSubtasks[key]??[]).filter((item)=>item.id!==subtask.id)},completed:Object.fromEntries(Object.entries(current.completed).filter(([id])=>id!==subtask.id))}));
+    notify('Alt görev kaldırıldı.');
+  };
 
   const openProjectEdit = (project: Project) => {
     setEditingProjectId(project.id);
@@ -2045,8 +2063,10 @@ export default function PersonalOS() {
             <div className="kanban-stack">
               {stageProjects.map((project) => {
                 const tasks = visibleProjectTasks(project);
-                const done = tasks.filter((_, index) => state.completed[`project-${project.id}-${index}`]).length;
-                const progress = completionRate(done, tasks.length);
+                const nestedSubtasks = tasks.flatMap((_,index)=>state.projectSubtasks[`${project.id}:${index}`]??[]);
+                const done = tasks.filter((_, index) => state.completed[`project-${project.id}-${index}`]).length+nestedSubtasks.filter((subtask)=>state.completed[subtask.id]).length;
+                const totalTaskCount = tasks.length+nestedSubtasks.length;
+                const progress = completionRate(done, totalTaskCount);
                 const isCustom = state.customProjects.some((item) => item.id === project.id);
                 return <article
                   key={project.id}
@@ -2068,14 +2088,16 @@ export default function PersonalOS() {
                       <span className="tag-row">{project.tags.length ? project.tags.map((tag) => <em key={tag}>{tag}</em>) : <em>Yeni</em>}</span>
                       <h3>{project.title}</h3>
                       <div className="project-progress"><i style={{ width: `${progress}%` }}/></div>
-                      <span className="project-meta"><small><Clock3 size={11}/>{project.due}</small><small>{done}/{tasks.length} görev</small></span>
+                      <span className="project-meta"><small><Clock3 size={13}/>{project.due}</small><small>{done}/{totalTaskCount} görev</small></span>
                     </div>
                   </button>
                   <div className="project-subtasks">
                     {tasks.length ? tasks.map((task, index) => {
                       const id = `project-${project.id}-${index}`;
                       const isSubtask = task.startsWith('>');
-                      return <div className={`project-task-row ${state.completed[id] ? 'completed ' : ''}${isSubtask ? 'subtask' : ''}`.trim()} key={`${task}-${index}`}><button onClick={() => toggle(id)}><span>{state.completed[id] && <Check size={10}/>}</span>{isSubtask ? task.slice(1).trim() : task}</button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={() => scheduleItem(isSubtask ? task.slice(1).trim() : task, `Proje · ${project.title}`)}><CalendarDays size={13}/></button></div>;
+                      const subtaskKey=`${project.id}:${index}`;
+                      const subtasks=state.projectSubtasks[subtaskKey]??[];
+                      return <div className={`project-task-group ${isSubtask?'legacy-subtask':''}`} key={`${task}-${index}`}><div className={`project-task-row ${state.completed[id] ? 'completed ' : ''}${isSubtask ? 'subtask' : ''}`.trim()}><button onClick={() => toggle(id)}><span>{state.completed[id] && <Check size={10}/>}</span>{isSubtask ? task.slice(1).trim() : task}</button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={() => scheduleItem(isSubtask ? task.slice(1).trim() : task, `Proje · ${project.title}`)}><CalendarDays size={15}/></button></div>{!isSubtask&&subtasks.length>0&&<div className="project-nested-subtasks">{subtasks.map((subtask)=><div className={`project-nested-row ${state.completed[subtask.id]?'completed':''}`} key={subtask.id}><button onClick={()=>toggle(subtask.id)}><span>{state.completed[subtask.id]?<Check size={10}/>:<Circle size={10}/>}</span>{subtask.title}</button><button aria-label={`${subtask.title} alt görevini takvime ekle`} onClick={()=>scheduleItem(subtask.title,`Proje · ${project.title}`)}><CalendarDays size={13}/></button><button aria-label={`${subtask.title} alt görevini kaldır`} onClick={()=>removeProjectSubtask(subtaskKey,subtask)}><X size={12}/></button></div>)}</div>}{!isSubtask&&(projectSubtaskParent===subtaskKey?<div className="project-subtask-composer"><input autoFocus value={projectSubtaskDraft} onChange={(event)=>setProjectSubtaskDraft(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter')addProjectSubtask(project.id,index);if(event.key==='Escape'){setProjectSubtaskParent(null);setProjectSubtaskDraft('')}}} placeholder="Alt görevi yaz..."/><button disabled={!projectSubtaskDraft.trim()} onClick={()=>addProjectSubtask(project.id,index)}><Check size={13}/> Ekle</button><button aria-label="Alt görev eklemeyi kapat" onClick={()=>{setProjectSubtaskParent(null);setProjectSubtaskDraft('')}}><X size={13}/></button></div>:<button className="project-add-subtask" onClick={()=>{setProjectSubtaskParent(subtaskKey);setProjectSubtaskDraft('')}}><Plus size={12}/> Alt görev ekle</button>)}</div>;
                     }) : <p className="empty-inline">Bu proje için henüz görev eklenmedi.</p>}
                     {stageIndex === 3
                       ? <button className="move-project" disabled={!isCustom} onClick={() => isCustom && archiveProject(project)}>{isCustom ? 'Arşive taşı' : 'Tamamlandı'}<Archive size={13}/></button>
