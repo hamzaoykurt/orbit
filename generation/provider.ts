@@ -52,7 +52,7 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
   const model=config.model||'gemini-2.0-flash';
   if(!/^gemini-[a-zA-Z0-9._-]+$/.test(model))throw new Error('provider-config-invalid');
   // One configured provider only: quota errors never trigger a paid fallback.
-  const response=await transport(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{
+  const call=async (selected:string)=>transport(`https://generativelanguage.googleapis.com/v1beta/models/${selected}:generateContent`,{
     method:'POST',signal:request.signal||AbortSignal.timeout(45_000),
     headers:{'x-goog-api-key':config.apiKey!,'Content-Type':'application/json'},
     body:JSON.stringify({systemInstruction:{parts:[{text:request.instructions}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
@@ -62,6 +62,19 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
     generationConfig:{responseMimeType:'application/json',maxOutputTokens:6500},
     }),
   });
+  let response=await call(model);
+  // Model availability differs by Google project and region. If the configured
+  // model is missing, discover an available Gemini model from the same key and
+  // retry once; this never falls back to another provider or a local pool.
+  if(response.status===404){
+    await response.body?.cancel();
+    const listed=await transport('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':config.apiKey!},signal:request.signal||AbortSignal.timeout(15_000)});
+    if(listed.ok){
+      const models=await listed.json() as {models?:{name?:string,supportedGenerationMethods?:string[]}[]};
+      const candidate=models.models?.find(item=>item.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-/.test(item.name||''));
+      if(candidate?.name){response=await call(candidate.name.replace(/^models\//,''));}
+    }
+  }
   if(!response.ok){await response.body?.cancel();throw new Error(`provider-http-${response.status}`);}
   const reader=response.body?.getReader();if(!reader)throw new Error('provider-empty');
   let size=0,raw='';const decoder=new TextDecoder();
