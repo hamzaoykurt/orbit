@@ -31,4 +31,6 @@ Password hashes use scrypt (`N=16384`, `r=8`, `p=5`, 16-byte random salt). Login
 
 Run `node --test tests/*.test.mjs`, `npx tsc --noEmit`, and `npm run build`. For a production-runtime local preview, use `npx wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/state --port 8787` **after** local migrations. Stop that preview before rebuilding on Windows (open asset directory handles can otherwise prevent the build).
 
+`npm run dev` migrates local auth tables, builds, and runs this same protected Worker on port 3000. This intentionally replaces the bare Vinext development server, which dispatches page requests outside the custom Worker entry and loses the verified authentication context. Restart `npm run dev` after source edits; this preview does not provide React HMR. Do not expose an unguarded Vinext server as a workaround.
+
 Offline copies of private HTML and JS are intentionally not cached. The service worker removes legacy Orbit caches. Always verify anonymous `/api/state`, RSC and real JS asset requests return 401, remembered login survives reload, and logout denies reuse of the old cookie on the live domain.

@@ -6,7 +6,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "npm run db:migrate:local && npm run build && wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/state --port 3000",
     "build": "vinext build && node scripts/check-deploy-config.mjs",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
