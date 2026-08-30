@@ -58,7 +58,10 @@ export async function POST(request: Request) {
     return json({idea});
   }catch(error){
     const providerCode=error instanceof Error?({'provider-http-429':'provider-quota','provider-http-401':'provider-key','provider-http-403':'provider-key','provider-http-404':'provider-model'} as Record<string,string>)[error.message]:undefined;
-    const code=error instanceof GenerationError?error.code:providerCode||'unavailable';
+    const safeProviderCode=error instanceof Error&&/^provider-(http-\d{3}|config-invalid|incomplete|empty|refusal|too-large)$/.test(error.message)?error.message:undefined;
+    const code=error instanceof GenerationError?error.code:providerCode||safeProviderCode||'unavailable';
+    // Log only a bounded diagnostic code, never keys, provider bodies or private input.
+    console.warn('Orbit generation failed',code);
     const messages:Record<string,string>={'generation-in-progress':'Bir üretim zaten sürüyor. Bitince tekrar dene.','rate-limited':'Çok hızlı istek gönderildi. Bir dakika sonra tekrar dene.','no-novel-result':'Öncekilerden yeterince farklı bir fikir üretilemedi. Tekrar dene.','idea-not-found':'Bu fikir geçmişte bulunamadı.','invalid-request':'Geçersiz üretim isteği.'};
     const providerMessages:Record<string,string>={'provider-quota':'AI sağlayıcısının kullanım sınırına ulaşıldı. Kota yenilenince tekrar dene. Başka veya ücretli bir sağlayıcıya geçilmedi.','provider-key':'AI anahtarı geçersiz veya bu modele erişimi yok. Sunucudaki sağlayıcı ayarını kontrol et.','provider-model':'Seçilen AI modeli bulunamadı. Sunucudaki model ayarını kontrol et.'};
     return json({error:messages[code]||providerMessages[code]||GENERATION_UNAVAILABLE,code},error instanceof GenerationError?error.status:code==='provider-quota'?429:503);
