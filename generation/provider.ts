@@ -72,5 +72,10 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
   if(candidate?.finishReason!=='STOP')throw new Error('provider-incomplete');
   const text=(candidate.content?.parts||[]).filter((part:{thought?:boolean;text?:unknown})=>!part.thought&&typeof part.text==='string').map((part:{text:string})=>part.text).join('');
   if(!text)throw new Error('provider-empty');
-  return JSON.parse(text);
+  const cleaned=text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+  try{return JSON.parse(cleaned);}catch{
+    const start=cleaned.indexOf('{'),end=cleaned.lastIndexOf('}');
+    if(start>=0&&end>start){try{return JSON.parse(cleaned.slice(start,end+1));}catch{/* validation layer reports malformed output */}}
+    throw new Error('provider-malformed');
+  }
 }
