@@ -7,9 +7,11 @@ import { InstallOrbit } from './install-orbit';
 import { readStartupState } from './startup';
 import { emptyTask, emptyWorkspace } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
-import type { ActivityArea, ActivityEntry } from './rebuild/activity-model';
+import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
+import { emptyDeck, normalizeDeck } from './rebuild/weekly-deck-model';
+import type { WeeklyDeck } from './rebuild/weekly-deck-model';
 import {
   Archive, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight,
@@ -24,7 +26,6 @@ import {
 type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
 const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(module => ({ default: module.ProjectWorkspace })));
 const RebuildJourney = lazy(() => import('./rebuild/rebuild-journey').then(module => ({ default: module.RebuildJourney })));
-const ActivityWorkbench = lazy(() => import('./rebuild/activity-workbench').then(module => ({ default: module.ActivityWorkbench })));
 type Note = { id: string; title: string; body: string; date: string; tone: string };
 type PersonalListKey = 'todo' | 'buy' | 'visit';
 type PersonalItemDetails = { title?: string; note?: string; price?: string; link?: string; locationUrl?: string; priority?: 'normal' | 'important' };
@@ -88,6 +89,7 @@ type PersistedState = {
   customDepartmentTasks: Record<string, string[]>;
   customRebuildTasks: Record<string, string[]>;
   rebuildJourney: Journey;
+  rebuildDeck: WeeklyDeck;
   rebuildActivities: RebuildActivity[];
   rebuildReviews: Record<string, RebuildReview>;
   rebuildSelections: Record<string, string>;
@@ -148,6 +150,7 @@ const defaultState: PersistedState = {
   customDepartmentTasks: {},
   customRebuildTasks: {},
   rebuildJourney: emptyJourney(),
+  rebuildDeck: emptyDeck(),
   rebuildActivities: [],
   rebuildReviews: {},
   rebuildSelections: {},
@@ -204,6 +207,7 @@ function mergePersistedState(value: unknown): PersistedState {
     customDepartmentTasks: saved.customDepartmentTasks && typeof saved.customDepartmentTasks === 'object' && !Array.isArray(saved.customDepartmentTasks) ? saved.customDepartmentTasks : defaultState.customDepartmentTasks,
     customRebuildTasks: saved.customRebuildTasks && typeof saved.customRebuildTasks === 'object' && !Array.isArray(saved.customRebuildTasks) ? saved.customRebuildTasks : defaultState.customRebuildTasks,
     rebuildJourney: normalizeJourney(saved.rebuildJourney),
+    rebuildDeck: normalizeDeck(saved.rebuildDeck),
     rebuildActivities: Array.isArray(saved.rebuildActivities) ? saved.rebuildActivities : defaultState.rebuildActivities,
     rebuildReviews: saved.rebuildReviews && typeof saved.rebuildReviews === 'object' && !Array.isArray(saved.rebuildReviews) ? saved.rebuildReviews : defaultState.rebuildReviews,
     rebuildSelections: saved.rebuildSelections && typeof saved.rebuildSelections === 'object' && !Array.isArray(saved.rebuildSelections) ? saved.rebuildSelections : defaultState.rebuildSelections,
@@ -350,7 +354,7 @@ export default function PersonalOS() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastFeedbackAtRef = useRef(0);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | 'rebuildActivity' | 'rebuildBodyPlan' | null>(null);
+  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
   const [toast, setToast] = useState('');
   const [expandedProject, setExpandedProject] = useState<string | null>('pos');
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -387,8 +391,6 @@ export default function PersonalOS() {
   const [personalDrag, setPersonalDrag] = useState<PersonalDragState | null>(null);
   const personalDragRef = useRef<PersonalDragState | null>(null);
   const personalDragCleanupRef = useRef<(() => void) | null>(null);
-  const [rebuildActivityDraft, setRebuildActivityDraft] = useState({ areaId: 'body', title: 'Kuvvet antrenmanı', date: todayKey() });
-  const [rebuildBodyPlanDraft, setRebuildBodyPlanDraft] = useState({ name: defaultState.rebuildBodyPlan.name, workouts: defaultState.rebuildBodyPlan.workouts.join('\n'), nutrition: defaultState.rebuildBodyPlan.nutrition.join('\n') });
   const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
   const [calendarCursor, setCalendarCursor] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [quickText, setQuickText] = useState('');
@@ -1512,52 +1514,6 @@ export default function PersonalOS() {
     localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify({ accessToken: token, expiresAt: Date.now() + Math.max(60, expiresIn) * 1000, reconnect: true } satisfies StoredGoogleSession));
   };
 
-  const openRebuildActivity = (areaId: string, title?: string) => {
-    const area = areaId === 'expression' ? { id: 'expression', quickActions: ['Kendini ifade etme provası'] } : rebuildAreas.find((item) => item.id === areaId) ?? rebuildAreas[0];
-    setRebuildActivityDraft({ areaId: area.id, title: title ?? area.quickActions[0], date: todayKey() });
-    setModal('rebuildActivity');
-  };
-
-  const saveRebuildActivity = (entry: ActivityEntry) => {
-    const activity: RebuildActivity = {
-      ...entry,
-      id: `rebuild-activity-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-    };
-    setState((current) => ({ ...current, rebuildActivities: [activity, ...current.rebuildActivities] }));
-    setModal(null);
-    notify('Kayıt günlüğüne eklendi.');
-  };
-
-  const advanceResearchIdea = (id: string) => {
-    const labels: Record<ResearchIdea['status'],string> = { spark:'Araştırmaya alındı.', exploring:'Çıktı aşamasına geçti.', making:'Fikir yeniden kıvılcım alanına taşındı.' };
-    setState((current)=>({...current,researchIdeas:current.researchIdeas.map((idea)=>idea.id===id?{...idea,status:idea.status==='spark'?'exploring':idea.status==='exploring'?'making':'spark'}:idea)}));
-    const currentIdea=state.researchIdeas.find((idea)=>idea.id===id);if(currentIdea)notify(labels[currentIdea.status]);
-  };
-
-  const toggleRebuildDailyCheck = (item: string) => {
-    const date = todayKey();
-    setState((current) => {
-      const currentChecks = current.rebuildDailyChecks[date] ?? [];
-      const nextChecks = currentChecks.includes(item) ? currentChecks.filter((check) => check !== item) : [...currentChecks, item];
-      return { ...current, rebuildDailyChecks: { ...current.rebuildDailyChecks, [date]: nextChecks } };
-    });
-  };
-
-  const openRebuildBodyPlan = () => {
-    setRebuildBodyPlanDraft({ name: state.rebuildBodyPlan.name, workouts: state.rebuildBodyPlan.workouts.join('\n'), nutrition: state.rebuildBodyPlan.nutrition.join('\n') });
-    setModal('rebuildBodyPlan');
-  };
-
-  const saveRebuildBodyPlan = () => {
-    const workouts = rebuildBodyPlanDraft.workouts.split('\n').map((item) => item.trim()).filter(Boolean);
-    const nutrition = rebuildBodyPlanDraft.nutrition.split('\n').map((item) => item.trim()).filter(Boolean);
-    if (!rebuildBodyPlanDraft.name.trim() || !workouts.length) return;
-    setState((current) => ({ ...current, rebuildBodyPlan: { name: rebuildBodyPlanDraft.name.trim(), workouts, nutrition } }));
-    setModal(null);
-    notify('Beden programı güncellendi.');
-  };
-
   const requestGoogleAccess = async (prompt = 'select_account', silent = false) => {
     let clientId = googleCalendarClientId;
     if (!clientId) {
@@ -1886,13 +1842,10 @@ export default function PersonalOS() {
   };
 
   const renderRebuild = () => <Suspense fallback={<p role="status">Rebuild açılıyor…</p>}><RebuildJourney
-    journey={state.rebuildJourney} activities={state.rebuildActivities} legacyReviews={state.rebuildReviews}
-    selections={state.rebuildSelections} bodyPlan={state.rebuildBodyPlan} dailyChecks={state.rebuildDailyChecks[todayKey()] ?? []}
-    projects={metricProjects} ideas={state.researchIdeas} syncStatus={syncStatus}
-    tasks={Object.fromEntries(rebuildAreas.map(area => [area.id, (state.customRebuildTasks[area.title] ?? []).map((title,index) => ({ id: `rebuild-custom-${area.id}-${index}`, title, done: Boolean(state.completed[`rebuild-custom-${area.id}-${index}`]) }))]))} onToggleTask={toggle}
-    onUpdate={update => setState(current => ({ ...current, rebuildJourney: update(current.rebuildJourney) }))}
-    onActivity={openRebuildActivity} onBodyPlan={openRebuildBodyPlan} onDailyCheck={toggleRebuildDailyCheck}
-    onSchedule={scheduleItem} onProject={openProjectDetail} onAdvanceIdea={advanceResearchIdea}
+    journey={state.rebuildJourney} deck={state.rebuildDeck} activities={state.rebuildActivities}
+    selections={state.rebuildSelections} syncStatus={syncStatus}
+    onUpdateDeck={update => setState(current => { const next = update(current.rebuildDeck); return next === current.rebuildDeck ? current : { ...current, rebuildDeck: next }; })}
+    onStartChange={date => setState(current => ({ ...current, rebuildJourney: { ...current.rebuildJourney, startDate: date } }))}
   /></Suspense>;
 
   const renderProjects = () => {
@@ -2146,7 +2099,7 @@ export default function PersonalOS() {
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
     <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli kayıt" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label={unreadNotificationCount?`${unreadNotificationCount} okunmamış bildirim`:'Bildirimler'} className={unreadNotificationCount?'has-notifications':''} onClick={()=>setModal('notifications')}><Bell size={16}/>{unreadNotificationCount>0&&<span className="notification-badge" aria-hidden="true">{unreadNotificationCount>9?'9+':unreadNotificationCount}</span>}</IconButton></div></header><main ref={pageContentRef} tabIndex={-1} key={active} className={`content page-${active}`}>{renderPage()}</main></section>
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action ai" aria-label="AI ile akıllı kayıt ekle" onClick={()=>beginCapture('ai')}><Sparkles size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
-    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={modal==='rebuildActivity'?'activity-dialog':`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi" onKeyDownCapture={modal==='rebuildActivity'?undefined:handleModalKeyDown} onChangeCapture={handleModalChange} onFocusCapture={modal==='rebuildActivity'?undefined:handleModalFocus}><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
+    {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi" onKeyDownCapture={handleModalKeyDown} onChangeCapture={handleModalChange} onFocusCapture={handleModalFocus}><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input required autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button type="button" key={key} aria-pressed={quickTarget===key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" disabled={!quickText.trim()} onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='notifications'&&<><div className="notification-center-head"><span className="modal-icon"><Bell size={20}/></span><div><span className="eyebrow">BİLDİRİM MERKEZİ</span><h2>Yaklaşan akışın.</h2></div>{unreadNotificationCount>0&&<button onClick={markAllNotificationsRead}><CheckCheck size={15}/> Tümünü okundu say</button>}</div><p className="notification-center-copy">Yalnızca bugün ve yarın için takviminde gerçekten bulunan kayıtlar burada görünür.</p><div className="notification-list">{notifications.length?notifications.map((item)=>{const isUnread=!state.notificationReadIds.includes(item.id);return <article key={item.id} className={isUnread?'unread':''}><button className="notification-main" onClick={()=>openNotification(item)}><span className={`notification-tone ${item.tone}`}><CalendarDays size={16}/></span><span><strong>{item.title}</strong><small>{item.description}</small></span><ChevronRight size={15}/></button><button className="notification-dismiss" aria-label={`${item.title} bildirimini kaldır`} onClick={()=>dismissNotification(item.id)}><X size={14}/></button></article>}):<div className="notification-empty"><span><Bell size={22}/><Check size={12}/></span><strong>Yeni bildirimin yok.</strong><p>Takvimine bugün veya yarın için bir kayıt eklendiğinde burada görünecek.</p></div>}</div><div className="notification-center-footer"><span><i className={state.settings.notifications?'active':''}/>{state.settings.notifications?'Sistem hatırlatmaları açık':'Sistem hatırlatmaları kapalı'}</span><button onClick={()=>{setModal(null);setSettingsTab('notifications');go('settings')}}>Bildirim ayarları <ArrowRight size={13}/></button></div></>}
       {modal==='personalItem'&&<><span className="modal-icon">{personalItemDraft.list==='visit'?<MapPin size={20}/>:personalItemDraft.list==='buy'?<ShoppingBag size={20}/>:<ListTodo size={20}/>}</span><span className="eyebrow">{editingPersonalItemId?'KAYDI DÜZENLE':'YENİ KAYIT'}</span><h2>{personalLists[personalItemDraft.list].title}</h2><p>{editingPersonalItemId?'Kaydın ayrıntılarını güncelle.':'Yeni kayıt bu Personal listesine eklenecek.'}</p><label>Başlık<input required autoFocus value={personalItemDraft.title} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,title:event.target.value})} placeholder={personalItemDraft.list==='visit'?'Örn. Efes Antik Kenti':personalItemDraft.list==='buy'?'Örn. Monitör kolu':'Yapılacak iş'}/></label>{personalItemDraft.list==='buy'&&<><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={personalItemDraft.price} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,price:event.target.value})} placeholder="1250"/></label><label>Ürün bağlantısı <small>İsteğe bağlı</small><input type="url" value={personalItemDraft.link} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,link:event.target.value})} placeholder="https://..."/></label></>}{personalItemDraft.list==='visit'&&<label>Google Haritalar konum bağlantısı <small>İsteğe bağlı</small><input type="url" value={personalItemDraft.locationUrl} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,locationUrl:event.target.value})} placeholder="https://maps.google.com/..."/></label>}<label>Kısa not <small>İsteğe bağlı</small><textarea value={personalItemDraft.note} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,note:event.target.value})} placeholder="Kısa bir ayrıntı ekle..."/></label><label>Öncelik<select value={personalItemDraft.priority} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,priority:event.target.value as 'normal'|'important'})}><option value="normal">Normal</option><option value="important">Önemli</option></select></label>{editingPersonalItemId&&<button className="personal-delete-button" onClick={removePersonalItem}><Trash2 size={15}/> Kaydı kaldır</button>}<button className="primary-button full" disabled={!personalItemDraft.title.trim()} onClick={savePersonalItem}>{editingPersonalItemId?'Değişiklikleri kaydet':'Listeye ekle'} <ArrowRight size={15}/></button></>}
@@ -2155,8 +2108,6 @@ export default function PersonalOS() {
       {modal==='program'&&<><span className="modal-icon"><Plane size={20}/></span><span className="eyebrow">{editingProgramId?'TURU DÜZENLE':'YENİ TUR'}</span><h2>{editingProgramId?'Tur bilgilerini güncelle.':'Turun hazırlık alanını aç.'}</h2><p>Tur, hazırlık kategorileri ve takip edilebilir görevleriyle birlikte oluşturulacak.</p><label>Tur adı<input required autoFocus value={programDraft.title} onChange={(event)=>setProgramDraft({...programDraft,title:event.target.value})} placeholder="Örn. 12–16 Ekim Umre"/></label><label>Tarih aralığı <small>İsteğe bağlı</small><input value={programDraft.range} onChange={(event)=>setProgramDraft({...programDraft,range:event.target.value})} placeholder="Örn. 12–16 Ekim 2026"/></label><div className="form-row"><label>Durum<select value={programDraft.status} onChange={(event)=>setProgramDraft({...programDraft,status:event.target.value})}>{['Taslak','Planlandı','Hazırlanıyor'].map((status)=><option key={status}>{status}</option>)}</select></label><label>Vurgu rengi<select value={programDraft.accent} onChange={(event)=>setProgramDraft({...programDraft,accent:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'}].map((color)=><option key={color.value} value={color.value}>{color.label}</option>)}</select></label></div><button className="primary-button full" disabled={!programDraft.title.trim()} onClick={addProgram}>{editingProgramId?'Değişiklikleri kaydet':'Turu oluştur'} <ArrowRight size={15}/></button></>}
       {modal==='programTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">PROGRAM GÖREVİ</span><h2>Hazırlık adımı ekle.</h2><p>Görev, seçtiğin turun ilgili hazırlık kategorisinde görünecek.</p><label>Kategori<select value={programTaskDraft.category} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,category:event.target.value})}>{programCategories.map((category)=><option key={category.name}>{category.name}</option>)}</select></label><label>Görev adı<input required autoFocus value={programTaskDraft.title} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,title:event.target.value})} onKeyDown={(event)=>event.key==='Enter'&&addProgramTask()} placeholder="Örn. Otel teyidini al"/></label><button className="primary-button full" disabled={!programTaskDraft.title.trim()} onClick={addProgramTask}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='departmentTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">OPERASYON GÖREVİ</span><h2>{departments.find((department)=>department.id===expandedDepartment)?.title} için görev ekle.</h2><p>Yeni görev doğrudan açık departmanın operasyon listesine kaydedilecek.</p><label>Görev adı<input required autoFocus value={departmentTaskDraft} onChange={(event)=>setDepartmentTaskDraft(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addDepartmentTask()} placeholder="Örn. Tedarikçiden teyit al"/></label><button className="primary-button full" disabled={!departmentTaskDraft.trim()} onClick={addDepartmentTask}>Görevi ekle <ArrowRight size={15}/></button></>}
-      {modal==='rebuildActivity'&&<Suspense fallback={<div style={{padding:40}}>Çalışma alanı açılıyor…</div>}><ActivityWorkbench areaId={rebuildActivityDraft.areaId as ActivityArea} title={rebuildActivityDraft.title} date={rebuildActivityDraft.date} onSave={saveRebuildActivity}/></Suspense>}
-      {modal==='rebuildBodyPlan'&&<><span className="modal-icon"><Dumbbell size={20}/></span><span className="eyebrow">BEDEN SİSTEMİ</span><h2>Kendi programını Orbit’e bağla.</h2><p>Her satır açık Beden kartında tek dokunuşla başlatılabilen bir antrenman veya günlük beslenme hedefi olur.</p><label>Program adı<input required autoFocus value={rebuildBodyPlanDraft.name} onChange={(event)=>setRebuildBodyPlanDraft({...rebuildBodyPlanDraft,name:event.target.value})} placeholder="Örn. Push / Pull / Legs"/></label><label>Antrenman günleri <small>Her satıra bir gün</small><textarea value={rebuildBodyPlanDraft.workouts} onChange={(event)=>setRebuildBodyPlanDraft({...rebuildBodyPlanDraft,workouts:event.target.value})} placeholder={'Push · Göğüs / omuz / triceps\nPull · Sırt / biceps\nLegs · Bacak / core'}/></label><label>Beslenme ve toparlanma hedefleri <small>Her satıra bir hedef</small><textarea value={rebuildBodyPlanDraft.nutrition} onChange={(event)=>setRebuildBodyPlanDraft({...rebuildBodyPlanDraft,nutrition:event.target.value})} placeholder={'Protein hedefini tamamla\n2–2,5 litre su iç\nUyku saatini koru'}/></label><button className="primary-button full" disabled={!rebuildBodyPlanDraft.name.trim()||!rebuildBodyPlanDraft.workouts.trim()} onClick={saveRebuildBodyPlan}>Programı kaydet <Check size={15}/></button></>}
       {modal==='navCustomize'&&<><span className="modal-icon"><Menu size={20}/></span><span className="eyebrow">ALT MENÜ</span><h2>Hızlı erişimlerini seç.</h2><p>Ana Sayfa her açılışta başlangıç ekranıdır ve üç çizgili menüde kalır. Burada gün içinde en çok kullandığın dört bölümü seç.</p><div className="nav-customizer">{state.mobileNav.map((selectedPage,index)=><label key={index}>{index < 2?'Sol':'Sağ'} alan {index % 2 + 1}<select value={selectedPage} onChange={(event)=>updateMobileNavItem(index,event.target.value as PageKey)}>{nav.filter((item)=>item.id!=='home').map((item)=><option key={item.id} value={item.id} disabled={item.id!==selectedPage&&state.mobileNav.includes(item.id)}>{item.label}</option>)}</select></label>)}</div><button className="primary-button full" onClick={()=>{setModal(null);notify('Alt menü güncellendi.')}}>Kaydet <Check size={15}/></button></>}
       {modal==='capture'&&renderCaptureModal()}
       {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2><p>Önce zamanını belirle; bağlantı açıksa Google Takvim’e de otomatik eklenecek.</p>{eventDraft.source&&<div className="calendar-source-chip"><Link2 size={13}/>{eventDraft.source}</div>}<label>Etkinlik adı<input required autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input required type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat <small>İsteğe bağlı</small><input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre <small>İsteğe bağlı</small><input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'},{value:'orange',label:'Turuncu'}].map((tone)=><option key={tone.value} value={tone.value}>{tone.label}</option>)}</select></label></div><label>Açıklama <small>İsteğe bağlı</small><textarea value={eventDraft.description} onChange={(event)=>setEventDraft({...eventDraft,description:event.target.value})} placeholder="Etkinlik ayrıntıları..."/></label><div className={`calendar-save-status ${googleCalendarStatus==='connected'?'connected':''}`}><CalendarDays size={14}/><span><strong>{googleCalendarStatus==='connected'?'Orbit + Google Takvim':'Orbit Takvimi'}</strong><small>{googleCalendarStatus==='connected'?'İki takvime birlikte kaydedilecek':'Kaydettikten sonra Google’a tek dokunuşla aktarabilirsin'}</small></span></div><button className="primary-button full" disabled={!eventDraft.title.trim()||!eventDraft.date} onClick={()=>void addEvent()}>Takvime ekle <ArrowRight size={15}/></button></>}

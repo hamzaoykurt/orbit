@@ -1,156 +1,178 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import Image from 'next/image';
-import { Archive, ArrowRight, ArrowUpRight, BookOpen, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Compass, Dumbbell, FlaskConical, History, Languages, Link2, Mic, Palette, Pencil, Plus, Rocket, Search, Sparkles, Trash2, Undo2, Users, X } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { addDays, calendarWeek, closeWeek, defaultFocus, emptyRatings, journeyPosition, localDay, observations, safeLink, validDate } from './journey-model';
-import type { Experiment, Journey, Output, Phase, Ratings, Reflection, WeekFocus } from './journey-model';
+import type { ReactNode } from 'react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Check, ChevronDown, Minus, Plus, RotateCcw, Settings2, Sparkle, Trash2, X } from 'lucide-react';
+import { addDays, calendarWeek, journeyPosition, localDay, validDate } from './journey-model';
+import type { Journey } from './journey-model';
+import { generateIdea, ideaPool } from './idea-engine';
+import type { Idea } from './idea-engine';
+import { attachIdea, completeGoal, configureGoals, ensureWeek, rememberIdea, undoCompletion, weekView } from './weekly-deck-model';
+import type { LegacyActivity, WeeklyDeck, WeeklyGoal } from './weekly-deck-model';
 import './rebuild-journey.css';
 
-type Activity = { id: string; areaId: string; title: string; date: string; duration: number; note: string };
-type LegacyReview = { win: string; friction: string; nextFocus: string; energy: number };
-type Project = { id: string; title: string };
-type Idea = { id: string; title: string; kind: 'curiosity' | 'creative' | 'solo'; status: 'spark' | 'exploring' | 'making' };
 type Props = {
-  journey: Journey; activities: Activity[]; legacyReviews: Record<string,LegacyReview>; selections: Record<string,string>;
-  bodyPlan: { name: string; workouts: string[]; nutrition: string[] }; dailyChecks: string[]; projects: Project[]; ideas: Idea[];
-  onUpdate: (update: (current: Journey) => Journey) => void;
-  onActivity: (area: string, title?: string) => void; onBodyPlan: () => void; onDailyCheck: (item: string) => void;
-  onSchedule: (title: string, source: string) => void; onProject: (id: string) => void;
-  onAdvanceIdea: (id: string) => void; syncStatus: string;
-  tasks: Record<string,{id:string;title:string;done:boolean}[]>; onToggleTask: (id: string) => void;
+  journey: Journey; deck: WeeklyDeck; activities: LegacyActivity[]; selections: Record<string,string>; syncStatus: string;
+  onUpdateDeck: (update: (current: WeeklyDeck) => WeeklyDeck) => void; onStartChange: (date: string) => void;
 };
-const directions = ['UI / Dijital Ürün','Oyun Üretimi','Yaratıcı Teknoloji','Görsel / Sanat Yönetimi','3D / Fiziksel Üretim','Uzay / Mühendislik','İnteraktif Deneyimler'];
-const ratingLabels: [keyof Ratings,string][] = [['flow','Akış'],['curiosity','Merak'],['process','Süreçten keyif'],['improve','Geliştirme isteği'],['again','Tekrar yapma isteği']];
-const questions: [keyof Omit<Reflection,'closedAt'>,string][] = [['flow','Bu hafta ne yaparken zamanın geçtiğini anlamadım?'],['forced','Neyi yapmak istemediğim halde kendimi zorladım?'],['best','Bu hafta yaptığım en iyi şey neydi?'],['more','Gelecek hafta neyi daha fazla yapmak istiyorum?'],['learned','Bu hafta kendim hakkında ne öğrendim?']];
-const emptyReview: Reflection = { flow:'',forced:'',best:'',more:'',learned:'',closedAt:'' };
-const areaInfo: Record<string,{name:string;icon:LucideIcon;color:string}> = {
-  body:{name:'Beden',icon:Dumbbell,color:'mint'},curiosity:{name:'Zihin & merak',icon:Sparkles,color:'violet'},creativity:{name:'Üretim',icon:Palette,color:'rose'},
-  language:{name:'İngilizce',icon:Languages,color:'blue'},expression:{name:'İfade',icon:Mic,color:'sand'},social:{name:'Sosyal hayat',icon:Users,color:'orange'},
-  career:{name:'Bağımsızlık',icon:Compass,color:'sand'},solo:{name:'Solo keşif',icon:Compass,color:'mint'},space:{name:'Uzay & mühendislik',icon:Rocket,color:'blue'},
-};
-const shortDate = (date: string) => validDate(date) ? new Intl.DateTimeFormat('tr-TR',{day:'numeric',month:'short'}).format(new Date(`${date}T12:00:00`)) : date;
-const expressionEntry = (entry: Activity) => entry.areaId === 'expression' || (entry.areaId === 'language' && /diksiyon|ses kaydı|ses provası/i.test(entry.title));
-const matchesArea = (entry: Activity, area: string) => area === 'expression' ? expressionEntry(entry) : area === 'language' ? entry.areaId === 'language' && !expressionEntry(entry) : area === 'social' ? ['social','solo'].includes(entry.areaId) : entry.areaId === area;
+const shortDate = (date: string) => new Intl.DateTimeFormat('tr-TR',{day:'numeric',month:'short'}).format(new Date(`${date}T12:00:00`));
+const starter = (goal: WeeklyGoal): Idea => goal.kind === 'any'
+  ? {id:`starter-${goal.id}`,kind:'TRY',goal:'make',text:goal.name}
+  : ideaPool.find(idea=>idea.goal===goal.kind)!;
 
-function Sheet({ title, description, children, onClose, onSubmit, action = 'Kaydet', wide = false }: {title:string;description?:string;children:ReactNode;onClose:()=>void;onSubmit?:()=>void;action?:string;wide?:boolean}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
+function Overlay({title,kind,children,onClose}: {title:string;kind:'idea'|'settings'|'context';children:ReactNode;onClose:()=>void}) {
+  const container = useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    const previous = document.activeElement as HTMLElement|null;
     const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const siblings = Array.from(document.body.children).filter((node):node is HTMLElement=>node instanceof HTMLElement && !node.contains(container.current));
+    const priorInert = siblings.map(node=>node.inert);
+    siblings.forEach(node=>{node.inert=true;});
+    document.body.style.overflow='hidden';
+    container.current?.focus();
     const keydown = (event: KeyboardEvent) => {
-      if(event.key === 'Escape'){event.preventDefault();event.stopImmediatePropagation();onClose();}
-      if(event.key !== 'Tab') return;
-      const controls = Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input,textarea,select,summary,a[href]') ?? []).filter(item => item.getClientRects().length);
-      if(event.shiftKey && document.activeElement === controls[0]){event.preventDefault();controls.at(-1)?.focus();}
-      else if(!event.shiftKey && document.activeElement === controls.at(-1)){event.preventDefault();controls[0]?.focus();}
+      if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();onClose();}
+      if(event.key!=='Tab')return;
+      const controls=Array.from(container.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select,summary,a[href]')??[]).filter(node=>node.getClientRects().length);
+      const first=controls[0], last=controls.at(-1);
+      if(event.shiftKey && (document.activeElement===first || document.activeElement===container.current)){event.preventDefault();last?.focus();}
+      else if(!event.shiftKey && (document.activeElement===last || document.activeElement===container.current)){event.preventDefault();first?.focus();}
     };
     window.addEventListener('keydown',keydown,true);
-    (ref.current?.querySelector<HTMLElement>('input,textarea,select') ?? ref.current?.querySelector<HTMLElement>('button'))?.focus();
-    return () => {document.body.style.overflow = overflow;window.removeEventListener('keydown',keydown,true);previous?.focus();};
+    return ()=>{siblings.forEach((node,index)=>{node.inert=priorInert[index];});document.body.style.overflow=overflow;window.removeEventListener('keydown',keydown,true);previous?.focus();};
   },[onClose]);
-  return createPortal(<div className="rj-sheet-layer" onMouseDown={event => {if(event.target === event.currentTarget)onClose();}}><div ref={ref} className={`rj-sheet ${wide?'wide':''}`} role="dialog" aria-modal="true" aria-labelledby="rj-dialog-title"><header><div><h2 id="rj-dialog-title">{title}</h2>{description && <p>{description}</p>}</div><button className="rj-icon-button" type="button" aria-label="Pencereyi kapat" onClick={onClose}><X size={19}/></button></header><form onSubmit={event => {event.preventDefault();onSubmit?.();}}><div className="rj-sheet-content">{children}</div>{onSubmit && <footer><button className="ghost-button" type="button" onClick={onClose}>Vazgeç</button><button className="primary-button" type="submit">{action}<Check size={16}/></button></footer>}</form></div></div>,document.body);
+  return createPortal(<div className={`rd-overlay rd-overlay-${kind}`} onMouseDown={event=>{if(event.target===event.currentTarget)onClose();}}>
+    <div className={`rd-dialog rd-dialog-${kind}`} role="dialog" aria-modal="true" aria-label={title} ref={container} tabIndex={-1} onKeyDown={event=>event.stopPropagation()}>
+      <button className="rd-icon rd-close" aria-label="Kapat" onClick={onClose}><X size={20}/></button>{children}
+    </div>
+  </div>,document.body);
 }
 
-export function RebuildJourney(props: Props) {
-  const today = localDay();
-  const currentWeek = calendarWeek(today);
-  const {journey} = props;
-  const position = journeyPosition(journey.startDate,today);
-  const phase = journey.phases[position.phase];
-  const fallbackFocus = {...defaultFocus,create:props.selections[`${currentWeek}-creative`] || defaultFocus.create,curiosity:props.selections[`${currentWeek}-curiosity`] || '',career:position.phase >= 4};
-  const focus = {...fallbackFocus,...journey.focus[currentWeek]};
-  const weekActivities = props.activities.filter(entry => entry.date >= currentWeek && entry.date <= addDays(currentWeek,6));
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<'focus'|'start'|'experiment'|'output'|'phase'|'review'|'history'|null>(null);
-  const [error, setError] = useState('');
-  const [focusDraft, setFocusDraft] = useState<WeekFocus>(focus);
-  const [dateDraft, setDateDraft] = useState(today);
-  const [experimentDraft, setExperimentDraft] = useState<Experiment>({id:'',name:'',made:'',date:today,note:'',ratings:emptyRatings,archived:false,projectId:''});
-  const [outputDraft, setOutputDraft] = useState<Output>({id:'',title:'',date:today,tag:'',note:'',link:'',image:'',projectId:''});
-  const [phaseIndex, setPhaseIndex] = useState(position.phase);
-  const [phaseDraft, setPhaseDraft] = useState<Phase>(phase);
-  const [reviewWeek, setReviewWeek] = useState(currentWeek);
-  const [reviewDraft, setReviewDraft] = useState<Reflection>(emptyReview);
-  const [showArchived, setShowArchived] = useState(false);
-  const [experimentQuery, setExperimentQuery] = useState('');
-  const [experimentLimit, setExperimentLimit] = useState(6);
-  const [galleryMonth, setGalleryMonth] = useState(today.slice(0,7));
-  const [historyWeek, setHistoryWeek] = useState(currentWeek);
-  const [historyArea, setHistoryArea] = useState('all');
-  const [notice, setNotice] = useState('');
-  const [failedImages, setFailedImages] = useState<string[]>([]);
-  const [removed, setRemoved] = useState<{kind:'experiment';item:Experiment}|{kind:'output';item:Output}|null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  useEffect(() => {
-    if (!notice || removed) return;
-    const timeout = window.setTimeout(() => setNotice(''), 4500);
-    return () => window.clearTimeout(timeout);
-  },[notice,removed]);
-  const closeSheet = useCallback(() => {setSheet(null);setError('');setConfirmRemove(false);},[]);
-  const commit = (update: (current: Journey) => Journey, message: string) => {props.onUpdate(update);setNotice(message);closeSheet();};
-  const begin = (next: NonNullable<typeof sheet>) => {setError('');setConfirmRemove(false);setSheet(next);};
-  const openExperiment = (entry?: Experiment, name = '') => {setExperimentDraft(entry ? {...entry,ratings:{...emptyRatings,...entry.ratings}} : {id:'',name,made:'',date:today,note:'',ratings:{...emptyRatings},archived:false,projectId:''});begin('experiment');};
-  const openOutput = (entry?: Output) => {setOutputDraft(entry ? {...entry} : {id:'',title:'',date:today,tag:'',note:'',link:'',image:'',projectId:''});begin('output');};
-  const reviewFor = (key: string): Reflection => journey.reviews[key] ?? (props.legacyReviews[key] ? {...emptyReview,best:props.legacyReviews[key].win,forced:props.legacyReviews[key].friction,more:props.legacyReviews[key].nextFocus} : {...emptyReview});
-  const openReview = (key = currentWeek) => {setReviewWeek(key);setReviewDraft(reviewFor(key));begin('review');};
-  const openHistory = (area = 'all',week = currentWeek) => {setHistoryArea(area);setHistoryWeek(week);begin('history');};
-  const toggleWeekItem = (key: string) => props.onUpdate(current => {const value = {...fallbackFocus,...current.focus[currentWeek]};return {...current,focus:{...current.focus,[currentWeek]:{...value,checks:value.checks.includes(key)?value.checks.filter(item => item !== key):[...value.checks,key]}}};});
-  const weeklyCheck = (key: string, text: string) => <button className="rj-check" type="button" aria-pressed={focus.checks.includes(key)} onClick={() => toggleWeekItem(key)}><span>{focus.checks.includes(key)&&<Check size={12}/>}</span>{text}</button>;
-  const weekCount = (area: string) => weekActivities.filter(entry => matchesArea(entry,area)).length;
-  const createMinutes = weekActivities.filter(entry => entry.areaId === 'creativity').reduce((sum,entry) => sum+entry.duration,0);
-  const activeExperiments = journey.experiments.filter(entry => Boolean(entry.archived) === showArchived && `${entry.name} ${entry.made} ${entry.note}`.toLocaleLowerCase('tr').includes(experimentQuery.toLocaleLowerCase('tr')));
-  const insights = observations(journey.experiments);
-  const monthOutputs = journey.outputs.filter(entry => entry.date.startsWith(galleryMonth)).sort((a,b) => b.date.localeCompare(a.date));
-  // Gallery records are evidence of creation without duplicating activity storage.
-  const evidence: Activity[] = [...props.activities,...journey.outputs.map(item=>({id:`output-${item.id}`,areaId:'creativity',title:item.title,date:item.date,duration:0,note:[item.tag,item.note].filter(Boolean).join(' · ')}))];
-  const historyKeys = [...new Set([currentWeek,...evidence.filter(entry=>validDate(entry.date)).map(entry=>calendarWeek(entry.date)),...Object.keys(journey.reviews),...Object.keys(props.legacyReviews)])].sort().reverse();
-  const historyEntries = evidence.filter(entry => validDate(entry.date) && calendarWeek(entry.date) === historyWeek && (historyArea === 'all' || matchesArea(entry,historyArea))).sort((a,b) => b.date.localeCompare(a.date));
-  const entryList = (entries: Activity[]) => entries.length ? <div className="rj-records">{entries.map(entry => <details key={entry.id}><summary><span><strong>{entry.title}</strong><small>{shortDate(entry.date)}{entry.duration > 0 && ` · ${entry.duration} dk`}</small></span><ChevronDown size={15}/></summary><p>{entry.note || 'Bu kayda not eklenmemiş.'}</p></details>)}</div> : <p className="rj-empty-inline">Henüz kayıt yok. İlk çalışmanı tamamladığında burada görünecek.</p>;
-  const openActivity = (area: string,title?: string) => {closeSheet();props.onActivity(area,title);};
-  const areaDetails = (id: string) => <div className="rj-week-detail">
-    {(props.tasks[id]?.length ?? 0)>0&&<details className="rj-idea-queue"><summary>Mevcut planların ({props.tasks[id].length})<ChevronDown size={14}/></summary>{props.tasks[id].map(task=><button key={task.id} className="rj-check" aria-pressed={task.done} onClick={()=>props.onToggleTask(task.id)}><span>{task.done&&<Check size={12}/>}</span>{task.title}</button>)}</details>}
-    {id === 'body' && <><div className="rj-detail-heading"><strong>{props.bodyPlan.name}</strong><button className="rj-text-button" onClick={props.onBodyPlan}>Düzenle <Pencil size={13}/></button></div><div className="rj-workouts">{props.bodyPlan.workouts.map((workout,index) => <button key={`${workout}-${index}`} onClick={() => openActivity('body',workout)}><span>{String(index+1).padStart(2,'0')}</span>{workout}<Plus size={14}/></button>)}</div><div className="rj-detail-heading"><strong>Bugünün temeli</strong></div>{props.bodyPlan.nutrition.map(item => <button className="rj-check" key={item} aria-pressed={props.dailyChecks.includes(item)} onClick={() => props.onDailyCheck(item)}><span>{props.dailyChecks.includes(item)&&<Check size={12}/>}</span>{item}</button>)}{props.projects.some(project => project.id === 'fitness') && <button className="rj-text-button" onClick={() => props.onProject('fitness')}>Fitness projesini aç <ArrowUpRight size={13}/></button>}</>}
-    {id === 'curiosity' && <>{['Araştır','Üret','Anlat'].map((step,index) => <div key={step}>{weeklyCheck(`curiosity-${index}`,step)}</div>)}{props.ideas.length > 0 && <details className="rj-idea-queue"><summary>Mevcut araştırma kuyruğu ({props.ideas.length})<ChevronDown size={14}/></summary>{props.ideas.map(idea => <article key={idea.id}><strong>{idea.title}</strong><button className="rj-text-button" onClick={() => idea.status === 'making' ? openActivity(idea.kind==='creative'?'creativity':idea.kind,idea.title) : props.onAdvanceIdea(idea.id)}>{idea.status==='spark'?'Araştırmaya al':idea.status==='exploring'?'Üretime geçir':'Çıktıyı kaydet'}<ArrowRight size={13}/></button></article>)}</details>}</>}
-    {id === 'creativity' && <>{weeklyCheck('create-finish','Bu haftanın çıktısını bitirdim')}<button className="rj-text-button" onClick={() => openOutput()}>Ürettiğini galeriye ekle <Plus size={14}/></button></>}
-    {id === 'social' && <div className="rj-inline-actions"><button className="ghost-button" onClick={() => openActivity('solo','Solo keşif')}>Solo keşif ekle <Compass size={14}/></button><button className="ghost-button" onClick={() => openActivity('social','Sosyal buluşma')}>Sosyal temas ekle <Users size={14}/></button></div>}
-    {entryList(weekActivities.filter(entry => matchesArea(entry,id)))}
-    <div className="rj-detail-footer">{id!=='social' && <button className="rj-text-button" onClick={() => openActivity(id,id==='expression'?'Kendini ifade etme provası':undefined)}><Plus size={14}/> Kayıt ekle</button>}<button className="rj-text-button" onClick={() => props.onSchedule(id==='creativity'?focus.create:id==='curiosity'?focus.curiosity||'Merak araştırması':`${areaInfo[id].name} çalışması`,`Rebuild · ${areaInfo[id].name}`)}><CalendarDays size={14}/> Takvimde yer aç</button></div>
-  </div>;
+export function RebuildJourney({journey,deck,activities,selections,syncStatus,onUpdateDeck,onStartChange}: Props) {
+  const [today,setToday]=useState(localDay);
+  const weekKey=calendarWeek(today);
+  const seed={activities,selections,curiosity:journey.focus[weekKey]?.curiosity,creation:journey.focus[weekKey]?.create};
+  const week=weekView(deck,weekKey,seed);
+  const start=journey.startDate||deck.startedOn||weekKey;
+  const position=journeyPosition(start,today);
+  const [expanded,setExpanded]=useState<string|null>(null);
+  const [overlay,setOverlay]=useState<'idea'|'settings'|'context'|null>(null);
+  const [idea,setIdea]=useState<Idea|null>(null);
+  const [ideaGoal,setIdeaGoal]=useState<string|undefined>();
+  const [drawing,setDrawing]=useState(false);
+  const [drawNumber,setDrawNumber]=useState(0);
+  const [goalDraft,setGoalDraft]=useState<WeeklyGoal[]>([]);
+  const [dateDraft,setDateDraft]=useState(start);
+  const [error,setError]=useState('');
+  const [notice,setNotice]=useState<{text:string;undo?:{week:string;goal:string;mark:string}}|null>(null);
+  const request=useRef<AbortController|null>(null);
+  const recent=useRef(deck.seenIdeas);
 
-  return <div className="rebuild-journey">
-    <section className="surface rj-hero"><div className="rj-hero-top"><span className="eyebrow">REBUILD <i/> KENDİNE AİT BİR HAYAT</span><button className="rj-date-button" onClick={() => {setDateDraft(journey.startDate||today);begin('start');}}><CalendarDays size={14}/>{journey.startDate ? position.complete?'26 hafta tamamlandı':position.future?`${shortDate(journey.startDate)} başlangıç`:`Hafta ${String(position.week).padStart(2,'0')} / 26`:'Başlangıç tarihini seç'}<Pencil size={12}/></button></div><div className="rj-chapter"><div><span className="rj-phase-label">FAZ {String(position.phase+1).padStart(2,'0')} <span>— {phase.name}</span></span><h1>{phase.description}</h1><p>Hangi işi yaparken, kendiliğinden daha iyi olmak istiyorsun?</p></div><div className="rj-orbit" aria-hidden="true"><i/><i/><i/><span>{String(position.phase+1).padStart(2,'0')}</span><small>YENİ BİR DÖNEM</small></div></div><div className="rj-priorities">{[{key:'body',label:'BEDEN',text:focus.body,icon:Dumbbell},{key:'create',label:'ÜRET',text:focus.create,icon:Palette},{key:'explore',label:'KEŞFET',text:focus.explore,icon:Compass}].map(item => <div key={item.key}><span><item.icon size={17}/></span><div><small>{item.label}</small><strong>{item.text}</strong></div></div>)}<button className="rj-icon-button" aria-label="Bu haftanın önceliklerini düzenle" onClick={() => {setFocusDraft(focus);begin('focus');}}><Pencil size={16}/></button></div></section>
+  useEffect(()=>{
+    const update=()=>setToday(localDay());
+    const timer=window.setInterval(update,30_000);
+    window.addEventListener('focus',update);document.addEventListener('visibilitychange',update);
+    return ()=>{window.clearInterval(timer);window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',update);};
+  },[]);
+  useEffect(()=>{
+    if(deck.weeks[weekKey] && deck.startedOn)return;
+    onUpdateDeck(current=>ensureWeek(current,weekKey,{activities,selections,curiosity:journey.focus[weekKey]?.curiosity,creation:journey.focus[weekKey]?.create}));
+  },[deck.weeks,deck.startedOn,weekKey,activities,selections,journey.focus,onUpdateDeck]);
+  useEffect(()=>()=>request.current?.abort(),[]);
+  useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(null),6000);return ()=>window.clearTimeout(timer);},[notice]);
+  const close=useCallback(()=>{request.current?.abort();setOverlay(null);setDrawing(false);setError('');},[setOverlay,setDrawing,setError]);
+  const update=(change:(current:WeeklyDeck)=>WeeklyDeck)=>onUpdateDeck(current=>change(ensureWeek(current,weekKey,seed)));
+  const draw=async (goal?:WeeklyGoal) => {
+    request.current?.abort();const controller=new AbortController();request.current=controller;
+    setDrawing(true);setError('');
+    try {
+      const next=await generateIdea({goal:goal?.kind,exclude:[...recent.current,...Object.values(week.ideas).map(item=>item.id),...(goal?[starter(goal).id]:[]),...(idea?[idea.id]:[])],signal:controller.signal});
+      if(overlay==='idea'&&idea)await new Promise(resolve=>window.setTimeout(resolve,150));
+      if(controller.signal.aborted)return;
+      recent.current=[...recent.current.filter(id=>id!==next.id),next.id].slice(-100);
+      update(current=>rememberIdea(current,next.id));setIdea(next);setDrawNumber(value=>value+1);setDrawing(false);
+    } catch {if(!controller.signal.aborted){setDrawing(false);setError('Fikir açılamadı. Bir kez daha dene.');}}
+  };
+  const openIdea=(goal?:WeeklyGoal)=>{setIdea(null);setIdeaGoal(goal?.id);setOverlay('idea');void draw(goal);};
+  const done=(goal:WeeklyGoal, includeStarter=false)=>{
+    const count=week.marks[goal.id]?.length??0;
+    if(expanded===goal.id){document.getElementById(`rd-toggle-${goal.id}`)?.focus();setExpanded(null);}
+    if(count>=goal.target){update(current=>undoCompletion(current,weekKey,goal.id));setNotice({text:`${goal.name}: son işaret geri alındı.`});return;}
+    const evidence=week.ideas[goal.id]??(includeStarter?starter(goal):undefined);
+    const mark={id:crypto.randomUUID(),at:new Date().toISOString(),...(evidence?{idea:evidence}:{})};
+    update(current=>completeGoal(current,weekKey,goal.id,mark));setExpanded(null);
+    setNotice({text:`${goal.name} · ${count+1} / ${goal.target}`,undo:{week:weekKey,goal:goal.id,mark:mark.id}});
+  };
+  const saveIdea=()=>{
+    if(!idea)return;
+    const next=attachIdea(ensureWeek(deck,weekKey,seed),weekKey,idea,ideaGoal);
+    const destination=next.weeks[weekKey].goals.find(goal=>next.weeks[weekKey].ideas[goal.id]?.id===idea.id)!;
+    update(current=>attachIdea(current,weekKey,idea,ideaGoal));setExpanded(destination.id);close();
+    setNotice({text:`${destination.name} · fikir bu haftaya alındı.`});
+  };
+  const saveGoals=()=>{
+    if(goalDraft.some(goal=>!goal.name.trim() || !Number.isInteger(goal.target) || goal.target<1 || goal.target>99)){setError('Hedeflere bir ad ve 1–99 arasında bir sayı ver.');return;}
+    update(current=>configureGoals(current,weekKey,goalDraft));setExpanded(null);close();setNotice({text:'Hedeflerin bu hafta ve gelecek haftalar için kaydedildi.'});
+  };
 
-    <section className="rj-week"><div className="rj-section-head"><div><span className="eyebrow">01 / BU HAFTA</span><h2>Hayatın hareket eden parçaları.</h2></div><button className="rj-text-button" onClick={() => openHistory()}>{shortDate(currentWeek)} – {shortDate(addDays(currentWeek,6))}<History size={15}/></button></div><div className="rj-week-grid">{['body','curiosity','creativity','language','expression','social',...(focus.career?['career']:[])].map(id => {const info=areaInfo[id];const Icon=info.icon;const open=expanded===id;return <article key={id} className={`surface rj-week-card ${id} ${open?'expanded':''}`}><button className="rj-week-toggle" aria-expanded={open} aria-controls={`rj-detail-${id}`} onClick={() => setExpanded(open?null:id)}><span className={`area-icon ${info.color}`}><Icon size={19}/></span><span className="rj-week-name">{info.name}</span><ChevronDown size={15}/><span className="rj-week-value">{id==='body'?<><b>{weekCount('body')}</b><span> / 3 seans</span></>:id==='curiosity'?<strong>{focus.curiosity || 'Bu hafta hangi soru aklında?'}</strong>:id==='creativity'?<strong>{focus.create}</strong>:id==='language'?<><b>{weekCount('language')}</b><span> konuşma / pratik</span></>:id==='expression'?<><b>{weekCount('expression')}</b><span> / 2 prova</span></>:id==='social'?<strong>{weekCount('social') ? `${weekCount('social')} deneyim`:'Dışarıya biraz yer aç.'}</strong>:<strong>Sevdiğin işten bir gelir deneyi.</strong>}</span><span className="rj-week-caption">{id==='body'?<span className="rj-session-dots">{[0,1,2].map(index => <i key={index} className={weekCount('body')>index?'done':''}>{weekCount('body')>index&&<Check size={10}/>}</i>)}<small>Bu haftaki ritmin</small></span>:id==='curiosity'?<span className="rj-process">{['Araştır','Üret','Anlat'].map((step,index) => <span key={step} className={focus.checks.includes(`curiosity-${index}`)?'done':''}>{step}{index<2&&<ChevronRight size={12}/>}</span>)}</span>:id==='creativity'?`${Math.floor(createMinutes/60)} sa ${createMinutes%60} dk / 3 sa${focus.checks.includes('create-finish')?' · çıktı tamamlandı':''}`:id==='social'?`Solo keşif ${weekActivities.some(entry=>entry.areaId==='solo')?'✓':'—'} · Sosyal ortam ${weekActivities.some(entry=>entry.areaId==='social')?'✓':'—'}`:id==='career'?'Örnek iş → gerçek geri bildirim':'Kısa, düzenli ve kendi cümlelerinle.'}</span></button><div className="rj-expand" id={`rj-detail-${id}`} inert={!open}><div>{areaDetails(id)}</div></div></article>;})}</div></section>
+  return <section className="rebuild-deck" aria-label="Rebuild haftalık alanı">
+    <header className="rd-heading">
+      <div><span className="rd-kicker">REBUILD</span><h1>Bu hafta<span>.</span></h1><p>{shortDate(weekKey)} — {shortDate(addDays(weekKey,6))}</p></div>
+      <button className="rd-week-index" aria-label={`26 haftalık yolculuk · hafta ${position.week}`} onClick={()=>{setDateDraft(start);setOverlay('context');}}>
+        <span><b>{String(position.week).padStart(2,'0')}</b><i>/ 26</i><ArrowUpRight size={15}/></span>
+        <small>{position.complete?'yolculuk tamamlandı':position.future?'başlangıç yaklaşıyor':'küçük adımlarla'}</small>
+      </button>
+    </header>
+    <div className="rd-weekly">
+      <div className="rd-list-tools"><span>NEYİ YAPMAK İSTİYORSUN?</span><button className="rd-icon" aria-label="Haftalık hedefleri düzenle" onClick={()=>{setGoalDraft(week.goals.map(goal=>({...goal})));setOverlay('settings');}}><Settings2 size={17}/></button></div>
+      <div className="rd-goals">{week.goals.map((goal,index)=>{
+        const count=week.marks[goal.id]?.length??0, complete=count>=goal.target, isOpen=expanded===goal.id;
+        const topic=week.ideas[goal.id]??starter(goal);
+        return <div key={goal.id} className={`rd-goal ${isOpen?'is-open':''} ${complete?'is-done':''}`}>
+          <div className="rd-goal-line">
+            <button className="rd-goal-toggle" id={`rd-toggle-${goal.id}`} aria-expanded={isOpen} aria-controls={`rd-detail-${goal.id}`} onClick={()=>setExpanded(isOpen?null:goal.id)}>
+              <span className="rd-row-index" aria-hidden="true">{String(index+1).padStart(2,'0')}</span>
+              <span className="rd-goal-name">{goal.name}{week.ideas[goal.id]&&<i aria-label="Bu hafta için fikir var"/>}</span>
+              <span className="rd-count" key={count}><strong>{count}</strong><span>/ {goal.target}</span></span><ChevronDown className="rd-chevron" size={16}/>
+            </button>
+            <button className="rd-complete" aria-label={`${goal.name}: ${complete?'son işareti geri al':'bir tamamlanma ekle'}`} aria-pressed={complete} onClick={()=>done(goal)}><Check size={19}/></button>
+          </div>
+          <div className="rd-expansion" id={`rd-detail-${goal.id}`} inert={!isOpen} aria-hidden={!isOpen}><div><div className="rd-goal-detail">
+            <span className="rd-kicker">{week.ideas[goal.id]?'BU HAFTANIN FİKRİ':'BURADAN BAŞLAYABİLİRSİN'}</span><p>{topic.text}</p>
+            <div className="rd-detail-actions"><button className="rd-text-button" onClick={()=>openIdea(goal)}><RotateCcw size={15}/> Başka fikir</button><button className="rd-done-action" onClick={()=>done(goal,true)}>{complete?<><RotateCcw size={15}/> Son işareti geri al</>:<><Check size={17}/> Yaptım</>}</button></div>
+          </div></div></div>
+        </div>;
+      })}{!week.goals.length&&<p className="rd-empty">Bu haftayı boş bıraktın. Bir fikir çek ya da düzenle düğmesinden küçük bir hedef ekle.</p>}</div>
+    </div>
+    <footer className="rd-trigger-area"><button className="rd-trigger" onClick={()=>openIdea()}><span className="rd-trigger-object" aria-hidden="true"><Sparkle size={29} strokeWidth={1.15}/></span><span><strong>Bana bir şey ver</strong><small>Bir fikir çek. Nereye götüreceğine bak.</small></span><ArrowDownRight size={20}/></button></footer>
+    {(syncStatus==='error'||syncStatus==='offline')&&<p className="rd-sync" role="status">Cihazında saklandı. Sunucuya eşitleme bekleniyor.</p>}
+    <div className={`rd-notice ${notice?'visible':''}`} role="status" aria-live="polite">{notice&&<><span>{notice.text}</span>{notice.undo&&<button onClick={()=>{const action=notice.undo!;onUpdateDeck(current=>undoCompletion(current,action.week,action.goal,action.mark));setNotice({text:'İşaret geri alındı.'});}}>Geri al</button>}</>}</div>
 
-    <section className="rj-explore"><div className="rj-section-head"><div><span className="eyebrow">02 / KEŞFET</span><h2>İşini seçmeden önce, kendini tanı.</h2><p>Bir unvan seçmiyorsun. Bir şey deneyip sende ne bıraktığına bakıyorsun.</p></div><button className="primary-button" onClick={() => openExperiment()}><Plus size={15}/> Yeni deney</button></div><div className="rj-directions" aria-label="Deney başlangıçları">{directions.map(direction => <button key={direction} onClick={() => openExperiment(undefined,direction)}>{direction}<Plus size={13}/></button>)}</div>
-      {(journey.experiments.length>0) && <div className="rj-experiment-toolbar"><label><Search size={15}/><input aria-label="Deneylerde ara" value={experimentQuery} onChange={event=>{setExperimentQuery(event.target.value);setExperimentLimit(6);}} placeholder="Bir deney veya not ara…"/></label><button className="rj-text-button" aria-pressed={showArchived} onClick={()=>{setShowArchived(value=>!value);setExperimentLimit(6);}}><Archive size={14}/>{showArchived?'Aktif deneyler':'Arşivlenenler'}</button></div>}
-      {activeExperiments.length ? <div className="rj-experiment-grid">{activeExperiments.slice(0,experimentLimit).map(entry => <article className="surface rj-experiment" key={entry.id}><header><span className="rj-experiment-mark"><FlaskConical size={19}/></span><span>{shortDate(entry.date)}</span><button className="rj-icon-button" aria-label={`${entry.name} deneyini düzenle`} onClick={()=>openExperiment(entry)}><Pencil size={15}/></button></header><small>{entry.name}</small><h3>{entry.made || 'Henüz bir deneme notu yok.'}</h3>{entry.note&&<p>{entry.note}</p>}<div className="rj-rating-summary">{ratingLabels.filter(([key])=>entry.ratings[key]>0).map(([key,label])=><div key={key}><span>{label}</span><span aria-label={`${label}: ${entry.ratings[key]} / 5`}>{[1,2,3,4,5].map(value=><i key={value} className={value<=entry.ratings[key]?'filled':''}/>)}</span></div>)}</div>{entry.projectId && <button className="rj-text-button" onClick={()=>props.onProject(entry.projectId)}><Link2 size={13}/> Bağlı projeyi aç <ArrowUpRight size={13}/></button>}<footer><button className="rj-text-button" onClick={()=>{setOutputDraft({id:'',title:entry.made||entry.name,date:entry.date,tag:entry.name,note:entry.note,link:'',image:'',projectId:entry.projectId});begin('output');}}>Ürettiğini galeriye ekle <ArrowRight size={13}/></button></footer></article>)}</div> : <div className="surface rj-experiment-empty"><span><FlaskConical size={28}/></span><div><h3>{showArchived?'Arşivde deney yok.':experimentQuery?'Bu aramada deney bulunamadı.':'Seni içine çeken şey ne?'}</h3><p>{showArchived?'Arşivlenen deneyler silinmez; istediğinde geri alabilirsin.':experimentQuery?'Başka bir kelimeyle ara veya aramayı temizle.':'Bir arayüz, küçük bir oyun, fiziksel bir nesne… İlk denemeni bırak; cevaplar deneyimlerden gelsin.'}</p>{!showArchived&&!experimentQuery&&<button className="rj-text-button" onClick={()=>openExperiment()}>İlk deneyini ekle <ArrowRight size={15}/></button>}</div></div>}
-      {activeExperiments.length>experimentLimit&&<button className="rj-text-button" onClick={()=>setExperimentLimit(value=>value+6)}>Daha fazla deney <ChevronDown size={15}/></button>}
-      {insights.length>0&&<aside className="rj-insights"><span className="eyebrow">DENEYLERİNİN SÖYLEDİĞİ</span>{insights.map(item=><div key={item.name}><Sparkles size={17}/><p><strong>{item.name}</strong>{item.text}</p></div>)}<small>Yalnızca kaydettiğin puanlardan hesaplanır; bir meslek önerisi değildir.</small></aside>}
-    </section>
+    {overlay==='idea'&&<Overlay title="Bana bir şey ver" kind="idea" onClose={close}>
+      <div className="rd-draw-brand"><Sparkle size={18}/><span>REBUILD / BİR İHTİMAL DAHA</span></div>
+      <div className={`rd-idea-stage ${drawing?'is-drawing':''}`} aria-live="polite" aria-busy={drawing}>{idea&&<div className="rd-drawn-idea" key={drawNumber}><span className="rd-kicker">{idea.kind}</span><h2>{idea.text}</h2></div>}{!idea&&<span className="rd-kicker">Bir fikir açılıyor…</span>}{error&&<p role="alert">{error}</p>}</div>
+      <div className="rd-idea-bottom"><div className="rd-idea-actions"><button className="primary-button" disabled={!idea||drawing} onClick={saveIdea}><Plus size={18}/> Bu haftaya al</button><button className="rd-another" disabled={drawing} onClick={()=>void draw(week.goals.find(goal=>goal.id===ideaGoal))}><RotateCcw size={18}/> Başka</button></div><span className="rd-idea-footnote">Sadece merak ettiğin için.</span></div>
+    </Overlay>}
 
-    <section className="surface rj-pulse"><div className="rj-section-head"><div><span className="eyebrow">03 / YAŞAM RİTMİ</span><h2>Son haftalarda neler hareket etti?</h2><p>Bazen bir alan sessiz kalır. Bu yalnızca dönüp bakmak için bir işaret.</p></div><span className="rj-pulse-key"><i/> Kayıt var <i/> Sessiz</span></div><div className="rj-pulse-grid">{['body','curiosity','creativity','language','expression','social','career'].map(id=>{const info=areaInfo[id];return <div key={id}><button className="rj-pulse-label" onClick={()=>openHistory(id)}><info.icon size={16}/>{info.name}</button><span>{[3,2,1,0].map(offset=>{const key=addDays(currentWeek,-offset*7);const count=evidence.filter(entry=>entry.date>=key&&entry.date<=addDays(key,6)&&matchesArea(entry,id)).length;return <button key={key} className={count?'active':''} aria-label={`${info.name}, ${shortDate(key)} haftası: ${count} kayıt`} title={`${shortDate(key)} · ${count} kayıt`} onClick={()=>openHistory(id,key)}>{count?<span/>:<i/>}</button>;})}</span></div>;})}</div><div className="rj-pulse-legend"><span>Son 4 hafta → bu hafta</span><span>Yaşam puanı yok. Yalnızca bıraktığın izler.</span></div></section>
+    {overlay==='settings'&&<Overlay title="Haftanın ayarı" kind="settings" onClose={close}>
+      <span className="rd-kicker">KENDİ RİTMİN</span><h2>Haftanın ayarı.</h2><p className="rd-dialog-intro">Bir kez ayarla. Gelecek hafta da buradalar.</p>
+      <form onSubmit={event=>{event.preventDefault();saveGoals();}}>
+        <div className="rd-goal-editor">{goalDraft.map((goal,index)=><div className="rd-edit-row" key={goal.id}>
+          <input aria-label={`Hedef ${index+1} adı`} value={goal.name} maxLength={80} required onChange={event=>setGoalDraft(items=>items.map(item=>item.id===goal.id?{...item,name:event.target.value}:item))}/>
+          <div className="rd-stepper"><button type="button" aria-label={`${goal.name||'Hedef'} sayısını azalt`} disabled={goal.target<=1} onClick={()=>setGoalDraft(items=>items.map(item=>item.id===goal.id?{...item,target:item.target-1}:item))}><Minus size={14}/></button><input aria-label={`Hedef ${index+1} haftalık sayı`} type="number" min={1} max={99} value={goal.target||''} required onChange={event=>setGoalDraft(items=>items.map(item=>item.id===goal.id?{...item,target:Number(event.target.value)}:item))}/><button type="button" aria-label={`${goal.name||'Hedef'} sayısını artır`} disabled={goal.target>=99} onClick={()=>setGoalDraft(items=>items.map(item=>item.id===goal.id?{...item,target:item.target+1}:item))}><Plus size={14}/></button></div>
+          <button className="rd-icon" type="button" aria-label={`${goal.name||'Hedef'} hedefini kaldır`} onClick={()=>setGoalDraft(items=>items.filter(item=>item.id!==goal.id))}><Trash2 size={16}/></button>
+        </div>)}</div>
+        <button className="rd-text-button rd-add-goal" type="button" disabled={goalDraft.length>=12} onClick={()=>setGoalDraft(items=>[...items,{id:`goal-${crypto.randomUUID()}`,name:'',target:1,kind:'any'}])}><Plus size={16}/> Küçük bir hedef ekle</button>
+        {error&&<p className="rd-error" role="alert">{error}</p>}
+        <footer className="rd-editor-footer"><button className="rd-text-button" type="button" onClick={close}>Vazgeç</button><button className="primary-button" type="submit">Kaydet <Check size={16}/></button></footer>
+      </form>
+    </Overlay>}
 
-    <section className="rj-made"><div className="rj-section-head"><div><span className="eyebrow">04 / BU AY ÜRETTİKLERİN</span><h2>Fikir değildi. Yaptın.</h2></div><div className="rj-inline-actions"><label className="rj-month"><span className="sr-only">Galerideki ay</span><input aria-label="Galerideki ay" type="month" value={galleryMonth} onInput={event=>setGalleryMonth(event.currentTarget.value)} onChange={event=>setGalleryMonth(event.target.value)}/></label><button className="ghost-button" onClick={()=>openOutput()}><Plus size={15}/> Çıktı ekle</button></div></div><div className="rj-gallery">{monthOutputs.map((output,index)=><article className="surface rj-output" key={output.id}><button className={`rj-output-cover cover-${index%4}`} onClick={()=>openOutput(output)} aria-label={`${output.title} çıktısını düzenle`}>{safeLink(output.image)&&!failedImages.includes(output.image)?<Image unoptimized onError={()=>setFailedImages(current=>[...current,output.image])} width={600} height={400} src={safeLink(output.image)} alt={output.title} loading="lazy" referrerPolicy="no-referrer"/>:<><span className="rj-cover-lines"/><span className="rj-cover-type">{output.tag||'ÇIKTI'}</span><span className="rj-cover-title">{output.title}</span></>}<span className="rj-cover-edit"><Pencil size={15}/></span></button><div><span className="rj-output-meta">{output.tag||'Üretim'}<time>{shortDate(output.date)}</time></span><h3>{output.title}</h3>{output.note&&<p>{output.note}</p>}<div className="rj-inline-actions">{safeLink(output.link)&&<a className="rj-text-button" href={safeLink(output.link)} target="_blank" rel="noreferrer">Çıktıyı aç <ArrowUpRight size={14}/></a>}{output.projectId&&<button className="rj-text-button" onClick={()=>props.onProject(output.projectId)}>Proje <ArrowUpRight size={14}/></button>}</div></div></article>)}<button className="rj-output-add" onClick={()=>openOutput()}><span><Plus size={24}/></span><strong>{monthOutputs.length?'Bir şey daha yaptın mı?':'Bu ayın ilk çıktısı.'}</strong><small>Bir prototip, fotoğraf, çizim veya bitirdiğin herhangi bir şey.</small></button></div></section>
-
-    <section className="rj-journey-section"><div className="rj-section-head"><div><span className="eyebrow">05 / ALTI AYLIK YOLCULUK</span><h2>Bir meslek değil, bir yön bulmak.</h2></div><span className="rj-journey-duration">26 hafta · 6 dönem</span></div><div className="rj-timeline">{journey.phases.map((item,index)=>{const startOffset=journey.phases.slice(0,index).reduce((sum,value)=>sum+value.weeks,0);const isCurrent=position.phase===index&&!position.complete;return <button key={item.id} className={`${isCurrent?'current':''} ${index<position.phase||position.complete?'past':''} ${phaseIndex===index?'selected':''}`} aria-pressed={phaseIndex===index} onClick={()=>setPhaseIndex(index)}><span className="rj-timeline-node">{String(index+1).padStart(2,'0')}</span><strong>{item.name}</strong><small>{journey.startDate?`${shortDate(addDays(journey.startDate,startOffset*7))} – ${shortDate(addDays(journey.startDate,(startOffset+item.weeks)*7-1))}`:`Hafta ${startOffset+1}–${startOffset+item.weeks}`}</small>{isCurrent&&<em>{!position.started?'İlk dönem':'Şu an buradasın'}</em>}</button>;})}</div><article className="surface rj-phase-detail"><span>{String(phaseIndex+1).padStart(2,'0')}</span><div><span className="eyebrow">{journey.phases[phaseIndex].name}</span><h3>{journey.phases[phaseIndex].description}</h3><p>{journey.phases[phaseIndex].objective}</p>{journey.phases[phaseIndex].evidence&&<p className="rj-phase-evidence"><FlagIcon/>{journey.phases[phaseIndex].evidence}</p>}</div><button className="rj-icon-button" aria-label="Seçili fazı düzenle" onClick={()=>{setPhaseDraft({...journey.phases[phaseIndex]});begin('phase');}}><Pencil size={16}/></button></article></section>
-
-    <section className="surface rj-review"><div className="rj-review-mark"><BookOpen size={30}/></div><div><span className="eyebrow">06 / HAFTAYI KAPAT</span><h2>{journey.reviews[currentWeek]?.closedAt?'Bu haftanın izleri saklandı.':'Biraz dur. Bu hafta sende ne bıraktı?'}</h2><p>{journey.reviews[currentWeek]?.closedAt?'Kayıtların ve değerlendirmen geçmişte duruyor. İstediğinde dönüp düzenleyebilirsin.':'Dört kısa soru. Ne yaptığından çok, neyi yaparken kendin olduğunu hatırla.'}</p><div className="rj-inline-actions"><button className="primary-button" onClick={()=>openReview()}>{journey.reviews[currentWeek]?.closedAt?'Değerlendirmeyi aç':'Haftayı değerlendir'}<ArrowRight size={15}/></button><button className="rj-text-button" onClick={()=>openHistory()}><History size={15}/> Geçmiş haftalar</button></div></div></section>
-    <div className="rj-notice" role="status">{notice}{removed&&<button onClick={()=>{const entry=removed;props.onUpdate(current=>entry.kind==='experiment'?{...current,experiments:[entry.item,...current.experiments]}:{...current,outputs:[entry.item,...current.outputs]});setRemoved(null);setNotice('Kayıt geri alındı.');}}><Undo2 size={14}/> Geri al</button>}</div>
-
-    {sheet==='start'&&<Sheet title="Yolculuğun başlangıcı" description="Hafta ve faz, bu tarihten itibaren otomatik ilerler. Kayıtların tarihini değiştirmez." onClose={closeSheet} onSubmit={()=>{if(!validDate(dateDraft)){setError('Geçerli bir başlangıç tarihi seç.');return;}commit(current=>({...current,startDate:dateDraft}),'Başlangıç tarihi kaydedildi.');}}><label>Başlangıç tarihi<input type="date" required value={dateDraft} onInput={event=>setDateDraft(event.currentTarget.value)} onChange={event=>setDateDraft(event.target.value)}/></label><p className="rj-form-note">26 haftalık deneyin başlangıcını daha sonra değiştirebilirsin.</p>{error&&<p role="alert">{error}</p>}</Sheet>}
-    {sheet==='focus'&&<Sheet title="Bu hafta ne önemli?" description="Sadece üç öncelik. Geri kalanlar daha sessiz kalabilir." onClose={closeSheet} onSubmit={()=>commit(current=>({...current,focus:{...current.focus,[currentWeek]:focusDraft}}),'Haftanın odağı güncellendi.')}><label>Beden<input required value={focusDraft.body} onChange={event=>setFocusDraft({...focusDraft,body:event.target.value})}/></label><label>Üret<input required value={focusDraft.create} onChange={event=>setFocusDraft({...focusDraft,create:event.target.value})}/></label><label>Keşfet<input required value={focusDraft.explore} onChange={event=>setFocusDraft({...focusDraft,explore:event.target.value})}/></label><label>Bu haftanın merak sorusu <small>İsteğe bağlı</small><input value={focusDraft.curiosity} placeholder="Aklını kurcalayan soru…" onChange={event=>setFocusDraft({...focusDraft,curiosity:event.target.value})}/></label><label className="rj-native-check"><input type="checkbox" checked={focusDraft.career} onChange={event=>setFocusDraft({...focusDraft,career:event.target.checked})}/>Bu hafta bağımsız gelir deneyine de yer aç</label></Sheet>}
-    {sheet==='experiment'&&<Sheet title={experimentDraft.id?'Deneyini düzenle':'Yeni bir şey dene'} description="Bir kategoriye bağlanmak zorunda değilsin. Adını istediğin zaman değiştir." wide onClose={closeSheet} onSubmit={()=>{if(!experimentDraft.name.trim()||!experimentDraft.made.trim()||!validDate(experimentDraft.date)){setError('Deney adını, denediğin şeyi ve geçerli tarihi ekle.');return;}const entry={...experimentDraft,id:experimentDraft.id||crypto.randomUUID(),name:experimentDraft.name.trim(),made:experimentDraft.made.trim()};commit(current=>({...current,experiments:current.experiments.some(item=>item.id===entry.id)?current.experiments.map(item=>item.id===entry.id?entry:item):[entry,...current.experiments]}),'Deney kaydedildi.');}}><div className="rj-form-row"><label>Deney / araştırdığın yön<input required value={experimentDraft.name} placeholder="Örn. Oyun arayüzleri" onChange={event=>setExperimentDraft({...experimentDraft,name:event.target.value})}/></label><label>Tarih<input type="date" required value={experimentDraft.date} onInput={event=>setExperimentDraft({...experimentDraft,date:event.currentTarget.value})} onChange={event=>setExperimentDraft({...experimentDraft,date:event.target.value})}/></label></div><label>Ne yaptın / ne denedin?<input required value={experimentDraft.made} placeholder="Örn. Küçük bir oyunun ilk menüsünü tasarladım" onChange={event=>setExperimentDraft({...experimentDraft,made:event.target.value})}/></label><label>Kısa notun<textarea aria-label="Kısa notun" value={experimentDraft.note} onChange={event=>setExperimentDraft({...experimentDraft,note:event.target.value})} placeholder="Seni ne içine çekti, ne zorladı?"/></label><fieldset className="rj-rating-fields"><legend>Sende ne bıraktı? <small>İsteğe bağlı · 1 düşük, 5 yüksek · seçimi kaldırmak için tekrar dokun</small></legend>{ratingLabels.map(([key,label])=><div key={key}><span>{label}</span><div role="group" aria-label={label}>{[1,2,3,4,5].map(value=><button key={value} type="button" aria-label={`${label} ${value}`} aria-pressed={experimentDraft.ratings[key]===value} onClick={()=>setExperimentDraft({...experimentDraft,ratings:{...experimentDraft.ratings,[key]:experimentDraft.ratings[key]===value?0:value}})}>{value}</button>)}</div></div>)}</fieldset><label>İlgili proje <small>İsteğe bağlı · yeni görev oluşturmaz</small><select value={experimentDraft.projectId} onChange={event=>setExperimentDraft({...experimentDraft,projectId:event.target.value})}><option value="">Proje bağlantısı yok</option>{props.projects.map(project=><option key={project.id} value={project.id}>{project.title}</option>)}</select></label>{experimentDraft.id&&<div className="rj-edit-actions"><button type="button" className="rj-text-button" onClick={()=>commit(current=>({...current,experiments:current.experiments.map(item=>item.id===experimentDraft.id?{...experimentDraft,archived:!experimentDraft.archived}:item)}),experimentDraft.archived?'Deney geri alındı.':'Deney arşivlendi.')}><Archive size={14}/>{experimentDraft.archived?'Arşivden çıkar':'Arşivle'}</button><button type="button" className="rj-text-button rj-danger" onClick={()=>{if(!confirmRemove){setConfirmRemove(true);return;}setRemoved({kind:'experiment',item:journey.experiments.find(item=>item.id===experimentDraft.id)!});commit(current=>({...current,experiments:current.experiments.filter(item=>item.id!==experimentDraft.id)}),'Deney kaldırıldı.');}}><Trash2 size={14}/>{confirmRemove?'Kaldırmayı onayla':'Deneyi kaldır'}</button></div>}{error&&<p role="alert">{error}</p>}</Sheet>}
-    {sheet==='output'&&<Sheet title={outputDraft.id?'Çıktını düzenle':'Ürettiğini sakla'} description="Tamamladığın bir şeyi bu küçük kişisel arşive ekle." onClose={closeSheet} onSubmit={()=>{if(!outputDraft.title.trim()||!validDate(outputDraft.date)){setError('Başlık ve geçerli tarih ekle.');return;}if((outputDraft.link&&!safeLink(outputDraft.link))||(outputDraft.image&&!safeLink(outputDraft.image))){setError('Bağlantılar http:// veya https:// ile başlamalı.');return;}const entry={...outputDraft,id:outputDraft.id||crypto.randomUUID(),title:outputDraft.title.trim()};commit(current=>({...current,outputs:current.outputs.some(item=>item.id===entry.id)?current.outputs.map(item=>item.id===entry.id?entry:item):[entry,...current.outputs]}),'Çıktı galeriye eklendi.');setGalleryMonth(entry.date.slice(0,7));}}><label>Başlık<input required value={outputDraft.title} placeholder="Örn. Personal OS v1" onChange={event=>setOutputDraft({...outputDraft,title:event.target.value})}/></label><div className="rj-form-row"><label>Tarih<input required type="date" value={outputDraft.date} onInput={event=>setOutputDraft({...outputDraft,date:event.currentTarget.value})} onChange={event=>setOutputDraft({...outputDraft,date:event.target.value})}/></label><label>Tür / etiket<input value={outputDraft.tag} placeholder="UI, Oyun, Fotoğraf…" onChange={event=>setOutputDraft({...outputDraft,tag:event.target.value})}/></label></div><label>Kısa not<textarea aria-label="Çıktı notu" value={outputDraft.note} onChange={event=>setOutputDraft({...outputDraft,note:event.target.value})}/></label><label>Çıktı bağlantısı <small>İsteğe bağlı</small><input type="url" value={outputDraft.link} placeholder="https://…" onChange={event=>setOutputDraft({...outputDraft,link:event.target.value})}/></label><label>Kapak görseli bağlantısı <small>İsteğe bağlı</small><input type="url" value={outputDraft.image} placeholder="https://…/gorsel.jpg" onChange={event=>setOutputDraft({...outputDraft,image:event.target.value})}/></label><p className="rj-form-note">Görsel eklemezsen başlık ve etiketten bir kapak oluşturulur.</p><label>İlgili proje<select value={outputDraft.projectId} onChange={event=>setOutputDraft({...outputDraft,projectId:event.target.value})}><option value="">Proje bağlantısı yok</option>{props.projects.map(project=><option key={project.id} value={project.id}>{project.title}</option>)}</select></label>{outputDraft.id&&<button type="button" className="rj-text-button rj-danger" onClick={()=>{if(!confirmRemove){setConfirmRemove(true);return;}setRemoved({kind:'output',item:journey.outputs.find(item=>item.id===outputDraft.id)!});commit(current=>({...current,outputs:current.outputs.filter(item=>item.id!==outputDraft.id)}),'Çıktı kaldırıldı.');}}><Trash2 size={14}/>{confirmRemove?'Kaldırmayı onayla':'Çıktıyı kaldır'}</button>}{error&&<p role="alert">{error}</p>}</Sheet>}
-    {sheet==='phase'&&<Sheet title={`Faz ${phaseIndex+1} · düzenle`} onClose={closeSheet} onSubmit={()=>commit(current=>({...current,phases:current.phases.map((item,index)=>index===phaseIndex?phaseDraft:item)}),'Faz güncellendi.')}><label>Faz adı<input required value={phaseDraft.name} onChange={event=>setPhaseDraft({...phaseDraft,name:event.target.value})}/></label><label>Bu dönemin anlatısı<textarea aria-label="Bu dönemin anlatısı" required value={phaseDraft.description} onChange={event=>setPhaseDraft({...phaseDraft,description:event.target.value})}/></label><label>Temel amaç<textarea aria-label="Temel amaç" required value={phaseDraft.objective} onChange={event=>setPhaseDraft({...phaseDraft,objective:event.target.value})}/></label><label>İzler / dönüm noktaları <small>İsteğe bağlı</small><textarea aria-label="İzler / dönüm noktaları" value={phaseDraft.evidence} onChange={event=>setPhaseDraft({...phaseDraft,evidence:event.target.value})}/></label></Sheet>}
-    {sheet==='review'&&<Sheet title={`${shortDate(reviewWeek)} haftası`} description="Kısa cevaplar yeterli. Kapatmak kayıtlarını silmez; bu haftayı geçmişe ekler." action={journey.reviews[reviewWeek]?.closedAt?'Değerlendirmeyi güncelle':'Haftayı kapat'} onClose={closeSheet} onSubmit={()=>{try{const updated=closeWeek(journey,reviewWeek,reviewDraft);commit(current=>({...current,reviews:{...current.reviews,[reviewWeek]:updated.reviews[reviewWeek]}}),'Hafta kapatıldı; değerlendirmen geçmişe kaydedildi.');}catch(failure){setError((failure as Error).message);}}}>{questions.map(([key,label],index)=><label key={key}><span className="rj-question-number">0{index+1}</span>{label}{key==='learned'&&<small>İsteğe bağlı</small>}<textarea aria-label={label} rows={2} value={reviewDraft[key]} onChange={event=>setReviewDraft({...reviewDraft,[key]:event.target.value})}/></label>)}{error&&<p role="alert">{error}</p>}<p className="rj-form-note">Kaydetme durumu uygulamanın mevcut senkronizasyon göstergesinden izlenir. {props.syncStatus==='error'?'Bağlantı yok; kayıt bu cihazda tutulur.':''}</p></Sheet>}
-    {sheet==='history'&&<Sheet title="Geçmiş haftalar" description="Çalışmaların ve kısa değerlendirmelerin; hepsi kendi haftasında." wide onClose={closeSheet}><div className="rj-form-row"><label>Hafta<select value={historyWeek} onChange={event=>setHistoryWeek(event.target.value)}>{[...new Set([historyWeek,...historyKeys])].sort().reverse().map(key=><option key={key} value={key}>{shortDate(key)} – {shortDate(addDays(key,6))}{journey.reviews[key]?.closedAt?' · kapatıldı':''}</option>)}</select></label><label>Alan<select value={historyArea} onChange={event=>setHistoryArea(event.target.value)}><option value="all">Tüm alanlar</option>{Object.entries(areaInfo).filter(([key])=>key!=='solo').map(([key,info])=><option key={key} value={key}>{info.name}</option>)}</select></label></div><div className="rj-history-navigation"><button type="button" className="rj-text-button" onClick={()=>setHistoryWeek(addDays(historyWeek,-7))}><ChevronLeft size={15}/> Önceki hafta</button><button type="button" className="rj-text-button" disabled={historyWeek>=currentWeek} onClick={()=>setHistoryWeek(addDays(historyWeek,7))}>Sonraki hafta <ChevronRight size={15}/></button></div><h3>{historyEntries.length} çalışma kaydı</h3>{entryList(historyEntries)}{(journey.reviews[historyWeek]||props.legacyReviews[historyWeek])&&<section className="rj-history-review"><h3>Haftanın değerlendirmesi</h3>{questions.map(([key,label])=>reviewFor(historyWeek)[key]&&<div key={key}><small>{label}</small><p>{reviewFor(historyWeek)[key]}</p></div>)}</section>}<button type="button" className="ghost-button" onClick={()=>openReview(historyWeek)}><BookOpen size={15}/>{journey.reviews[historyWeek]||props.legacyReviews[historyWeek]?'Değerlendirmeyi düzenle':'Bu haftayı değerlendir'}</button></Sheet>}
-  </div>;
+    {overlay==='context'&&<Overlay title="26 haftalık yolculuk" kind="context" onClose={close}>
+      <span className="rd-kicker">BÜYÜK RESİM</span><h2>26 hafta.<br/>Kendine doğru.</h2><p className="rd-dialog-intro">{position.complete?'Bu dönem tamamlandı. Haftalık alanını kullanmaya devam edebilirsin.':position.future?`${shortDate(start)} tarihinde başlıyor. Bu haftanı şimdiden kurabilirsin.`:'Şimdi yalnızca bu haftaya yer aç.'}</p>
+      <ol className="rd-phases">{journey.phases.map((phase,index)=><li key={phase.id} className={index===position.phase?'current':''}><span>{String(index+1).padStart(2,'0')}</span><div><strong>{phase.name}</strong>{index===position.phase&&<p>{phase.objective}</p>}</div>{index===position.phase&&<ArrowRight size={16}/>}</li>)}</ol>
+      <details className="rd-date-edit"><summary>Başlangıç tarihini değiştir <ChevronDown size={14}/></summary><form onSubmit={event=>{event.preventDefault();if(!validDate(dateDraft)){setError('Geçerli bir tarih seç.');return;}onStartChange(dateDraft);close();}}><label>Yolculuğun başlangıcı<input type="date" value={dateDraft} required onInput={event=>setDateDraft(event.currentTarget.value)} onChange={event=>setDateDraft(event.target.value)}/></label><button className="rd-text-button" type="submit">Kaydet <Check size={16}/></button></form>{error&&<p role="alert">{error}</p>}</details>
+    </Overlay>}
+  </section>;
 }
-
-function FlagIcon(){return <Check size={14}/>;}
