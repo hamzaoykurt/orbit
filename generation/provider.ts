@@ -53,7 +53,7 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
   if(!/^gemini-[a-zA-Z0-9._-]+$/.test(model))throw new Error('provider-config-invalid');
   // One configured provider only: quota errors never trigger a paid fallback.
   const response=await transport(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{
-    method:'POST',redirect:'error',signal:request.signal?AbortSignal.any([request.signal,AbortSignal.timeout(45_000)]):AbortSignal.timeout(45_000),
+    method:'POST',signal:request.signal||AbortSignal.timeout(45_000),
     headers:{'x-goog-api-key':config.apiKey!,'Content-Type':'application/json'},
     body:JSON.stringify({systemInstruction:{parts:[{text:request.instructions}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
     // Gemini's JSON mode is intentionally paired with the server-side validator.
