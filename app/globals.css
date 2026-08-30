@@ -645,3 +645,57 @@ html[data-theme=dark] .kibleteyn-nav nav button.active{border-color:rgba(var(--a
 html[data-theme=dark] .rebuild-command-center{background:linear-gradient(135deg,rgba(var(--accent-rgb),.16),rgba(255,255,255,.025) 50%,rgba(69,133,116,.08))}html[data-theme=dark] .rebuild-level-card,html[data-theme=dark] .body-workout-grid button,html[data-theme=dark] .area-details .rebuild-schedule-button,html[data-theme=dark] .rebuild-prompt-grid article{background:rgba(255,255,255,.025);border-color:rgba(255,255,255,.075)}
 @media(max-width:900px){.rebuild-command-center{grid-template-columns:1fr}.rebuild-level-card{max-width:390px}.rebuild-command-stats{grid-column:auto}.rebuild-prompt-grid{grid-template-columns:1fr}.rebuild-prompt-grid article{min-height:0}.rebuild-week-strip{grid-template-columns:repeat(3,1fr)}.rebuild-review-grid{grid-template-columns:1fr}}
 @media(max-width:650px){.rebuild-command-center{padding:22px}.rebuild-command-copy h1{font-size:31px}.rebuild-command-actions{display:grid}.rebuild-level-card{grid-template-columns:72px 1fr}.rebuild-level-orbit{width:68px;height:68px}.rebuild-command-stats{grid-template-columns:repeat(2,1fr);gap:12px}.rebuild-command-stats>div{padding:2px 12px}.rebuild-command-stats>div:nth-child(2){border-right:0}.rebuild-command-stats>div:nth-child(3){padding-left:0}.rebuild-week-section .section-header{align-items:flex-start;gap:10px}.rebuild-week-section .section-header>button{font-size:0;width:40px;height:40px;padding:0;justify-content:center}.rebuild-area-grid{grid-template-columns:1fr}.rebuild-area-card.featured{grid-column:auto}.body-workout-grid{grid-template-columns:1fr}.rebuild-deck-lab,.rebuild-history{padding:21px 18px}.rebuild-deck-tabs{display:grid;grid-template-columns:1fr}.rebuild-prompt-grid{grid-template-columns:1fr}.rebuild-week-strip{display:flex;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:5px}.rebuild-week-strip article{min-width:125px;scroll-snap-align:start}.selected-mission{grid-template-columns:20px 1fr}.selected-mission button{grid-column:2;justify-self:start}.review-summary{grid-template-columns:1fr}.review-summary>span{grid-column:auto}.rebuild-review-card,.rebuild-proof-card{padding:22px}.roadmap-continuity{line-height:1.4}}
+
+/* Shared add/edit dialogs: one calm surface, one scroll region, one action bar. */
+.modal-layer{background:rgba(18,15,26,.72);backdrop-filter:blur(10px);padding:24px;overscroll-behavior:contain}
+.modal-layer .modal-card:not(.search){width:min(600px,100%);max-width:100%;max-height:min(780px,calc(100dvh - 32px));min-height:0;display:flex;flex-direction:column;gap:0;overflow-y:auto;overflow-x:hidden;padding:28px 30px 30px;border:1px solid rgba(123,110,155,.24);border-radius:22px;background:var(--panel-solid,#fbfafd);box-shadow:0 30px 90px rgba(15,10,28,.34);scrollbar-width:thin;scrollbar-color:rgba(var(--accent-rgb),.32) transparent}
+.modal-layer .modal-card:not(.search)::before{display:none}
+.modal-layer .modal-card:not(.search)::after{display:none}
+.modal-layer .modal-card:not(.search) .modal-close{position:absolute;top:18px;right:18px;width:38px;height:38px;margin:0;border:1px solid var(--line);border-radius:11px;background:var(--glass,rgba(255,255,255,.6));color:var(--muted);box-shadow:none;z-index:2}
+.modal-layer .modal-card:not(.search) .modal-close:hover{background:var(--accent-soft);color:var(--ink)}
+.modal-layer .modal-card:not(.search) .modal-icon{width:44px;height:44px;min-height:44px;margin:0 0 18px;border:1px solid rgba(var(--accent-rgb),.24);border-radius:13px;background:var(--accent-soft);color:var(--accent);box-shadow:none;flex:none}
+.modal-layer .modal-card:not(.search)>.eyebrow{display:block;margin:0 40px 6px 0;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.15em;line-height:1.4}
+.modal-layer .modal-card:not(.search)>h2{max-width:100%;margin:0 40px 9px 0;color:var(--ink);font-size:27px;line-height:1.16;letter-spacing:-.045em;font-weight:700;overflow-wrap:anywhere}
+.modal-layer .modal-card:not(.search)>p{max-width:52ch;margin:0 0 22px;color:var(--muted);font-size:12px;line-height:1.6}
+.modal-layer .modal-card:not(.search)>label,.modal-layer .modal-card:not(.search) .form-row>label,.modal-layer .modal-card:not(.search) .nav-customizer>label{display:flex;flex-direction:column;min-width:0;gap:8px;margin:0 0 17px;color:var(--ink-2,var(--ink));font-size:12px;line-height:1.4;font-weight:700}
+.modal-layer .modal-card:not(.search) label small{margin:0 0 0 auto;color:var(--muted);font-size:10px;font-weight:500;line-height:1.4}
+.modal-layer .modal-card:not(.search) label :is(input,select,textarea),.modal-layer .modal-card:not(.search) .capture-destination select{width:100%;min-width:0;min-height:50px;margin:0;padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:var(--canvas,var(--glass));box-shadow:none;color:var(--ink);font:500 14px/1.45 inherit;transition:border-color .16s,box-shadow .16s,background .16s}
+.modal-layer .modal-card:not(.search) label textarea{min-height:132px;resize:vertical}
+.modal-layer .modal-card:not(.search) label :is(input,select,textarea)::placeholder{color:var(--muted);opacity:.9;font-weight:450}
+.modal-layer .modal-card:not(.search) label :is(input,select,textarea):hover{border-color:rgba(var(--accent-rgb),.34);background:var(--glass-hover,rgba(255,255,255,.72))}
+.modal-layer .modal-card:not(.search) label :is(input,select,textarea):focus-visible,.modal-layer .modal-card:not(.search) .capture-destination select:focus-visible{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.14);background:var(--canvas,var(--glass))}
+.modal-layer .modal-card:not(.search) .form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;margin:0 0 17px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--panel-soft,rgba(var(--accent-rgb),.045))}
+.modal-layer .modal-card:not(.search) .form-row>label{margin:0}
+.modal-layer .modal-card:not(.search) .form-row>p{align-self:center;margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.modal-layer .modal-card:not(.search) .form-row+label{margin-top:0}
+.modal-layer .modal-card:not(.search)>.primary-button.full{position:static;order:20;flex:none;width:100%;min-height:52px;margin:7px 0 0;padding:0 18px;border-radius:12px;background:var(--accent);box-shadow:0 10px 24px rgba(var(--accent-rgb),.2);color:#fff;font-size:13px;font-weight:800}
+.modal-layer .modal-card:not(.search)>.primary-button.full:hover{transform:none;background:color-mix(in srgb,var(--accent) 88%,#111);box-shadow:0 12px 28px rgba(var(--accent-rgb),.26)}
+.modal-layer .modal-card:not(.search)>.primary-button.full:disabled{opacity:.48;filter:none;cursor:not-allowed;box-shadow:none}
+html[data-theme=dark] .modal-layer .modal-card:not(.search){--panel-solid:#1c1a22;--panel-soft:rgba(255,255,255,.045);--canvas:#24212b;--glass:rgba(255,255,255,.055);--glass-hover:rgba(255,255,255,.085);border-color:rgba(255,255,255,.11)}
+html[data-theme=dark] .modal-layer .modal-card:not(.search) .modal-close{background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.1)}
+html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,select,textarea){border-color:rgba(255,255,255,.12);color:#f1edf7}
+/* Remove one-off notebook/paper treatments so note, project and tour forms belong together. */
+.modal-layer .modal-card.note,.modal-layer .modal-card.project,.modal-layer .modal-card.program,.modal-layer .modal-card.event{background:var(--panel-solid,#fbfafd);background-image:none;border-radius:22px}
+.modal-layer .modal-card.note::before,.modal-layer .modal-card.project::before,.modal-layer .modal-card.program::before{display:none}
+.modal-layer .modal-card.note .modal-icon{background:var(--accent-soft);color:var(--accent);box-shadow:none}
+.modal-layer .modal-card.note>h2,.modal-layer .modal-card.project>h2,.modal-layer .modal-card.program>h2{font-size:27px;line-height:1.16;font-weight:700;letter-spacing:-.045em}
+.modal-layer .modal-card.note>label:first-of-type input{border:1px solid var(--line);border-radius:11px;background:var(--canvas,var(--glass));box-shadow:none;padding:13px 14px;font:500 14px/1.45 inherit}
+.modal-layer .modal-card.note textarea{min-height:180px!important;border:1px solid var(--line)!important;border-radius:11px!important;background:var(--canvas,var(--glass))!important;background-image:none!important;box-shadow:none!important;padding:13px 14px!important;line-height:1.55!important}
+.modal-layer .modal-card.project .form-row,.modal-layer .modal-card.program .form-row,.modal-layer .modal-card.event .form-row{background:var(--panel-soft,rgba(var(--accent-rgb),.045));border-color:var(--line)}
+.modal-layer .modal-card.event{padding-left:30px}
+.modal-layer .modal-card.event .modal-icon{background:var(--accent-soft);color:var(--accent)}
+@media(max-width:700px){
+  .modal-layer{align-items:flex-end;padding:0}
+  .modal-layer .modal-card:not(.search){width:100%;max-height:calc(100dvh - max(8px,env(safe-area-inset-top)));padding:24px 20px calc(18px + env(safe-area-inset-bottom));border-radius:22px 22px 0 0}
+  .modal-layer .modal-card:not(.search)::after{display:block;content:'';position:absolute;top:8px;left:50%;width:38px;height:4px;border:0;border-radius:99px;background:var(--line);transform:translateX(-50%)}
+  .modal-layer .modal-card:not(.search) .modal-close{top:15px;right:14px;width:40px;height:40px}
+  .modal-layer .modal-card:not(.search) .modal-icon{margin-top:8px;margin-bottom:14px}
+  .modal-layer .modal-card:not(.search)>h2,.modal-layer .modal-card:not(.search)>p{margin-right:48px}
+  .modal-layer .modal-card:not(.search)>h2,.modal-layer .modal-card.note>h2,.modal-layer .modal-card.project>h2,.modal-layer .modal-card.program>h2{font-size:25px}
+  .modal-layer .modal-card:not(.search)>p{font-size:12px;margin-bottom:20px}
+  .modal-layer .modal-card:not(.search) .form-row{grid-template-columns:1fr;gap:0;padding:14px;margin-bottom:17px}
+  .modal-layer .modal-card:not(.search) .form-row>label{margin-bottom:17px}
+  .modal-layer .modal-card:not(.search) .form-row>label:last-of-type{margin-bottom:0}
+  .modal-layer .modal-card:not(.search)>.primary-button.full{min-height:56px;font-size:14px}
+}
+@media(max-width:380px){.modal-layer .modal-card:not(.search){padding-inline:16px}.modal-layer .modal-card:not(.search)>h2{font-size:23px}.modal-layer .modal-card:not(.search) label :is(input,select,textarea){font-size:16px}}
