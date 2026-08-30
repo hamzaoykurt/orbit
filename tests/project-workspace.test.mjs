@@ -59,41 +59,49 @@ globalThis.__projectTestEnv = { MEDIA: {
   async put(key, value, options) { objects.set(key, { body: value, httpMetadata: options.httpMetadata }); },
   async get(key) { return objects.get(key) ?? null; },
 } };
+const contextUrl = moduleUrl('../auth/context.ts');
+const { authenticatedRequest } = await import(contextUrl);
+const signed = (fn, username = 'owner-a') => authenticatedRequest.run({ username }, fn);
 const api = await import(moduleUrl('../app/api/project-media/route.ts', [
   ['import { env } from \'cloudflare:workers\';', 'const env = globalThis.__projectTestEnv;'],
   ["'./media-validation'", JSON.stringify(validationUrl)],
+  ["'../../../auth/context'", JSON.stringify(contextUrl)],
 ]));
 
-test('missing production storage reports a clear error without breaking the deployment', async () => {
+test('missing production storage is only disclosed to an authenticated owner', async () => {
   const media = globalThis.__projectTestEnv.MEDIA;
   delete globalThis.__projectTestEnv.MEDIA;
   try {
-    const response = await api.POST(new Request('https://os.cosmibit.com/api/project-media', { method: 'POST', body: png }));
+    const response = await signed(() => api.POST(new Request('https://os.cosmibit.com/api/project-media', { method: 'POST', body: png })));
     assert.equal(response.status, 503);
     assert.match((await response.json()).error, /depolaması henüz etkin değil/);
-    assert.equal((await api.GET(new Request('https://os.cosmibit.com/api/project-media?id=missing'))).status, 503);
+    assert.equal((await api.GET(new Request('https://os.cosmibit.com/api/project-media?id=missing'))).status, 401);
   } finally { globalThis.__projectTestEnv.MEDIA = media; }
 });
-test('direct custom-domain requests cannot spoof Sites identity headers', async () => {
-  const response = await api.POST(new Request('https://os.cosmibit.com/api/project-media', { method: 'POST', headers: { 'oai-authenticated-user-id': 'spoofed-owner', 'content-type': 'image/png' }, body: png }));
-  assert.equal(response.status, 401);
+
+test('requests cannot spoof identity headers on custom, Sites or local hosts', async () => {
+  for (const host of ['os.cosmibit.com', 'orbit-personal-os-emir.wise-horse-8906.chatgpt.site', 'localhost']) {
+    const response = await api.POST(new Request('https://' + host + '/api/project-media', { method: 'POST', headers: { 'oai-authenticated-user-id': 'spoofed-owner', 'content-type': 'image/png' }, body: png }));
+    assert.equal(response.status, 401);
+  }
 });
-test('media API authenticates, scopes ownership, and round-trips bytes', async () => {
-  const anonymous = await api.POST(new Request('https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site/api/project-media', { method: 'POST', body: png }));
-  assert.equal(anonymous.status, 401);
-  const response = await api.POST(new Request('https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site/api/project-media', { method: 'POST', headers: { 'oai-authenticated-user-id': 'owner-a', 'content-type': 'image/png', origin: 'https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site' }, body: png }));
+
+test('media API uses verified server identity and round-trips bytes', async () => {
+  const base = 'https://os.cosmibit.com';
+  const response = await signed(() => api.POST(new Request(base + '/api/project-media', { method: 'POST', headers: { 'content-type': 'image/png', origin: base }, body: png })));
   assert.equal(response.status, 201);
   const saved = await response.json();
-  const read = await api.GET(new Request(`https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site${saved.url}`, { headers: { 'oai-authenticated-user-id': 'owner-a' } }));
+  const read = await signed(() => api.GET(new Request(base + saved.url)));
   assert.equal(read.status, 200); assert.equal(read.headers.get('Content-Type'), 'image/png');
   assert.equal(read.headers.get('Cache-Control'), 'private, no-store');
   assert.deepEqual(new Uint8Array(await read.arrayBuffer()), png);
-  assert.equal((await api.GET(new Request(`https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site${saved.url}`, { headers: { 'oai-authenticated-user-id': 'owner-b' } }))).status, 404);
-  assert.equal((await api.GET(new Request(`https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site${saved.url}`))).status, 401);
+  assert.equal((await signed(() => api.GET(new Request(base + saved.url)), 'owner-b')).status, 404);
+  assert.equal((await api.GET(new Request(base + saved.url))).status, 401);
 });
+
 test('media API rejects cross-origin writes, wrong MIME and traversal', async () => {
-  const headers = { 'oai-authenticated-user-id': 'owner-a', 'content-type': 'image/png' };
-  assert.equal((await api.POST(new Request('https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site/api/project-media', { method: 'POST', headers: { ...headers, origin: 'https://other.com' }, body: png }))).status, 403);
-  assert.equal((await api.POST(new Request('https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site/api/project-media', { method: 'POST', headers: { ...headers, 'content-type': 'image/jpeg' }, body: png }))).status, 415);
-  assert.equal((await api.GET(new Request('https://orbit-personal-os-emir.wise-horse-8906.chatgpt.site/api/project-media?id=../../other', { headers }))).status, 404);
+  const base = 'https://os.cosmibit.com/api/project-media';
+  assert.equal((await signed(() => api.POST(new Request(base, { method: 'POST', headers: { origin: 'https://other.com', 'content-type': 'image/png' }, body: png })))).status, 403);
+  assert.equal((await signed(() => api.POST(new Request(base, { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: png })))).status, 415);
+  assert.equal((await signed(() => api.GET(new Request(base + '?id=../../other')))).status, 404);
 });

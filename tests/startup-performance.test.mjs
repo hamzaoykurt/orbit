@@ -62,32 +62,17 @@ function workerHarness({ privateResponse = false, brokenStorage = false } = {}) 
   };
 }
 
-test('second request for a versioned asset avoids the network', async () => {
+test('private pages, bundles, APIs and auth never use service-worker caching', async () => {
   const worker = workerHarness();
-  assert.equal(await (await worker.request('/_next/static/chunks/app-abc123.js')).text(), 'network-1');
-  assert.equal(await (await worker.request('/_next/static/chunks/app-abc123.js')).text(), 'network-1');
-  assert.equal(worker.requests, 1);
-  await worker.request('/_next/static/chunks/app-new456.js');
-  assert.equal(worker.requests, 2);
-});
-test('private APIs and authentication never use service-worker caching', async () => {
-  const worker = workerHarness();
-  for (const path of ['/api/state', '/api/project-media?id=photo', '/signin-with-chatgpt', '/callback']) assert.equal(await worker.request(path), undefined);
+  for (const path of ['/', '/_next/static/chunks/app-abc123.js', '/api/state', '/api/project-media?id=photo', '/login', '/auth/login', '/auth/logout', '/callback']) {
+    assert.equal(await worker.request(path), undefined);
+  }
   assert.equal(worker.requests, 0);
 });
-test('private responses are not cached and restricted storage falls back to network', async () => {
-  const worker = workerHarness({ privateResponse: true });
-  await worker.request('/_next/static/chunks/app.js'); await worker.request('/_next/static/chunks/app.js');
-  assert.equal(worker.requests, 2);
-  const restricted = workerHarness({ brokenStorage: true });
-  assert.equal((await restricted.request('/_next/static/chunks/app.js')).status, 200);
-});
-test('navigation checks the network and activation preserves unrelated caches', async () => {
+test('activation deletes all legacy Orbit caches and preserves unrelated caches', async () => {
   const worker = workerHarness();
-  await worker.request('/', 'navigate'); await worker.request('/', 'navigate');
-  assert.equal(worker.requests, 2);
   await worker.activate();
-  assert.deepEqual(worker.deleted, ['orbit-shell-v4']);
+  assert.deepEqual(worker.deleted, ['orbit-shell-v4', 'orbit-shell-v5']);
 });
 
 test('project tools are excluded from the initial static import graph', () => {

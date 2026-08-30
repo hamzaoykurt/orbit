@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
 
 const localBindingConfig = {
-  main: 'vinext/server/app-router-entry',
+  main: './worker/index.ts',
   // Storage bindings are declared once in wrangler.jsonc. Vite merges arrays.
 };
 

@@ -5,6 +5,7 @@ import './globals.css';
 import './workspace-scale.css';
 import { PwaRegister } from './pwa-register';
 import { startupScript } from './startup';
+import { authClientScript } from './auth-client';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -55,7 +56,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
         className={`${geistSans.variable} antialiased`}
       >

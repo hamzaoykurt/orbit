@@ -1,3 +1,4 @@
+import { authenticatedUser, unauthorized } from '../../../auth/context';
 export const dynamic = 'force-dynamic';
 
 type OrbitTarget = {
@@ -62,6 +63,7 @@ function localPlan(text: string): OrbitTarget[] {
 }
 
 export async function POST(request: Request) {
+  if (!authenticatedUser()) return unauthorized();
   const requestOrigin = request.headers.get('origin');
   if (requestOrigin && requestOrigin !== new URL(request.url).origin) return json({ error: 'Geçersiz istek kaynağı.' }, { status: 403 });
 

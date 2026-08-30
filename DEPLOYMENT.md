@@ -12,4 +12,23 @@ The only production target is **https://os.cosmibit.com**, served by Cloudflare 
 
 The production account currently has R2 disabled. The previous placeholder `site-creator-r2` binding caused three deployments to fail with Cloudflare error `10042` after successful builds. That mandatory binding has been removed; missing storage now returns an explicit 503 instead of blocking all releases.
 
-Photo uploads still need both a real, user-approved storage setup and verified authentication on the custom domain. Do not enable billing, trust arbitrary identity headers, or make private photos public to bypass these requirements. No bucket or remote data was deleted by removing the local Sites integration.
+Photo uploads now use the verified Worker session, but still need a real, user-approved storage setup. Do not enable billing, trust arbitrary identity headers, or make private photos public to bypass these requirements. No bucket or remote data was deleted by removing the local Sites integration.
+
+## Private access and remembered devices
+
+The Worker entry point (`worker/index.ts`) authenticates all pages, APIs, RSC responses and application assets. Keep `assets.run_worker_first: true`; disabling it exposes client bundles containing personal defaults. Only the login page, service worker and explicitly listed generic icons/manifest are public. API routes also require the server's authenticated request context; client identity headers are never trusted.
+
+Before the first authenticated deployment:
+
+1. Run `node scripts/setup-auth.mjs emir` locally. It creates ignored `.dev.vars`, `outputs/auth-secrets.json` and `outputs/orbit-giris.txt`. Never commit or share these files. Existing credentials are not overwritten.
+2. Apply the additive auth migration with `npm run db:migrate:remote` (and `npm run db:migrate:local` for development). Existing `orbit_state` data and its workspace ID stay unchanged.
+3. Run `npx wrangler secret bulk outputs/auth-secrets.json --config wrangler.jsonc`. This uploads the username and salted scrypt hash, never the plaintext password. Preserve existing Google secrets.
+4. Build, test and deploy normally. Missing credentials or unavailable authentication storage fail closed.
+
+On your own device select **Beni hatırla**: the HttpOnly, Secure, SameSite=Strict cookie lasts 90 days, renewed during authenticated use at most once daily. The session is stored in D1 using only a SHA-256 hash of a random 256-bit token. Without this option, the cookie lasts for the browser session, with a 24-hour server expiry. Logout revokes that device's token and clears private browser caches. Changing the username/password hash invalidates all existing sessions.
+
+Password hashes use scrypt (`N=16384`, `r=8`, `p=5`, 16-byte random salt). Login attempts are limited in D1 per Cloudflare client IP; mutation requests require a matching Origin. There is no public registration or password reset endpoint. Rotate credentials through the same server secrets, generating a new salted hash locally; do not add a client-side password or public setup bypass.
+
+Run `node --test tests/*.test.mjs`, `npx tsc --noEmit`, and `npm run build`. For a production-runtime local preview, use `npx wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/state --port 8787` **after** local migrations. Stop that preview before rebuilding on Windows (open asset directory handles can otherwise prevent the build).
+
+Offline copies of private HTML and JS are intentionally not cached. The service worker removes legacy Orbit caches. Always verify anonymous `/api/state`, RSC and real JS asset requests return 401, remembered login survives reload, and logout denies reuse of the old cookie on the live domain.

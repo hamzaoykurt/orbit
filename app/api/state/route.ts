@@ -1,4 +1,5 @@
 import { ensureOrbitSchema } from '../../../db/client';
+import { authenticatedUser, unauthorized } from '../../../auth/context';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ function json(data: unknown, init: ResponseInit = {}) {
 }
 
 export async function GET() {
+  if (!authenticatedUser()) return unauthorized();
   try {
     const database = await ensureOrbitSchema();
     const row = await database
@@ -40,6 +42,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  if (!authenticatedUser()) return unauthorized();
   const requestOrigin = request.headers.get('origin');
   if (requestOrigin && requestOrigin !== new URL(request.url).origin) {
     return json({ error: 'Geçersiz istek kaynağı.' }, { status: 403 });
