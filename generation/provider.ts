@@ -56,7 +56,10 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
     method:'POST',redirect:'error',signal:request.signal?AbortSignal.any([request.signal,AbortSignal.timeout(45_000)]):AbortSignal.timeout(45_000),
     headers:{'x-goog-api-key':config.apiKey!,'Content-Type':'application/json'},
     body:JSON.stringify({systemInstruction:{parts:[{text:request.instructions}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
-    generationConfig:{responseMimeType:'application/json',responseSchema:request.schema,maxOutputTokens:6500},
+    // Gemini's JSON mode is intentionally paired with the server-side validator.
+    // Its schema dialect differs across model versions; sending the full OpenAI
+    // schema can cause an otherwise valid request to be rejected before generation.
+    generationConfig:{responseMimeType:'application/json',maxOutputTokens:6500},
     }),
   });
   if(!response.ok){await response.body?.cancel();throw new Error(`provider-http-${response.status}`);}

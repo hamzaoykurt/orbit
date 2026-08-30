@@ -42,7 +42,7 @@ test('Gemini uses server-side key and schema, ignores thought parts and never fa
   const provider=createModelProvider(config,async(endpoint,options)=>{calls++;sent={endpoint:String(endpoint),headers:options.headers,body:JSON.parse(options.body)};return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{thought:true,text:'private thought'},{text:JSON.stringify(project)}]}}]});});
   assert.deepEqual(await provider({name:'test',instructions:'Generate',input:{request:'new'},schema:{type:'object'}}),project);
   assert.equal(calls,1);assert.equal(sent.headers['x-goog-api-key'],'test-gemini-key');assert.ok(!sent.endpoint.includes('test-gemini-key'));
-  assert.equal(sent.body.generationConfig.responseMimeType,'application/json');assert.deepEqual(sent.body.generationConfig.responseSchema,{type:'object'});
+  assert.equal(sent.body.generationConfig.responseMimeType,'application/json');assert.equal(sent.body.generationConfig.responseSchema,undefined);
   calls=0;await assert.rejects(createModelProvider(config,async()=>{calls++;return new Response('quota',{status:429});})({name:'test',input:{},schema:{}}),/provider-http-429/);assert.equal(calls,1);
   for(const payload of [{promptFeedback:{blockReason:'SAFETY'}},{candidates:[{finishReason:'MAX_TOKENS'}]},{candidates:[{finishReason:'STOP',content:{parts:[{text:'not json'}]}}]}])await assert.rejects(createModelProvider(config,async()=>Response.json(payload))({name:'test',input:{},schema:{}}));
 });
