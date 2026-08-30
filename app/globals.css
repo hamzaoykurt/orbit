@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+.rebuild-entry-detail{margin:8px 0;min-width:0}.rebuild-entry-detail summary{cursor:pointer;color:var(--accent);font-size:13px}.rebuild-entry-detail p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px!important;line-height:1.7;color:var(--ink-2);margin:10px 0}
+
 :root{--ink:#191820;--ink-2:#34313d;--muted:#817d8a;--soft:#aaa6b1;--line:rgba(48,41,67,.09);--panel:rgba(255,255,255,.68);--panel-solid:#f9f8fb;--canvas:#f4f3f7;--accent:#7564dc;--accent-rgb:117,100,220;--accent-soft:#ece8ff;--shadow:0 22px 60px rgba(47,38,78,.075);--inset:inset 0 1px 0 rgba(255,255,255,.9);--radius:25px}
 html[data-accent=blue]{--accent:#527fcf;--accent-rgb:82,127,207;--accent-soft:#e8f0ff}html[data-accent=mint]{--accent:#599b86;--accent-rgb:89,155,134;--accent-soft:#e4f3ee}html[data-accent=sand]{--accent:#aa8154;--accent-rgb:170,129,84;--accent-soft:#f5eadc}
 html[data-accent=rose]{--accent:#b66c83;--accent-rgb:182,108,131;--accent-soft:#f6e8ed}html[data-accent=slate]{--accent:#587287;--accent-rgb:88,114,135;--accent-soft:#e7eef2}
