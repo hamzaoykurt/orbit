@@ -71,8 +71,10 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
     const listed=await transport('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':config.apiKey!},signal:request.signal||AbortSignal.timeout(15_000)});
     if(listed.ok){
       const models=await listed.json() as {models?:{name?:string,supportedGenerationMethods?:string[]}[]};
-      const candidate=models.models?.find(item=>item.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-/.test(item.name||''));
-      if(candidate?.name){response=await call(candidate.name.replace(/^models\//,''));}
+      const candidates=(models.models||[]).filter(item=>item.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-/.test(item.name||'')).map(item=>item.name!.replace(/^models\//,'')).sort((a,b)=>{
+        const rank=(name:string)=>name.includes('flash')?(name.includes('lite')?0:1):2; return rank(a)-rank(b);
+      });
+      for(const available of candidates){response=await call(available);if(response.status!==404)break;await response.body?.cancel();}
     }
   }
   if(!response.ok){await response.body?.cancel();throw new Error(`provider-http-${response.status}`);}
