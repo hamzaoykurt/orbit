@@ -63,6 +63,17 @@ const api = await import(moduleUrl('../app/api/project-media/route.ts', [
   ['import { env } from \'cloudflare:workers\';', 'const env = globalThis.__projectTestEnv;'],
   ["'./media-validation'", JSON.stringify(validationUrl)],
 ]));
+
+test('missing production storage reports a clear error without breaking the deployment', async () => {
+  const media = globalThis.__projectTestEnv.MEDIA;
+  delete globalThis.__projectTestEnv.MEDIA;
+  try {
+    const response = await api.POST(new Request('https://os.cosmibit.com/api/project-media', { method: 'POST', body: png }));
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /depolaması henüz etkin değil/);
+    assert.equal((await api.GET(new Request('https://os.cosmibit.com/api/project-media?id=missing'))).status, 503);
+  } finally { globalThis.__projectTestEnv.MEDIA = media; }
+});
 test('direct custom-domain requests cannot spoof Sites identity headers', async () => {
   const response = await api.POST(new Request('https://os.cosmibit.com/api/project-media', { method: 'POST', headers: { 'oai-authenticated-user-id': 'spoofed-owner', 'content-type': 'image/png' }, body: png }));
   assert.equal(response.status, 401);
