@@ -67,12 +67,15 @@ export class GenerationService {
         if (new Set(words.map(word => normalizeText(word.word))).size !== 5 || words.some(word => previousWords.has(normalizeText(word.word)))) continue;
         candidate = this.newIdea({ type:'vocabulary', title:'Yeni kelimeler', text:words.map(word=>word.word).join(' · '), domain:'English', kind:'LEARN', goal:'english', words });
       } else {
-        const type = String(raw.type), goal = String(raw.goal), kind = String(raw.kind);
-        if (!text(raw.title,120) || !text(raw.text,600) || !text(raw.domain,90) || !['project','research','activity','meal','speaking'].includes(type) || !['make','research','social','body','english'].includes(goal) || !['MAKE','RESEARCH','TRY','LEARN','EXPLORE','GO','BUILD'].includes(kind)) throw new GenerationError('invalid-provider-output');
+        const source=raw.idea&&typeof raw.idea==='object'&&!Array.isArray(raw.idea)?object(raw.idea):raw;
+        const inferredType=requestType==='project'?'project':requestType==='research'?'research':requestType==='activity'?'activity':requestType==='meal'?'meal':requestType==='speaking'?'speaking':String(source.type||'activity');
+        const type = String(source.type||inferredType), goal = String(source.goal|| (type==='project'?'make':type==='research'?'research':type==='meal'?'body':type==='speaking'?'english':'social')), kind = String(source.kind|| (type==='research'?'RESEARCH':type==='project'?'MAKE':'TRY'));
+        const sourceText=text(source.text,600); const sourceTitle=text(source.title,120)||sourceText.split(/[.!?]/)[0].slice(0,120); const sourceDomain=text(source.domain,90)||'Genel';
+        if (!sourceTitle || !sourceText || !['project','research','activity','meal','speaking'].includes(type) || !['make','research','social','body','english'].includes(goal) || !['MAKE','RESEARCH','TRY','LEARN','EXPLORE','GO','BUILD'].includes(kind)) throw new GenerationError('invalid-provider-output');
         if ((requestType !== 'surprise' && type !== requestType) || (requestType === 'surprise' && !['project','research','activity'].includes(type))) throw new GenerationError('invalid-provider-output');
         const correctGoal = type === 'project' ? 'make' : type === 'research' ? 'research' : type === 'meal' ? 'body' : type === 'speaking' ? 'english' : 'social';
         if (goal !== correctGoal || (request.goal && request.goal !== 'any' && goal !== request.goal)) throw new GenerationError('invalid-provider-output');
-        candidate = this.newIdea({ title:text(raw.title,120),text:text(raw.text,600),domain:text(raw.domain,90),type:type as GeneratedIdea['type'],kind:kind as GeneratedIdea['kind'],goal:correctGoal });
+        candidate = this.newIdea({ title:sourceTitle,text:sourceText,domain:sourceDomain,type:type as GeneratedIdea['type'],kind:kind as GeneratedIdea['kind'],goal:correctGoal });
         if (history.some(old => similarity(old.text,candidate.text) >= .65 || normalizeText(old.title) === normalizeText(candidate.title))) continue;
         // Compare likely paraphrases and same-domain history as well as recent ideas. No preference ranking.
         const ranked = [...history].sort((a,b)=>similarity(b.text,candidate.text)-similarity(a.text,candidate.text)).slice(0,30);
