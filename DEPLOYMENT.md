@@ -2,6 +2,14 @@
 
 The only production target is **https://os.cosmibit.com**, served by Cloudflare Worker `personalos`.
 
+## AI generation provider
+
+Rebuild generation supports OpenAI Responses and Gemini GenerateContent. For Gemini, add `GEMINI_API_KEY` as a **Secret** on the `personalos` Worker and `AI_PROVIDER=gemini` as a text variable. The default model is `gemini-2.5-flash`; optional `GEMINI_MODEL` overrides it. Secrets must never be added to `NEXT_PUBLIC_*`, source files or browser storage. Local development uses ignored `.dev.vars`, not the production secrets.
+
+Use a Google AI Studio project on the free tier if no charges are wanted. The application cannot inspect or enforce the Google project's billing tier; enabling billing there changes usage costs. Quota errors stop generation with an explicit message. There is no automatic switch to OpenAI or another paid model, and no hard-coded idea fallback. Gemini's free tier may use submitted content for product improvement. Rebuild sends generation requests, generated idea history for deduplication and selected vocabulary; it does not send private project notes, photos, calendar data or the workspace snapshot. Quick-capture organization remains separate and uses its existing local path unless OpenAI is configured.
+
+OpenAI remains available via `AI_PROVIDER=openai`, `OPENAI_API_KEY` and optional `OPENAI_MODEL`. ChatGPT Plus does not provide API credits. When no provider is selected, a configured Gemini key selects Gemini; otherwise OpenAI is selected. An explicitly selected provider never borrows the other provider's credentials.
+
 - Push changes to `main` in `hamzaoykurt/orbit`.
 - Cloudflare Workers Builds automatically runs `npm run build`, then `npx wrangler deploy --config dist/server/wrangler.json`.
 - Wait for that commit's Cloudflare build to finish successfully. A Git push or a successful local build alone does not mean production was updated.
