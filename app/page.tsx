@@ -12,6 +12,9 @@ import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
 import { emptyDeck, normalizeDeck } from './rebuild/weekly-deck-model';
 import type { WeeklyDeck } from './rebuild/weekly-deck-model';
+import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
+import type { Practice } from './rebuild/practice-model';
+import { projectFromIdea } from './rebuild/project-import';
 import {
   Archive, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight,
@@ -90,6 +93,7 @@ type PersistedState = {
   customRebuildTasks: Record<string, string[]>;
   rebuildJourney: Journey;
   rebuildDeck: WeeklyDeck;
+  rebuildPractice: Practice;
   rebuildActivities: RebuildActivity[];
   rebuildReviews: Record<string, RebuildReview>;
   rebuildSelections: Record<string, string>;
@@ -151,6 +155,7 @@ const defaultState: PersistedState = {
   customRebuildTasks: {},
   rebuildJourney: emptyJourney(),
   rebuildDeck: emptyDeck(),
+  rebuildPractice: emptyPractice(),
   rebuildActivities: [],
   rebuildReviews: {},
   rebuildSelections: {},
@@ -208,6 +213,7 @@ function mergePersistedState(value: unknown): PersistedState {
     customRebuildTasks: saved.customRebuildTasks && typeof saved.customRebuildTasks === 'object' && !Array.isArray(saved.customRebuildTasks) ? saved.customRebuildTasks : defaultState.customRebuildTasks,
     rebuildJourney: normalizeJourney(saved.rebuildJourney),
     rebuildDeck: normalizeDeck(saved.rebuildDeck),
+    rebuildPractice: normalizePractice(saved.rebuildPractice),
     rebuildActivities: Array.isArray(saved.rebuildActivities) ? saved.rebuildActivities : defaultState.rebuildActivities,
     rebuildReviews: saved.rebuildReviews && typeof saved.rebuildReviews === 'object' && !Array.isArray(saved.rebuildReviews) ? saved.rebuildReviews : defaultState.rebuildReviews,
     rebuildSelections: saved.rebuildSelections && typeof saved.rebuildSelections === 'object' && !Array.isArray(saved.rebuildSelections) ? saved.rebuildSelections : defaultState.rebuildSelections,
@@ -1845,6 +1851,19 @@ export default function PersonalOS() {
   const renderRebuild = () => <Suspense fallback={<p role="status">Rebuild açılıyor…</p>}><RebuildJourney
     journey={state.rebuildJourney} deck={state.rebuildDeck} activities={state.rebuildActivities}
     selections={state.rebuildSelections} syncStatus={syncStatus}
+    practice={state.rebuildPractice}
+    linkedProject={projectMetrics.filter(item => item.project.id === state.rebuildPractice.activeProjectId).map(({ project, progress }) => ({ id: project.id, title: project.title, progress }))[0] ?? null}
+    onUpdatePractice={update => setState(current => ({ ...current, rebuildPractice: update(current.rebuildPractice) }))}
+    onOpenProject={openProjectDetail}
+    onCreateProject={idea => {
+      const { project, workspace } = projectFromIdea(idea);
+      setState(current => ({
+        ...current,
+        customProjects: current.customProjects.some(item => item.id === project.id) ? current.customProjects : [...current.customProjects, project],
+        projectWorkspaces: current.projectWorkspaces[project.id] ? current.projectWorkspaces : { ...current.projectWorkspaces, [project.id]: workspace },
+        rebuildPractice: acceptIntoPractice(current.rebuildPractice, idea),
+      }));
+    }}
     onUpdateDeck={update => setState(current => { const next = update(current.rebuildDeck); return next === current.rebuildDeck ? current : { ...current, rebuildDeck: next }; })}
     onStartChange={date => setState(current => ({ ...current, rebuildJourney: { ...current.rebuildJourney, startDate: date } }))}
   /></Suspense>;

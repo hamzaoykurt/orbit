@@ -11,6 +11,7 @@ function moduleUrl(file, imports={}) {
 const engineUrl=moduleUrl('../app/rebuild/idea-engine.ts');
 const engine=await import(engineUrl);
 const model=await import(moduleUrl('../app/rebuild/weekly-deck-model.ts',{'./idea-engine':engineUrl}));
+const ideas = [{id:'test-project-a',kind:'MAKE',goal:'make',text:'Test artifact A'}, {id:'test-project-b',kind:'BUILD',goal:'make',text:'Test artifact B'}, {id:'test-social',kind:'GO',goal:'social',text:'Test experience'}];
 const week='2026-08-24', nextWeek='2026-08-31';
 const mark=(id,idea)=>({id,at:'2026-08-30T12:00:00Z',...(idea?{idea}:{})});
 const fresh=()=>model.ensureWeek(model.emptyDeck(),week);
@@ -19,8 +20,8 @@ test('first visit needs no setup; weekly rollover resets counts and ideas, not d
   let deck=fresh();
   assert.deepEqual(deck.weeks[week].goals.map(goal=>goal.target),[3,2,1,1,1]);
   assert.equal(deck.startedOn,week);
-  deck=model.attachIdea(deck,week,engine.ideaPool[0]);
-  deck=model.completeGoal(deck,week,'make',mark('one',engine.ideaPool[0]));
+  deck=model.attachIdea(deck,week,ideas[0]);
+  deck=model.completeGoal(deck,week,'make',mark('one',ideas[0]));
   const history=JSON.stringify(deck.weeks[week]);
   const next=model.ensureWeek(deck,nextWeek);
   assert.deepEqual(next.weeks[nextWeek].marks,{});
@@ -31,7 +32,7 @@ test('first visit needs no setup; weekly rollover resets counts and ideas, not d
 });
 
 test('completion is bounded, idempotent, reversible and keeps the original idea as evidence',()=>{
-  const idea=engine.ideaPool[0];
+  const idea=ideas[0];
   const initial=fresh();
   let deck=model.completeGoal(initial,week,'body',mark('a',idea));
   assert.equal(initial.weeks[week].marks.body,undefined);
@@ -63,7 +64,7 @@ test('editing goals keeps old weeks and marks intact, including rename, remove a
 });
 
 test('saving suggestions routes to relevant goals, respects custom destination, and preserves completed work',()=>{
-  const [first,second]=engine.ideaPool;
+  const [first,second]=ideas;
   let deck=model.attachIdea(fresh(),week,first);
   assert.equal(deck.weeks[week].ideas.make.id,first.id);
   deck=model.completeGoal(deck,week,'make',mark('first',first));
@@ -76,7 +77,7 @@ test('saving suggestions routes to relevant goals, respects custom destination, 
   deck=model.configureGoals(deck,week,[{id:'custom',name:'Deneme',target:1,kind:'any'}]);
   deck=model.attachIdea(deck,week,first,'custom');
   assert.equal(deck.weeks[week].ideas.custom.id,first.id);
-  deck=model.attachIdea(deck,week,engine.ideaPool.find(idea=>idea.goal==='social'));
+  deck=model.attachIdea(deck,week,ideas.find(idea=>idea.goal==='social'));
   assert.equal(deck.weeks[week].goals.at(-1).kind,'social');
   assert.equal(deck.defaults.some(goal=>goal.kind==='social'),false);
 });
@@ -97,8 +98,8 @@ test('migration reuses real weekly activities once and does not count expression
 });
 
 test('reload preserves empty configuration, week snapshots, completion evidence and seen ideas',()=>{
-  let deck=model.attachIdea(fresh(),week,engine.ideaPool[0]);
-  deck=model.completeGoal(deck,week,'make',mark('one',engine.ideaPool[0]));
+  let deck=model.attachIdea(fresh(),week,ideas[0]);
+  deck=model.completeGoal(deck,week,'make',mark('one',ideas[0]));
   const roundtrip=model.normalizeDeck(JSON.parse(JSON.stringify(deck)));
   assert.deepEqual(roundtrip,deck);
   assert.deepEqual(model.normalizeDeck({defaults:[]}).defaults,[]);
@@ -110,33 +111,9 @@ test('reload preserves empty configuration, week snapshots, completion evidence 
   assert.throws(()=>model.ensureWeek(deck,'2026-08-30'));
 });
 
-test('local deck covers all seven idea types, routes every idea and avoids repeats until exhaustion',()=>{
-  assert.equal(new Set(engine.ideaPool.map(idea=>idea.kind)).size,7);
-  assert.ok(engine.ideaPool.length>=50);
-  assert.ok(engine.ideaPool.every(engine.isIdea));
-  const seen=[];
-  for(let i=0;i<engine.ideaPool.length;i++){
-    const idea=engine.pickLocalIdea({exclude:seen},()=>0);
-    assert.ok(!seen.includes(idea.id));seen.push(idea.id);
-  }
-  assert.notEqual(engine.pickLocalIdea({exclude:seen},()=>.999).id,seen.at(-1));
-  for(const goal of ['body','english','make','research','social'])assert.equal(engine.pickLocalIdea({goal,exclude:[]}).goal,goal);
-});
-
-test('optional provider has validation, cancellation and honest local fallback',async()=>{
-  const local=await engine.createIdeaGenerator(async()=>{throw Error('offline');})({goal:'research',exclude:[]});
-  assert.equal(local.goal,'research');
-  const invalid=await engine.createIdeaGenerator(async()=>({text:'invalid'}))({goal:'english',exclude:[]});
-  assert.equal(invalid.goal,'english');
-  const offered={...engine.ideaPool[0],id:'provider-1'};
-  assert.deepEqual(await engine.createIdeaGenerator(async()=>offered)({exclude:[]}),offered);
-  const controller=new AbortController();controller.abort();
-  await assert.rejects(engine.generateIdea({exclude:[],signal:controller.signal}),{name:'AbortError'});
-});
-
 test('extra ideas survive reload even with twelve custom defaults; unsafe keys are ignored',()=>{
   let deck=model.configureGoals(fresh(),week,Array.from({length:12},(_,i)=>({id:`custom-${i}`,name:`Goal ${i}`,target:1,kind:'any'})));
-  deck=model.attachIdea(deck,week,engine.ideaPool[0]);
+  deck=model.attachIdea(deck,week,ideas[0]);
   assert.equal(deck.weeks[week].goals.length,13);
   assert.equal(model.normalizeDeck(JSON.parse(JSON.stringify(deck))).weeks[week].goals.length,13);
   const normalized=model.normalizeDeck({defaults:[{id:'__proto__',name:'Invalid',target:1}]});

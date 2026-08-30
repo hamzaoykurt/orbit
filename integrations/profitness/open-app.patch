@@ -1,0 +1,19 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 5258709..6979997 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -33,6 +33,14 @@
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+             <!-- Verified Android App Link: https://${resetPasswordLinkHost}/reset-password?code=... -->
++            <!-- Orbit can open the installed app without entering the recovery flow. -->
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <category android:name="android.intent.category.BROWSABLE" />
++                <data android:scheme="profitness" android:host="open" />
++            </intent-filter>
++
+             <intent-filter android:autoVerify="true">
+                 <action android:name="android.intent.action.VIEW" />
+                 <category android:name="android.intent.category.DEFAULT" />
