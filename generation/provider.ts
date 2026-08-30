@@ -4,7 +4,7 @@ export type ModelConfig = { apiKey?: string; model?: string; baseUrl?: string; p
 export type ProviderBindings = { AI_PROVIDER?: string; OPENAI_API_KEY?: string; OPENAI_MODEL?: string; OPENAI_BASE_URL?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string };
 export function resolveModelConfig(env:ProviderBindings):ModelConfig {
   const provider=env.AI_PROVIDER?.trim().toLowerCase() || (env.GEMINI_API_KEY?'gemini':'openai');
-  if(provider==='gemini')return {provider,apiKey:env.GEMINI_API_KEY,model:env.GEMINI_MODEL?.trim()||'gemini-2.5-flash'};
+  if(provider==='gemini')return {provider,apiKey:env.GEMINI_API_KEY,model:env.GEMINI_MODEL?.trim()||'gemini-2.0-flash'};
   if(provider==='openai')return {provider,apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL?.trim()||'gpt-5-mini',baseUrl:env.OPENAI_BASE_URL};
   throw new Error('provider-config-invalid');
 }
@@ -49,7 +49,7 @@ export function createModelProvider(config: ModelConfig, transport: typeof fetch
 }
 
 async function generateGemini(config:ModelConfig,request:ModelRequest,transport:typeof fetch):Promise<unknown> {
-  const model=config.model||'gemini-2.5-flash';
+  const model=config.model||'gemini-2.0-flash';
   if(!/^gemini-[a-zA-Z0-9._-]+$/.test(model))throw new Error('provider-config-invalid');
   // One configured provider only: quota errors never trigger a paid fallback.
   const response=await transport(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{

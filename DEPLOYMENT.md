@@ -4,7 +4,7 @@ The only production target is **https://os.cosmibit.com**, served by Cloudflare 
 
 ## AI generation provider
 
-Rebuild generation supports OpenAI Responses and Gemini GenerateContent. For Gemini, add `GEMINI_API_KEY` as a **Secret** on the `personalos` Worker and `AI_PROVIDER=gemini` as a text variable. The default model is `gemini-2.5-flash`; optional `GEMINI_MODEL` overrides it. Secrets must never be added to `NEXT_PUBLIC_*`, source files or browser storage. Local development uses ignored `.dev.vars`, not the production secrets.
+Rebuild generation supports OpenAI Responses and Gemini GenerateContent. For Gemini, add `GEMINI_API_KEY` as a **Secret** on the `personalos` Worker and `AI_PROVIDER=gemini` as a text variable. The default model is `gemini-2.0-flash`; optional `GEMINI_MODEL` overrides it. Secrets must never be added to `NEXT_PUBLIC_*`, source files or browser storage. Local development uses ignored `.dev.vars`, not the production secrets.
 
 Use a Google AI Studio project on the free tier if no charges are wanted. The application cannot inspect or enforce the Google project's billing tier; enabling billing there changes usage costs. Quota errors stop generation with an explicit message. There is no automatic switch to OpenAI or another paid model, and no hard-coded idea fallback. Gemini's free tier may use submitted content for product improvement. Rebuild sends generation requests, generated idea history for deduplication and selected vocabulary; it does not send private project notes, photos, calendar data or the workspace snapshot. Quick-capture organization remains separate and uses its existing local path unless OpenAI is configured.
 

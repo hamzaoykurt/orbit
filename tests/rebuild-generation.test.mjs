@@ -35,7 +35,7 @@ test('no configured provider fails explicitly; there is no local fallback',async
 
 test('Gemini uses server-side key and schema, ignores thought parts and never falls back on quota errors',async()=>{
   const config=resolveModelConfig({AI_PROVIDER:'gemini',GEMINI_API_KEY:'test-gemini-key',OPENAI_API_KEY:'unused-openai'});
-  assert.equal(config.model,'gemini-2.5-flash');assert.equal(config.apiKey,'test-gemini-key');
+  assert.equal(config.model,'gemini-2.0-flash');assert.equal(config.apiKey,'test-gemini-key');
   assert.equal(resolveModelConfig({AI_PROVIDER:'gemini',OPENAI_API_KEY:'unused'}).apiKey,undefined);
   assert.throws(()=>resolveModelConfig({AI_PROVIDER:'invalid'}),/config-invalid/);
   let sent,calls=0;
