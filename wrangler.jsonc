@@ -10,7 +10,7 @@
   },
   "r2_buckets": [
     {
-      "binding": "AUDIO",
+      "binding": "MEDIA",
       "bucket_name": "site-creator-r2"
     }
   ],

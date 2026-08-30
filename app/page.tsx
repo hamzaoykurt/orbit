@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FocusEvent as ReactFocusEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
+import { ProjectWorkspace } from './projects/project-workspace';
+import { emptyTask, emptyWorkspace } from './projects/project-types';
+import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
 import {
   Archive, ArrowRight, ArrowUpRight, Bell, BookOpen, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight,
@@ -69,6 +72,8 @@ type PersistedState = {
   projectExtraTasks: Record<string, string[]>;
   projectRemovedTasks: Record<string, string[]>;
   projectSubtasks: Record<string, PersonalSubtask[]>;
+  projectWorkspaces: Record<string, ProjectWorkspaceData>;
+  projectTaskDetails: Record<string, ProjectTaskDetails>;
   customPrograms: Program[];
   removedProgramIds: string[];
   programEdits: Record<string, Partial<Program>>;
@@ -126,6 +131,8 @@ const defaultState: PersistedState = {
   projectExtraTasks: {},
   projectRemovedTasks: {},
   projectSubtasks: {},
+  projectWorkspaces: {},
+  projectTaskDetails: {},
   customPrograms: [],
   removedProgramIds: [],
   programEdits: {},
@@ -179,6 +186,8 @@ function mergePersistedState(value: unknown): PersistedState {
     projectExtraTasks: saved.projectExtraTasks && typeof saved.projectExtraTasks === 'object' && !Array.isArray(saved.projectExtraTasks) ? saved.projectExtraTasks : defaultState.projectExtraTasks,
     projectRemovedTasks: saved.projectRemovedTasks && typeof saved.projectRemovedTasks === 'object' && !Array.isArray(saved.projectRemovedTasks) ? saved.projectRemovedTasks : defaultState.projectRemovedTasks,
     projectSubtasks: saved.projectSubtasks && typeof saved.projectSubtasks === 'object' && !Array.isArray(saved.projectSubtasks) ? saved.projectSubtasks : defaultState.projectSubtasks,
+    projectWorkspaces: saved.projectWorkspaces && typeof saved.projectWorkspaces === 'object' && !Array.isArray(saved.projectWorkspaces) ? saved.projectWorkspaces : {},
+    projectTaskDetails: saved.projectTaskDetails && typeof saved.projectTaskDetails === 'object' && !Array.isArray(saved.projectTaskDetails) ? saved.projectTaskDetails : {},
     customPrograms: Array.isArray(saved.customPrograms) ? saved.customPrograms : defaultState.customPrograms,
     removedProgramIds: Array.isArray(saved.removedProgramIds) ? saved.removedProgramIds : defaultState.removedProgramIds,
     programEdits: saved.programEdits && typeof saved.programEdits === 'object' && !Array.isArray(saved.programEdits) ? saved.programEdits : defaultState.programEdits,
@@ -396,6 +405,23 @@ export default function PersonalOS() {
   const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | 'rebuildActivity' | 'rebuildReview' | 'rebuildBodyPlan' | null>(null);
   const [toast, setToast] = useState('');
   const [expandedProject, setExpandedProject] = useState<string | null>('pos');
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState('loading');
+  const [syncRetry, setSyncRetry] = useState(0);
+  const syncQueue = useRef<Promise<void>>(Promise.resolve());
+  const syncVersion = useRef(0);
+  const pendingSaves = useRef(0);
+
+  useEffect(() => {
+    const readProject = () => {
+      const id = new URL(window.location.href).searchParams.get('project');
+      setActiveProjectId(id);
+      if (id) setActive('projects');
+    };
+    readProject();
+    window.addEventListener('popstate', readProject);
+    return () => window.removeEventListener('popstate', readProject);
+  }, []);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [projectSubtaskParent, setProjectSubtaskParent] = useState<string | null>(null);
   const [projectSubtaskDraft, setProjectSubtaskDraft] = useState('');
@@ -531,26 +557,32 @@ export default function PersonalOS() {
   useEffect(() => {
     if (!hydrated) return;
     const serializedState = JSON.stringify(state);
-    localStorage.setItem('orbit-personal-os', serializedState);
+    try { localStorage.setItem('orbit-personal-os', serializedState); } catch { /* Server persistence still runs if browser storage is full. */ }
     document.documentElement.dataset.accent = state.settings.accent;
     document.documentElement.dataset.density = state.settings.density;
     document.documentElement.classList.toggle('reduce-motion', !state.settings.motion);
 
-    if (serializedState === lastSyncedState.current) return;
-    const saveTimer = window.setTimeout(async () => {
-      try {
-        const response = await fetch('/api/state', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state }),
-        });
-        if (!response.ok) throw new Error('D1 state save failed');
-        lastSyncedState.current = serializedState;
-      } catch { /* local persistence remains active */ }
+    const version = ++syncVersion.current;
+    if (serializedState === lastSyncedState.current && pendingSaves.current === 0) { setSyncStatus('saved'); return; }
+    setSyncStatus('saving');
+    const saveTimer = window.setTimeout(() => {
+      pendingSaves.current += 1;
+      syncQueue.current = syncQueue.current.then(async () => {
+        try {
+          const response = await fetch('/api/state', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state }), signal: AbortSignal.timeout(20000),
+          });
+          if (!response.ok) throw new Error('D1 state save failed');
+          lastSyncedState.current = serializedState;
+          if (version === syncVersion.current) setSyncStatus('saved');
+        } catch { if (version === syncVersion.current) setSyncStatus('error'); }
+        finally { pendingSaves.current -= 1; }
+      });
     }, 650);
 
     return () => window.clearTimeout(saveTimer);
-  }, [state, hydrated]);
+  }, [state, hydrated, syncRetry]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -783,6 +815,9 @@ export default function PersonalOS() {
   }, [focusActive, focusMode, focusSeconds, notify, playFeedback]);
 
   const go = (page: PageKey) => {
+    setActiveProjectId(null);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('project')) { url.searchParams.delete('project'); window.history.pushState({}, '', url); }
     setMobileMenu(false);
     setCaptureMenuOpen(false);
 
@@ -1042,6 +1077,14 @@ export default function PersonalOS() {
     setModal('project');
   };
 
+  const openProjectDetail = (id: string) => {
+    setActive('projects'); setActiveProjectId(id);
+    const url = new URL(window.location.href); url.searchParams.set('project', id);
+    window.history.pushState({}, '', url);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    window.requestAnimationFrame(() => pageContentRef.current?.focus({ preventScroll: true }));
+  };
+
   const addProject = () => {
     if (!projectDraft.title.trim()) return;
     const details = {
@@ -1055,23 +1098,17 @@ export default function PersonalOS() {
       tasks: projectDraft.tasks.split('\n').map((task) => task.trim()).filter(Boolean).slice(0, 40),
     };
     if (editingProjectId) {
-      const currentProject = [...projectSeed, ...state.customProjects].map(projectWithEdits).find((project) => project.id === editingProjectId);
-      const completedTaskTitles = new Set(currentProject ? visibleProjectTasks(currentProject).filter((_, index) => state.completed[`project-${editingProjectId}-${index}`]) : []);
+      const { tasks: initialTasks, ...metadata } = details;
+      void initialTasks;
       setState((current) => ({
         ...current,
-        completed: Object.fromEntries([
-          ...Object.entries(current.completed).filter(([key]) => !key.startsWith(`project-${editingProjectId}-`)),
-          ...details.tasks.map((task, index) => [`project-${editingProjectId}-${index}`, completedTaskTitles.has(task)] as const).filter(([, completed]) => completed),
-        ]),
-        projectEdits: { ...current.projectEdits, [editingProjectId]: { ...current.projectEdits[editingProjectId], ...details } },
+        projectEdits: { ...current.projectEdits, [editingProjectId]: { ...current.projectEdits[editingProjectId], ...metadata } },
         projectStages: { ...current.projectStages, [editingProjectId]: details.stage },
-        projectExtraTasks: { ...current.projectExtraTasks, [editingProjectId]: [] },
-        projectRemovedTasks: { ...current.projectRemovedTasks, [editingProjectId]: [] },
       }));
       setExpandedProject(editingProjectId);
       setEditingProjectId(null);
       setModal(null);
-      notify('Proje, kapağı ve görevleri güncellendi.');
+      notify('Proje bilgileri güncellendi. Görevler ve ekler korundu.');
       return;
     }
     const project: Project = {
@@ -1079,7 +1116,7 @@ export default function PersonalOS() {
       ...details,
     };
     setState((current) => ({ ...current, customProjects: [...current.customProjects, project] }));
-    setExpandedProject(project.id); setModal(null); notify('Yeni proje eklendi.');
+    setExpandedProject(project.id); setModal(null); openProjectDetail(project.id); notify('Yeni proje eklendi.');
   };
 
   const openProgram = () => {
@@ -1805,7 +1842,11 @@ export default function PersonalOS() {
       }
       if (item.type === 'project') {
         const source = item.source as Project | undefined;
-        next.customProjects = [...next.customProjects, source ? { ...source, id: `restored-project-${Date.now()}`, stage: 1 } : { id: `restored-project-${Date.now()}`, title: item.title, stage: 1, progress: 0, color: 'violet', due: 'Tarihsiz', tags: ['Arşiv'], tasks: [] }];
+        // Reuse the project identity so its tasks, photos and diagrams stay attached.
+        if (source) {
+          if (!next.customProjects.some(project => project.id === source.id)) next.customProjects = [...next.customProjects, { ...source, stage: 1 }];
+          next.projectStages = { ...next.projectStages, [source.id]: 1 };
+        } else next.customProjects = [...next.customProjects, { id: `restored-project-${Date.now()}`, title: item.title, stage: 1, progress: 0, color: 'violet', due: 'Tarihsiz', tags: ['Arşiv'], tasks: [] }];
       }
       if (item.type === 'program') {
         const source = item.source as Program | undefined;
@@ -1873,11 +1914,13 @@ export default function PersonalOS() {
   const metricProjects = [...projectSeed, ...state.customProjects].map(projectWithEdits);
   const projectMetrics = metricProjects.map((project) => {
     const tasks = visibleProjectTasks(project);
-    const done = tasks.filter((_, index) => state.completed[`project-${project.id}-${index}`]).length;
-    return { project, tasks, done, progress: completionRate(done, tasks.length) };
+    const subtasks = tasks.flatMap((_, index) => state.projectSubtasks[`${project.id}:${index}`] ?? []);
+    const done = tasks.filter((_, index) => state.completed[`project-${project.id}-${index}`]).length + subtasks.filter(task => state.completed[task.id]).length;
+    const total = tasks.length + subtasks.length;
+    return { project, tasks, total, done, progress: completionRate(done, total) };
   });
   const projectDone = projectMetrics.reduce((sum, item) => sum + item.done, 0);
-  const projectTotal = projectMetrics.reduce((sum, item) => sum + item.tasks.length, 0);
+  const projectTotal = projectMetrics.reduce((sum, item) => sum + item.total, 0);
   const metricPrograms = [...programs.map((program) => ({ ...program, ...(state.programEdits[program.id] ?? {}) })), ...state.customPrograms].filter((program) => !state.removedProgramIds.includes(program.id));
   const programTaskMetrics = metricPrograms.flatMap((program) => programCategories.flatMap((category, categoryIndex) => visibleProgramTasks(program.id, category.name).map((task, taskIndex) => ({ task, done: Boolean(state.completed[`program-${program.id}-${categoryIndex}-${taskIndex}`]) }))));
   const programDone = programTaskMetrics.filter((item) => item.done).length;
@@ -2084,6 +2127,19 @@ export default function PersonalOS() {
   const renderProjects = () => {
     const stages = ['Fikirler', 'Devam ediyor', 'İnceleme', 'Tamamlandı'];
     const allProjects = metricProjects;
+    if (activeProjectId) {
+      const project = allProjects.find(item => item.id === activeProjectId);
+      if (!hydrated) return <p role="status">Proje yükleniyor…</p>;
+      if (!project) return <section className="surface"><h2>Bu proje bulunamadı.</h2><button onClick={() => go('projects')}>Proje panosuna dön</button></section>;
+      return <ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => go('projects')} onEdit={() => openProjectEdit(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
+        onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
+        onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
+        onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}
+        onRemoveSubtask={(index, task) => removeProjectSubtask(`${project.id}:${index}`, task)}
+        onDetails={(id, update) => setState(current => ({ ...current, projectTaskDetails: { ...current.projectTaskDetails, [id]: update(current.projectTaskDetails[id] ?? emptyTask) } }))}
+        onWorkspace={update => setState(current => ({ ...current, projectWorkspaces: { ...current.projectWorkspaces, [project.id]: update(current.projectWorkspaces[project.id] ?? emptyWorkspace) } }))}
+      />;
+    }
     const visibleProjects = allProjects.filter((project) => `${project.title} ${project.tags.join(' ')}`.toLocaleLowerCase('tr').includes(projectQuery.toLocaleLowerCase('tr')));
     const averageProgress = Math.round(projectMetrics.reduce((total, item) => total + item.progress, 0) / Math.max(1, projectMetrics.length));
     return <>
@@ -2115,6 +2171,7 @@ export default function PersonalOS() {
                   className={`project-card tone-${project.color} ${expandedProject === project.id ? 'expanded' : ''} ${projectDrag?.active && projectDrag.projectId === project.id ? 'dragging' : ''}`}
                 >
                   <div className="project-card-tools">
+                    <button aria-label={`${project.title} görevlerini hızlı göster`} aria-expanded={expandedProject === project.id} onClick={() => setExpandedProject(expandedProject === project.id ? null : project.id)}><ChevronDown size={15}/></button>
                     <button className="project-edit-button" aria-label={`${project.title} projesini düzenle`} onClick={() => openProjectEdit(project)}><Pencil size={15}/></button>
                     <button
                       className="project-drag-handle"
@@ -2124,7 +2181,7 @@ export default function PersonalOS() {
                       onPointerDown={(event) => beginProjectDrag(event, project)}
                     ><GripVertical size={17}/></button>
                   </div>
-                  <button className="project-card-main" onClick={() => setExpandedProject(expandedProject === project.id ? null : project.id)}>
+                  <button className="project-card-main" aria-label={`${project.title} proje detaylarını aç`} onClick={() => openProjectDetail(project.id)}>
                     <div className={`project-cover cover-${project.cover ?? 'orbit'}`}><span className="mini-orbit"/><i>{progress}%</i></div>
                     <div className="project-info">
                       <span className="tag-row">{project.tags.length ? project.tags.map((tag) => <em key={tag}>{tag}</em>) : <em>Yeni</em>}</span>
@@ -2323,7 +2380,7 @@ export default function PersonalOS() {
       {modal==='notifications'&&<><div className="notification-center-head"><span className="modal-icon"><Bell size={20}/></span><div><span className="eyebrow">BİLDİRİM MERKEZİ</span><h2>Yaklaşan akışın.</h2></div>{unreadNotificationCount>0&&<button onClick={markAllNotificationsRead}><CheckCheck size={15}/> Tümünü okundu say</button>}</div><p className="notification-center-copy">Yalnızca bugün ve yarın için takviminde gerçekten bulunan kayıtlar burada görünür.</p><div className="notification-list">{notifications.length?notifications.map((item)=>{const isUnread=!state.notificationReadIds.includes(item.id);return <article key={item.id} className={isUnread?'unread':''}><button className="notification-main" onClick={()=>openNotification(item)}><span className={`notification-tone ${item.tone}`}><CalendarDays size={16}/></span><span><strong>{item.title}</strong><small>{item.description}</small></span><ChevronRight size={15}/></button><button className="notification-dismiss" aria-label={`${item.title} bildirimini kaldır`} onClick={()=>dismissNotification(item.id)}><X size={14}/></button></article>}):<div className="notification-empty"><span><Bell size={22}/><Check size={12}/></span><strong>Yeni bildirimin yok.</strong><p>Takvimine bugün veya yarın için bir kayıt eklendiğinde burada görünecek.</p></div>}</div><div className="notification-center-footer"><span><i className={state.settings.notifications?'active':''}/>{state.settings.notifications?'Sistem hatırlatmaları açık':'Sistem hatırlatmaları kapalı'}</span><button onClick={()=>{setModal(null);setSettingsTab('notifications');go('settings')}}>Bildirim ayarları <ArrowRight size={13}/></button></div></>}
       {modal==='personalItem'&&<><span className="modal-icon">{personalItemDraft.list==='visit'?<MapPin size={20}/>:personalItemDraft.list==='buy'?<ShoppingBag size={20}/>:<ListTodo size={20}/>}</span><span className="eyebrow">{editingPersonalItemId?'KAYDI DÜZENLE':'YENİ KAYIT'}</span><h2>{personalLists[personalItemDraft.list].title}</h2><p>{editingPersonalItemId?'Kaydın ayrıntılarını güncelle.':'Yeni kayıt bu Personal listesine eklenecek.'}</p><label>Başlık<input required autoFocus value={personalItemDraft.title} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,title:event.target.value})} placeholder={personalItemDraft.list==='visit'?'Örn. Efes Antik Kenti':personalItemDraft.list==='buy'?'Örn. Monitör kolu':'Yapılacak iş'}/></label>{personalItemDraft.list==='buy'&&<><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={personalItemDraft.price} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,price:event.target.value})} placeholder="1250"/></label><label>Ürün bağlantısı <small>İsteğe bağlı</small><input type="url" value={personalItemDraft.link} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,link:event.target.value})} placeholder="https://..."/></label></>}{personalItemDraft.list==='visit'&&<label>Google Haritalar konum bağlantısı <small>İsteğe bağlı</small><input type="url" value={personalItemDraft.locationUrl} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,locationUrl:event.target.value})} placeholder="https://maps.google.com/..."/></label>}<label>Kısa not <small>İsteğe bağlı</small><textarea value={personalItemDraft.note} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,note:event.target.value})} placeholder="Kısa bir ayrıntı ekle..."/></label><label>Öncelik<select value={personalItemDraft.priority} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,priority:event.target.value as 'normal'|'important'})}><option value="normal">Normal</option><option value="important">Önemli</option></select></label>{editingPersonalItemId&&<button className="personal-delete-button" onClick={removePersonalItem}><Trash2 size={15}/> Kaydı kaldır</button>}<button className="primary-button full" disabled={!personalItemDraft.title.trim()} onClick={savePersonalItem}>{editingPersonalItemId?'Değişiklikleri kaydet':'Listeye ekle'} <ArrowRight size={15}/></button></>}
       {modal==='note'&&<><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YENİ NOT</span><h2>Bir düşünce yakala.</h2><p>Başlığıyla kolayca bulabileceğin temiz bir not oluştur.</p><label>Başlık<input required autoFocus value={noteDraft.title} onChange={(event)=>setNoteDraft({...noteDraft,title:event.target.value})} placeholder="Not başlığı"/></label><label>Not <small>İsteğe bağlı</small><textarea value={noteDraft.body} onChange={(event)=>setNoteDraft({...noteDraft,body:event.target.value})} placeholder="Düşünceni, bağlantıları veya sonraki adımları yaz..."/></label><button className="primary-button full" disabled={!noteDraft.title.trim()} onClick={addNote}>Notu kaydet <Check size={15}/></button></>}
-      {modal==='project'&&<><span className="modal-icon"><PanelsTopLeft size={20}/></span><span className="eyebrow">{editingProjectId?'PROJEYİ DÜZENLE':'YENİ PROJE'}</span><h2>{editingProjectId?'Kartı ve içeriğini güncelle.':'Fikre net bir başlangıç ver.'}</h2><p>Önce temel bilgileri gir; görevleri ve görsel kimliği istediğin zaman değiştirebilirsin.</p><label>Proje adı<input required autoFocus value={projectDraft.title} onChange={(event)=>setProjectDraft({...projectDraft,title:event.target.value})} placeholder="Örn. Seyahat planlama uygulaması"/></label><div className="form-row"><label>Aşama<select value={projectDraft.stage} onChange={(event)=>setProjectDraft({...projectDraft,stage:Number(event.target.value)})}>{['Fikirler','Devam ediyor','İnceleme','Tamamlandı'].map((label,index)=><option value={index} key={label}>{label}</option>)}</select></label><label>İlerleme <small>%</small><input type="number" inputMode="numeric" min="0" max="100" value={projectDraft.progress} onChange={(event)=>setProjectDraft({...projectDraft,progress:Number(event.target.value)})} placeholder="0–100"/></label></div><div className="form-row"><label>Renk<select value={projectDraft.color} onChange={(event)=>setProjectDraft({...projectDraft,color:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'}].map((color)=><option key={color.value} value={color.value}>{color.label}</option>)}</select></label><label>Kapak<select value={projectDraft.cover} onChange={(event)=>setProjectDraft({...projectDraft,cover:event.target.value as ProjectCover})}>{[{value:'orbit',label:'Yörünge'},{value:'aurora',label:'Aurora'},{value:'grid',label:'Teknolojik ızgara'},{value:'minimal',label:'Minimal'}].map((cover)=><option key={cover.value} value={cover.value}>{cover.label}</option>)}</select></label></div><label>Hedef tarih <small>İsteğe bağlı</small><input value={projectDraft.due} onChange={(event)=>setProjectDraft({...projectDraft,due:event.target.value})} placeholder="Örn. 18 Eyl"/></label><label>Etiketler <small>Virgülle ayır</small><input value={projectDraft.tags} onChange={(event)=>setProjectDraft({...projectDraft,tags:event.target.value})} placeholder="UI, Mobil, Araştırma"/></label><label>Görevler ve alt görevler <small>Alt görev için &gt; kullan</small><textarea value={projectDraft.tasks} onChange={(event)=>setProjectDraft({...projectDraft,tasks:event.target.value})} placeholder={'Kullanıcı akışını çıkar\n> İlk ekranı tasarla\n> Mobil akışı test et'}/></label><button className="primary-button full" disabled={!projectDraft.title.trim()} onClick={addProject}>{editingProjectId?'Değişiklikleri kaydet':'Projeyi oluştur'} <ArrowRight size={15}/></button></>}
+      {modal==='project'&&<><span className="modal-icon"><PanelsTopLeft size={20}/></span><span className="eyebrow">{editingProjectId?'PROJEYİ DÜZENLE':'YENİ PROJE'}</span><h2>{editingProjectId?'Kartı ve içeriğini güncelle.':'Fikre net bir başlangıç ver.'}</h2><p>Önce temel bilgileri gir; görevleri ve görsel kimliği istediğin zaman değiştirebilirsin.</p><label>Proje adı<input required autoFocus value={projectDraft.title} onChange={(event)=>setProjectDraft({...projectDraft,title:event.target.value})} placeholder="Örn. Seyahat planlama uygulaması"/></label><div className="form-row"><label>Aşama<select value={projectDraft.stage} onChange={(event)=>setProjectDraft({...projectDraft,stage:Number(event.target.value)})}>{['Fikirler','Devam ediyor','İnceleme','Tamamlandı'].map((label,index)=><option value={index} key={label}>{label}</option>)}</select></label><p>İlerleme, görevler ve alt görevlerden otomatik hesaplanır.</p></div><div className="form-row"><label>Renk<select value={projectDraft.color} onChange={(event)=>setProjectDraft({...projectDraft,color:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'}].map((color)=><option key={color.value} value={color.value}>{color.label}</option>)}</select></label><label>Kapak<select value={projectDraft.cover} onChange={(event)=>setProjectDraft({...projectDraft,cover:event.target.value as ProjectCover})}>{[{value:'orbit',label:'Yörünge'},{value:'aurora',label:'Aurora'},{value:'grid',label:'Teknolojik ızgara'},{value:'minimal',label:'Minimal'}].map((cover)=><option key={cover.value} value={cover.value}>{cover.label}</option>)}</select></label></div><label>Hedef tarih <small>İsteğe bağlı</small><input value={projectDraft.due} onChange={(event)=>setProjectDraft({...projectDraft,due:event.target.value})} placeholder="Örn. 18 Eyl"/></label><label>Etiketler <small>Virgülle ayır</small><input value={projectDraft.tags} onChange={(event)=>setProjectDraft({...projectDraft,tags:event.target.value})} placeholder="UI, Mobil, Araştırma"/></label>{editingProjectId?<p>Görevleri, alt görevleri ve fotoğrafları projenin detay sayfasından yönetebilirsin.</p>:<label>İlk görevler <small>Her satıra bir görev</small><textarea value={projectDraft.tasks} onChange={(event)=>setProjectDraft({...projectDraft,tasks:event.target.value})} placeholder={'Kullanıcı akışını çıkar\nİlk ekranı tasarla\nMobil akışı test et'}/></label>}<button className="primary-button full" disabled={!projectDraft.title.trim()} onClick={addProject}>{editingProjectId?'Değişiklikleri kaydet':'Projeyi oluştur'} <ArrowRight size={15}/></button></>}
       {modal==='program'&&<><span className="modal-icon"><Plane size={20}/></span><span className="eyebrow">{editingProgramId?'TURU DÜZENLE':'YENİ TUR'}</span><h2>{editingProgramId?'Tur bilgilerini güncelle.':'Turun hazırlık alanını aç.'}</h2><p>Tur, hazırlık kategorileri ve takip edilebilir görevleriyle birlikte oluşturulacak.</p><label>Tur adı<input required autoFocus value={programDraft.title} onChange={(event)=>setProgramDraft({...programDraft,title:event.target.value})} placeholder="Örn. 12–16 Ekim Umre"/></label><label>Tarih aralığı <small>İsteğe bağlı</small><input value={programDraft.range} onChange={(event)=>setProgramDraft({...programDraft,range:event.target.value})} placeholder="Örn. 12–16 Ekim 2026"/></label><div className="form-row"><label>Durum<select value={programDraft.status} onChange={(event)=>setProgramDraft({...programDraft,status:event.target.value})}>{['Taslak','Planlandı','Hazırlanıyor'].map((status)=><option key={status}>{status}</option>)}</select></label><label>Vurgu rengi<select value={programDraft.accent} onChange={(event)=>setProgramDraft({...programDraft,accent:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'}].map((color)=><option key={color.value} value={color.value}>{color.label}</option>)}</select></label></div><button className="primary-button full" disabled={!programDraft.title.trim()} onClick={addProgram}>{editingProgramId?'Değişiklikleri kaydet':'Turu oluştur'} <ArrowRight size={15}/></button></>}
       {modal==='programTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">PROGRAM GÖREVİ</span><h2>Hazırlık adımı ekle.</h2><p>Görev, seçtiğin turun ilgili hazırlık kategorisinde görünecek.</p><label>Kategori<select value={programTaskDraft.category} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,category:event.target.value})}>{programCategories.map((category)=><option key={category.name}>{category.name}</option>)}</select></label><label>Görev adı<input required autoFocus value={programTaskDraft.title} onChange={(event)=>setProgramTaskDraft({...programTaskDraft,title:event.target.value})} onKeyDown={(event)=>event.key==='Enter'&&addProgramTask()} placeholder="Örn. Otel teyidini al"/></label><button className="primary-button full" disabled={!programTaskDraft.title.trim()} onClick={addProgramTask}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='departmentTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">OPERASYON GÖREVİ</span><h2>{departments.find((department)=>department.id===expandedDepartment)?.title} için görev ekle.</h2><p>Yeni görev doğrudan açık departmanın operasyon listesine kaydedilecek.</p><label>Görev adı<input required autoFocus value={departmentTaskDraft} onChange={(event)=>setDepartmentTaskDraft(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addDepartmentTask()} placeholder="Örn. Tedarikçiden teyit al"/></label><button className="primary-button full" disabled={!departmentTaskDraft.trim()} onClick={addDepartmentTask}>Görevi ekle <ArrowRight size={15}/></button></>}

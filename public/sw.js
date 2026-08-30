@@ -1,4 +1,4 @@
-const CACHE_NAME = 'orbit-shell-v3';
+const CACHE_NAME = 'orbit-shell-v4';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
@@ -13,8 +13,10 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
+  // Authenticated data and private project photos must never be replayed from a shared cache.
+  if (new URL(event.request.url).pathname.startsWith('/api/')) return;
   event.respondWith(fetch(event.request).then((response) => {
-    if (response.ok && new URL(event.request.url).pathname !== '/api/state') {
+    if (response.ok && !response.headers.get('Cache-Control')?.includes('no-store')) {
       const copy = response.clone();
       void caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
     }
