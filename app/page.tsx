@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FocusEvent as ReactFocusEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
-import { ProjectWorkspace } from './projects/project-workspace';
+import { readStartupState } from './startup';
 import { emptyTask, emptyWorkspace } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
 import {
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 
 type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
+const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(module => ({ default: module.ProjectWorkspace })));
 type Note = { id: string; title: string; body: string; date: string; tone: string };
 type PersonalListKey = 'todo' | 'buy' | 'visit';
 type PersonalItemDetails = { title?: string; note?: string; price?: string; link?: string; locationUrl?: string; priority?: 'normal' | 'important' };
@@ -464,6 +465,7 @@ export default function PersonalOS() {
   const googleCalendarId = googleConfig.calendarId || state.calendarIntegration.calendarId.trim() || 'primary';
   const googleAccessTokenRef = useRef('');
   const googleRestoreStartedRef = useRef(false);
+  const googleConfigRequestedRef = useRef(false);
   const [profileDraft, setProfileDraft] = useState(defaultState.profile);
   const [noteSearch, setNoteSearch] = useState('');
   const [noteFilter, setNoteFilter] = useState<'all' | 'ideas' | 'logs'>('all');
@@ -517,10 +519,8 @@ export default function PersonalOS() {
       } catch { /* corrupted local data falls back safely */ }
 
       try {
-        const response = await fetch('/api/state', { cache: 'no-store' });
-        if (!response.ok) throw new Error('D1 state request failed');
-        const payload = await response.json() as { state?: unknown };
-        if (payload.state) {
+        const payload = await readStartupState();
+        if (payload?.state) {
           resolvedState = mergePersistedState(payload.state);
           lastSyncedState.current = JSON.stringify(resolvedState);
         }
@@ -537,11 +537,18 @@ export default function PersonalOS() {
   }, []);
 
   useEffect(() => {
+    if (!hydrated || googleConfigRequestedRef.current) return;
+    let hasConnection = false;
+    try { hasConnection = Boolean(localStorage.getItem(GOOGLE_SESSION_KEY)); } catch { /* Device storage may be unavailable. */ }
+    if (active !== 'calendar' && active !== 'settings' && !hasConnection) return;
     let cancelled = false;
+    let finished = false;
+    googleConfigRequestedRef.current = true;
     void fetch('/api/google-config', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() as Promise<{ clientId?: string; calendarId?: string }> : Promise.reject(new Error('Google yapılandırması alınamadı')))
       .then((config: { clientId?: string; calendarId?: string }) => {
         if (cancelled) return;
+        finished = true;
         setGoogleConfig({
           clientId: config.clientId?.trim() || GOOGLE_CLIENT_ID,
           calendarId: config.calendarId?.trim() || GOOGLE_CALENDAR_ID || 'primary',
@@ -551,8 +558,8 @@ export default function PersonalOS() {
       .catch(() => {
         if (!cancelled) setGoogleConfig((current) => ({ ...current, loaded: true }));
       });
-    return () => { cancelled = true; };
-  }, []);
+    return () => { cancelled = true; if (!finished) googleConfigRequestedRef.current = false; };
+  }, [active, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2131,14 +2138,14 @@ export default function PersonalOS() {
       const project = allProjects.find(item => item.id === activeProjectId);
       if (!hydrated) return <p role="status">Proje yükleniyor…</p>;
       if (!project) return <section className="surface"><h2>Bu proje bulunamadı.</h2><button onClick={() => go('projects')}>Proje panosuna dön</button></section>;
-      return <ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => go('projects')} onEdit={() => openProjectEdit(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
+      return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => go('projects')} onEdit={() => openProjectEdit(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
         onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
         onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}
         onRemoveSubtask={(index, task) => removeProjectSubtask(`${project.id}:${index}`, task)}
         onDetails={(id, update) => setState(current => ({ ...current, projectTaskDetails: { ...current.projectTaskDetails, [id]: update(current.projectTaskDetails[id] ?? emptyTask) } }))}
         onWorkspace={update => setState(current => ({ ...current, projectWorkspaces: { ...current.projectWorkspaces, [project.id]: update(current.projectWorkspaces[project.id] ?? emptyWorkspace) } }))}
-      />;
+      /></Suspense>;
     }
     const visibleProjects = allProjects.filter((project) => `${project.title} ${project.tags.join(' ')}`.toLocaleLowerCase('tr').includes(projectQuery.toLocaleLowerCase('tr')));
     const averageProgress = Math.round(projectMetrics.reduce((total, item) => total + item.progress, 0) / Math.max(1, projectMetrics.length));

@@ -4,6 +4,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState } from 'react';
+import './project-workspace.css';
 import { ArrowLeft, CalendarDays, Check, ChevronDown, ExternalLink, ImagePlus, LayoutList, Link2, Network, Pencil, Plus, StickyNote, Trash2 } from 'lucide-react';
 import { DiagramEditor } from './diagram-editor';
 import { PhotoAnnotator } from './photo-annotator';

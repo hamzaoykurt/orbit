@@ -1,18 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
 import './workspace-scale.css';
-import './projects/project-workspace.css';
 import { PwaRegister } from './pwa-register';
+import { startupScript } from './startup';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
   subsets: ['latin'],
 });
 
@@ -60,9 +55,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} antialiased`}
       >
         <PwaRegister />
         {children}
