@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     // Log only a bounded diagnostic code, never keys, provider bodies or private input.
     console.warn('Orbit generation failed',code);
     const messages:Record<string,string>={'generation-in-progress':'Bir üretim zaten sürüyor. Bitince tekrar dene.','rate-limited':'Çok hızlı istek gönderildi. Bir dakika sonra tekrar dene.','no-novel-result':'Öncekilerden yeterince farklı bir fikir üretilemedi. Tekrar dene.','idea-not-found':'Bu fikir geçmişte bulunamadı.','invalid-request':'Geçersiz üretim isteği.'};
-    const providerMessages:Record<string,string>={'provider-quota':'AI sağlayıcısının kullanım sınırına ulaşıldı. Kota yenilenince tekrar dene. Başka veya ücretli bir sağlayıcıya geçilmedi.','provider-key':'AI anahtarı geçersiz veya bu modele erişimi yok. Sunucudaki sağlayıcı ayarını kontrol et.','provider-model':'Seçilen AI modeli bulunamadı. Sunucudaki model ayarını kontrol et.'};
+    const providerMessages:Record<string,string>={'provider-quota':'AI sağlayıcısının kullanım sınırına ulaşıldı. Kota yenilenince tekrar dene. Başka veya ücretli bir sağlayıcıya geçilmedi.','provider-key':'AI anahtarı geçersiz veya bu modele erişimi yok. Sunucudaki sağlayıcı ayarını kontrol et.','provider-model':'Seçilen AI modeli bulunamadı. Sunucudaki model ayarını kontrol et.','provider-http-400':'Gemini isteği kabul etmedi. Model veya JSON şeması ayarını kontrol et; özel verilerin gönderilmedi.'};
     return json({error:messages[code]||providerMessages[code]||GENERATION_UNAVAILABLE,code},error instanceof GenerationError?error.status:code==='provider-quota'?429:503);
   }finally{if(store&&lock)await store.release(lock).catch(()=>{});}
 }

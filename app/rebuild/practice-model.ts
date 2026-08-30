@@ -1,7 +1,7 @@
 import type { GeneratedIdea, WordSuggestion } from './idea-engine';
 
 export type VocabularyWord = WordSuggestion & { id: string; addedAt: string; dueAt: string; lastReviewedAt?: string; reviews: number; successes: number };
-export type ResearchTopic = { id: string; ideaId: string; title: string; question: string; startedAt: string; questions: { id: string; text: string; explored: boolean; note: string }[] };
+export type ResearchTopic = { id: string; ideaId: string; title: string; question: string; startedAt: string; source?: 'project-planning'; projectId?: string; questions: { id: string; text: string; explored: boolean; note: string }[] };
 export type SpeakingSession = { id: string; at: string; seconds: number; prompt: string; words: string[] };
 export type Practice = {
   version: 1; words: VocabularyWord[]; research: ResearchTopic[]; currentResearchId: string | null;
@@ -21,7 +21,7 @@ export function normalizePractice(value: unknown): Practice {
   const research:ResearchTopic[]=(Array.isArray(source.research)?source.research:[]).flatMap(raw=>{
     const item=obj(raw);if(!str(item.id)||!str(item.title)||!str(item.question)||!Array.isArray(item.questions))return [];
     const questions=item.questions.flatMap(raw=>{const q=obj(raw);return str(q.id)&&str(q.text)?[{id:str(q.id,140),text:str(q.text,240),explored:q.explored===true,note:str(q.note,500)}]:[];});
-    return [{id:str(item.id,100),ideaId:str(item.ideaId,100),title:str(item.title,120),question:str(item.question,600),startedAt:str(item.startedAt,40),questions}];
+    return [{id:str(item.id,100),ideaId:str(item.ideaId,100),title:str(item.title,120),question:str(item.question,600),startedAt:str(item.startedAt,40),questions,...(item.source==='project-planning'?{source:'project-planning' as const,projectId:str(item.projectId,100)}:{})}];
   });
   const sessions:SpeakingSession[]=(Array.isArray(source.sessions)?source.sessions:[]).flatMap(raw=>{const item=obj(raw);return str(item.id)&&validTime(item.at)?[{id:str(item.id,100),at:item.at,seconds:Math.max(0,Number(item.seconds)||0),prompt:str(item.prompt,600),words:(Array.isArray(item.words)?item.words:[]).filter((word):word is string=>typeof word==='string').slice(0,20)}]:[];});
   const prompt=obj(source.speakingPrompt);

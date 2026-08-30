@@ -1,3 +1,4 @@
+import type { ProjectPlanning } from './planning-types';
 export type ProjectPhoto = { id: string; url: string; name: string; createdAt: string };
 export type ProjectTaskDetails = { note: string; photos: ProjectPhoto[] };
 export type DiagramNode = { id: string; label: string; x: number; y: number; color: string };
@@ -7,6 +8,7 @@ export type ProjectWorkspaceData = {
   diagrams: Diagram[];
   notes: { id: string; title: string; body: string }[];
   links: { id: string; title: string; url: string }[];
+  planning?: ProjectPlanning;
 };
 export const emptyWorkspace: ProjectWorkspaceData = { description: '', diagrams: [], notes: [], links: [] };
 export const emptyTask: ProjectTaskDetails = { note: '', photos: [] };

@@ -56,8 +56,7 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
     method:'POST',redirect:'error',signal:request.signal?AbortSignal.any([request.signal,AbortSignal.timeout(45_000)]):AbortSignal.timeout(45_000),
     headers:{'x-goog-api-key':config.apiKey!,'Content-Type':'application/json'},
     body:JSON.stringify({systemInstruction:{parts:[{text:request.instructions}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
-      generationConfig:{responseMimeType:'application/json',responseJsonSchema:request.schema,maxOutputTokens:6500,
-        ...(model.startsWith('gemini-2.5-')&&!model.includes('pro')?{thinkingConfig:{thinkingBudget:0}}:{})},
+    generationConfig:{responseMimeType:'application/json',responseSchema:request.schema,maxOutputTokens:6500},
     }),
   });
   if(!response.ok){await response.body?.cancel();throw new Error(`provider-http-${response.status}`);}

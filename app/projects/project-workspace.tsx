@@ -6,6 +6,9 @@
 import { useEffect, useState } from 'react';
 import './project-workspace.css';
 import { ArrowLeft, CalendarDays, Check, ChevronDown, ExternalLink, ImagePlus, LayoutList, Link2, Network, Pencil, Plus, StickyNote, Trash2 } from 'lucide-react';
+import { ProjectOverview } from './project-overview';
+import { lifecycleLabels } from './planning-types';
+import type { ProjectLifecycle } from './planning-types';
 import { DiagramEditor } from './diagram-editor';
 import { PhotoAnnotator } from './photo-annotator';
 import { buildProjectTasks, emptyTask, safeResourceUrl } from './project-types';
@@ -22,6 +25,8 @@ type Props = {
   onRetry: () => void;
   onBack: () => void;
   onEdit: () => void;
+  onPlan: () => void;
+  onResearch: () => void;
   onStage: (stage: number) => void;
   onToggle: (id: string) => void;
   onSchedule: (title: string) => void;
@@ -39,7 +44,7 @@ function AddLine({ label, onAdd }: { label: string; onAdd: (title: string) => vo
 
 export function ProjectWorkspace(props: Props) {
   const { project, workspace, completed } = props;
-  const [tab, setTab] = useState<'tasks' | 'diagrams' | 'resources'>('tasks');
+  const [tab, setTab] = useState<'overview' | 'tasks' | 'diagrams' | 'resources'>('overview');
   const [filter, setFilter] = useState<'all' | 'open' | 'done'>('all');
   const [editor, setEditor] = useState<{ taskId: string; source: string; name: string; previousId?: string; temporary?: boolean } | null>(null);
   const [error, setError] = useState('');
@@ -68,9 +73,10 @@ export function ProjectWorkspace(props: Props) {
   };
   return <div className="project-workspace">
     <div className="pw-topbar"><button type="button" onClick={props.onBack}><ArrowLeft size={17}/> Proje panosu</button><span className={`pw-sync ${props.syncStatus === 'error' ? 'pw-error' : ''}`} role="status">{props.syncStatus === 'saved' ? 'Değişiklikler kaydedildi' : props.syncStatus === 'saving' ? 'Kaydediliyor…' : props.syncStatus === 'error' ? 'Sunucuya kaydedilemedi' : 'Veriler yükleniyor…'}</span>{props.syncStatus === 'error' && <button type="button" onClick={props.onRetry}>Tekrar dene</button>}</div>
-    <header className="surface pw-header"><div className="pw-header-main"><span className="eyebrow">PROJE ÇALIŞMA ALANI</span><h1>{project.title}</h1><div className="pw-meta"><span><CalendarDays size={15}/>{project.due}</span>{project.tags.map(tag => <span key={tag}>{tag}</span>)}</div><label className="pw-description">Projenin amacı<textarea maxLength={3000} rows={2} value={workspace.description} onChange={event => props.onWorkspace(current => ({ ...current, description: event.target.value }))} placeholder="Ne yapıyoruz, kimin için ve başarı nasıl görünecek?"/></label></div><div className="pw-header-aside"><label>Projenin aşaması<select value={project.stage} onChange={event => props.onStage(Number(event.target.value))}>{['Fikirler', 'Devam ediyor', 'İnceleme', 'Tamamlandı'].map((stage, index) => <option value={index} key={stage}>{stage}</option>)}</select></label><div className="pw-progress"><strong>{progress}%</strong><span>{done} / {allIds.length} görev ve alt görev</span><progress max="100" value={progress}/></div><button type="button" onClick={props.onEdit}><Pencil size={15}/> Proje bilgilerini düzenle</button></div></header>
-    <nav className="pw-tabs" aria-label="Proje bölümleri"><button type="button" aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => setTab('tasks')}><LayoutList size={17}/> Görevler <span>{tasks.length}</span></button><button type="button" aria-current={tab === 'diagrams' ? 'page' : undefined} onClick={() => setTab('diagrams')}><Network size={17}/> Diyagramlar <span>{workspace.diagrams.length}</span></button><button type="button" aria-current={tab === 'resources' ? 'page' : undefined} onClick={() => setTab('resources')}><StickyNote size={17}/> Notlar ve bağlantılar <span>{workspace.notes.length + workspace.links.length}</span></button></nav>
+    <header className="surface pw-header"><div className="pw-header-main"><span className="eyebrow">PROJE ÇALIŞMA ALANI</span><h1>{project.title}</h1><div className="pw-meta"><span><CalendarDays size={15}/>{project.due}</span>{project.tags.map(tag => <span key={tag}>{tag}</span>)}</div><label className="pw-description">Projenin amacı<textarea maxLength={3000} rows={2} value={workspace.description} onChange={event => props.onWorkspace(current => ({ ...current, description: event.target.value }))} placeholder="Ne yapıyoruz, kimin için ve başarı nasıl görünecek?"/></label></div><div className="pw-header-aside"><label>Projenin aşaması{workspace.planning ? <select value={workspace.planning.lifecycle} onChange={event => props.onWorkspace(current => current.planning ? { ...current, planning: { ...current.planning, lifecycle: event.target.value as ProjectLifecycle, updatedAt: new Date().toISOString() } } : current)}>{Object.entries(lifecycleLabels).map(([id,label]) => <option value={id} key={id}>{label}</option>)}</select> : <select value={project.stage} onChange={event => props.onStage(Number(event.target.value))}>{['Fikirler', 'Devam ediyor', 'İnceleme', 'Tamamlandı'].map((stage, index) => <option value={index} key={stage}>{stage}</option>)}</select>}</label><div className="pw-progress"><strong>{progress}%</strong><span>{done} / {allIds.length} görev ve alt görev</span><progress max="100" value={progress}/></div><button type="button" onClick={props.onEdit}><Pencil size={15}/> Proje bilgilerini düzenle</button></div></header>
+    <nav className="pw-tabs" aria-label="Proje bölümleri"><button type="button" aria-current={tab === 'overview' ? 'page' : undefined} onClick={() => setTab('overview')}><LayoutList size={17}/> Genel bakış</button><button type="button" aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => setTab('tasks')}><LayoutList size={17}/> Görevler <span>{tasks.length}</span></button><button type="button" aria-current={tab === 'diagrams' ? 'page' : undefined} onClick={() => setTab('diagrams')}><Network size={17}/> Diyagramlar <span>{workspace.diagrams.length}</span></button><button type="button" aria-current={tab === 'resources' ? 'page' : undefined} onClick={() => setTab('resources')}><StickyNote size={17}/> Notlar ve bağlantılar <span>{workspace.notes.length + workspace.links.length}</span></button></nav>
     {error && <p className="pw-error" role="alert">{error}</p>}
+    {tab === 'overview' && <ProjectOverview plan={workspace.planning} tasks={props.tasks} onPlan={props.onPlan} onResearch={props.onResearch} onTask={props.onAddTask} onChange={planning => props.onWorkspace(current => ({ ...current, planning }))}/>}
     {tab === 'tasks' && <section className="pw-task-section"><div className="pw-section-heading"><div><h2>Bir sonraki adım.</h2><p>Görev aç, küçük adımlara böl, görselle anlat.</p></div><label>Görünüm<select value={filter} onChange={event => setFilter(event.target.value as typeof filter)}><option value="all">Tüm görevler</option><option value="open">Açık işler</option><option value="done">Tamamlananlar</option></select></label></div><AddLine label="Projeye yeni görev ekle…" onAdd={title => { props.onAddTask(title); setFilter('all'); }}/>
       <div className="pw-task-list">{visibleTasks.map(task => {
         const details = props.details[task.id] ?? emptyTask;

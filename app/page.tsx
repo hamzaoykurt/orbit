@@ -7,6 +7,9 @@ import { InstallOrbit } from './install-orbit';
 import { readStartupState } from './startup';
 import { emptyTask, emptyWorkspace } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
+import { newCreationDraft, normalizeCreationDraft, normalizePlanning, lifecycleFromStage, stageFromLifecycle } from './projects/planning-types';
+import type { CreationDraft, ProjectPlanning } from './projects/planning-types';
+import { applyPlanning, addPlanningResearch, planningResearchId } from './projects/planning-actions';
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
@@ -21,13 +24,15 @@ import {
   Circle, CircleDot, Clock3, Command, Compass, Download, Dumbbell, Eye, Globe2,
   ExternalLink, Flag, Home as HomeIcon, Languages, LayoutGrid, Link2, ListTodo, Map, MapPin,
   LogOut, Menu, Mic, Monitor, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
-  Pencil, Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
+  Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
   Smartphone, Sparkles, Square, StickyNote, Sun, Trash2, Undo2, UserRound, Users,
   Volume1, Volume2, X, Zap, GripVertical, RefreshCw,
 } from 'lucide-react';
 
 type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
 const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(module => ({ default: module.ProjectWorkspace })));
+const ProjectsHub = lazy(() => import('./projects/projects-hub').then(module => ({ default: module.ProjectsHub })));
+const ProjectCreator = lazy(() => import('./projects/project-creator').then(module => ({ default: module.ProjectCreator })));
 const RebuildJourney = lazy(() => import('./rebuild/rebuild-journey').then(module => ({ default: module.RebuildJourney })));
 type Note = { id: string; title: string; body: string; date: string; tone: string };
 type PersonalListKey = 'todo' | 'buy' | 'visit';
@@ -36,7 +41,6 @@ type PersonalSubtask = { id: string; title: string };
 type PersonalDragState = { kind: 'item' | 'subtask'; list: PersonalListKey; itemId: string; subtaskId?: string; overId: string; title: string; x: number; y: number; pointerId: number };
 type ProjectCover = 'orbit' | 'aurora' | 'grid' | 'minimal';
 type Project = { id: string; title: string; stage: number; progress: number; color: string; due: string; tags: string[]; tasks: string[]; cover?: ProjectCover };
-type ProjectDragState = { projectId: string; title: string; color: string; sourceStage: number; overStage: number; active: boolean; x: number; y: number; startX: number; startY: number; pointerId: number };
 type Program = { id: string; title: string; range: string; people: number; status: string; progress: number; accent: string };
 type CalendarEvent = { id: string; title: string; tone: string; time: string; duration: string; description?: string; source?: string; googleEventId?: string; htmlLink?: string };
 type GoogleCalendarIntegration = { clientId: string; calendarId: string };
@@ -76,6 +80,7 @@ type PersistedState = {
   personalRemovedItems: string[];
   personalOrder: Record<PersonalListKey, string[]>;
   personalSubtasks: Record<string, PersonalSubtask[]>;
+  projectCreationDraft: CreationDraft | null;
   projectStages: Record<string, number>;
   customProjects: Project[];
   projectEdits: Record<string, Partial<Project>>;
@@ -138,6 +143,7 @@ const defaultState: PersistedState = {
   personalRemovedItems: [],
   personalOrder: { todo: [], buy: [], visit: [] },
   personalSubtasks: {},
+  projectCreationDraft: null,
   projectStages: {},
   customProjects: [],
   projectEdits: {},
@@ -196,13 +202,14 @@ function mergePersistedState(value: unknown): PersistedState {
     personalRemovedItems: Array.isArray(saved.personalRemovedItems) ? saved.personalRemovedItems : defaultState.personalRemovedItems,
     personalOrder: { ...defaultState.personalOrder, ...(saved.personalOrder ?? {}) },
     personalSubtasks: saved.personalSubtasks && typeof saved.personalSubtasks === 'object' && !Array.isArray(saved.personalSubtasks) ? saved.personalSubtasks : defaultState.personalSubtasks,
+    projectCreationDraft: normalizeCreationDraft(saved.projectCreationDraft),
     projectStages: { ...defaultState.projectStages, ...(saved.projectStages ?? {}) },
     customProjects: Array.isArray(saved.customProjects) ? saved.customProjects : defaultState.customProjects,
     projectEdits: saved.projectEdits && typeof saved.projectEdits === 'object' && !Array.isArray(saved.projectEdits) ? saved.projectEdits : defaultState.projectEdits,
     projectExtraTasks: saved.projectExtraTasks && typeof saved.projectExtraTasks === 'object' && !Array.isArray(saved.projectExtraTasks) ? saved.projectExtraTasks : defaultState.projectExtraTasks,
     projectRemovedTasks: saved.projectRemovedTasks && typeof saved.projectRemovedTasks === 'object' && !Array.isArray(saved.projectRemovedTasks) ? saved.projectRemovedTasks : defaultState.projectRemovedTasks,
     projectSubtasks: saved.projectSubtasks && typeof saved.projectSubtasks === 'object' && !Array.isArray(saved.projectSubtasks) ? saved.projectSubtasks : defaultState.projectSubtasks,
-    projectWorkspaces: saved.projectWorkspaces && typeof saved.projectWorkspaces === 'object' && !Array.isArray(saved.projectWorkspaces) ? saved.projectWorkspaces : {},
+    projectWorkspaces: saved.projectWorkspaces && typeof saved.projectWorkspaces === 'object' && !Array.isArray(saved.projectWorkspaces) ? Object.fromEntries(Object.entries(saved.projectWorkspaces).map(([id, workspace]) => [id, { ...emptyWorkspace, ...workspace, planning: normalizePlanning(workspace?.planning) }])) : {},
     projectTaskDetails: saved.projectTaskDetails && typeof saved.projectTaskDetails === 'object' && !Array.isArray(saved.projectTaskDetails) ? saved.projectTaskDetails : {},
     customPrograms: Array.isArray(saved.customPrograms) ? saved.customPrograms : defaultState.customPrograms,
     removedProgramIds: Array.isArray(saved.removedProgramIds) ? saved.removedProgramIds : defaultState.removedProgramIds,
@@ -362,7 +369,7 @@ export default function PersonalOS() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
   const [toast, setToast] = useState('');
-  const [expandedProject, setExpandedProject] = useState<string | null>('pos');
+  const [projectCreatorOpen, setProjectCreatorOpen] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState('loading');
   const [loggingOut, setLoggingOut] = useState(false);
@@ -382,12 +389,6 @@ export default function PersonalOS() {
     return () => window.removeEventListener('popstate', readProject);
   }, []);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [projectSubtaskParent, setProjectSubtaskParent] = useState<string | null>(null);
-  const [projectSubtaskDraft, setProjectSubtaskDraft] = useState('');
-  const [projectDrag, setProjectDrag] = useState<ProjectDragState | null>(null);
-  const projectDragRef = useRef<ProjectDragState | null>(null);
-  const projectDragTimerRef = useRef<number | null>(null);
-  const projectDragCleanupRef = useRef<(() => void) | null>(null);
   const [expandedProgram, setExpandedProgram] = useState<string | null>('p1');
   const [expandedDepartment, setExpandedDepartment] = useState('general');
   const [personalTab, setPersonalTab] = useState<keyof typeof personalLists>('todo');
@@ -427,7 +428,6 @@ export default function PersonalOS() {
   const [focusMode, setFocusMode] = useState<'countdown' | 'stopwatch'>('countdown');
   const [focusMinutes, setFocusMinutes] = useState(50);
   const [focusSeconds, setFocusSeconds] = useState(50 * 60);
-  const [projectQuery, setProjectQuery] = useState('');
   const [teamView, setTeamView] = useState(false);
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('text');
   const [captureStage, setCaptureStage] = useState<CaptureStage>('compose');
@@ -1029,10 +1029,48 @@ export default function PersonalOS() {
     setNoteDraft({ title: '', body: '' }); setModal(null); notify('Not kaydedildi.');
   };
 
-  const openProject = (stage = 0) => {
-    setEditingProjectId(null);
-    setProjectDraft({ title: '', due: '', tags: '', tasks: '', stage, progress: 0, color: 'violet', cover: 'orbit' });
-    setModal('project');
+  const openProject = () => {
+    setModal(null);
+    setState(current => ({ ...current, projectCreationDraft: current.projectCreationDraft ?? newCreationDraft('project-' + crypto.randomUUID()) }));
+    setProjectCreatorOpen(true);
+  };
+
+  const developProject = (project: Project) => {
+    const existing = state.projectWorkspaces[project.id];
+    const draft = state.projectCreationDraft;
+    if (draft && draft.editingProjectId !== project.id && draft.idea.trim()) {
+      notify('Önce açık taslağını tamamla veya sil. Taslağın açıldı.'); setProjectCreatorOpen(true); return;
+    }
+    setState(current => ({ ...current, projectCreationDraft: { ...(existing?.planning?.input ?? newCreationDraft(project.id)),
+      id: project.id, editingProjectId: project.id, title: project.title, idea: existing?.planning?.input.idea || existing?.description || project.title,
+      selectedStyle: existing?.planning?.selectedStyle || null, lifecycle: existing?.planning?.lifecycle || lifecycleFromStage(project.stage), step: 'idea', question: 0 } }));
+    setProjectCreatorOpen(true);
+  };
+
+  const saveProjectPlan = (plan: ProjectPlanning) => {
+    const id = plan.input.editingProjectId || plan.input.id;
+    setState(current => {
+      const exists = [...projectSeed, ...current.customProjects].some(project => project.id === id);
+      const project: Project = { id, title: plan.input.title.trim(), stage: stageFromLifecycle(plan.lifecycle), progress: 0, color: 'violet', cover: 'minimal', due: 'Tarihsiz', tags: [plan.analysis.type], tasks: plan.analysis.firstSteps };
+      const workspace = applyPlanning(current.projectWorkspaces[id] ?? emptyWorkspace, plan);
+      const research = plan.lifecycle === 'research';
+      if (research) workspace.planning = { ...workspace.planning!, researchId: planningResearchId(id) };
+      return { ...current, projectCreationDraft: null, customProjects: exists ? current.customProjects : [...current.customProjects, project],
+        projectEdits: exists ? { ...current.projectEdits, [id]: { ...current.projectEdits[id], title: project.title } } : current.projectEdits,
+        projectStages: { ...current.projectStages, [id]: project.stage }, projectWorkspaces: { ...current.projectWorkspaces, [id]: workspace },
+        rebuildPractice: research ? addPlanningResearch(current.rebuildPractice, id, project.title, plan) : current.rebuildPractice };
+    });
+    setProjectCreatorOpen(false); openProjectDetail(id); notify(plan.input.editingProjectId ? 'Değerlendirme kaydedildi. Mevcut görevler ve ekler korundu.' : 'Projen ve ilk adımların hazır.');
+  };
+
+  const openProjectResearch = (project: Project) => {
+    setState(current => {
+      const workspace = current.projectWorkspaces[project.id]; if (!workspace?.planning) return current;
+      const plan = { ...workspace.planning, researchId: planningResearchId(project.id) };
+      return { ...current, projectWorkspaces: { ...current.projectWorkspaces, [project.id]: { ...workspace, planning: plan } },
+        rebuildPractice: addPlanningResearch(current.rebuildPractice, project.id, project.title, plan) };
+    });
+    go('rebuild'); notify('Araştırma, Rebuild → Merak bölümüne eklendi.');
   };
 
   const openProjectDetail = (id: string) => {
@@ -1062,19 +1100,14 @@ export default function PersonalOS() {
         ...current,
         projectEdits: { ...current.projectEdits, [editingProjectId]: { ...current.projectEdits[editingProjectId], ...metadata } },
         projectStages: { ...current.projectStages, [editingProjectId]: details.stage },
+        projectWorkspaces: current.projectWorkspaces[editingProjectId]?.planning && stageFromLifecycle(current.projectWorkspaces[editingProjectId].planning!.lifecycle) !== details.stage
+          ? { ...current.projectWorkspaces, [editingProjectId]: { ...current.projectWorkspaces[editingProjectId], planning: { ...current.projectWorkspaces[editingProjectId].planning!, lifecycle: lifecycleFromStage(details.stage) } } } : current.projectWorkspaces,
       }));
-      setExpandedProject(editingProjectId);
       setEditingProjectId(null);
       setModal(null);
       notify('Proje bilgileri güncellendi. Görevler ve ekler korundu.');
       return;
     }
-    const project: Project = {
-      id: `project-${Date.now()}`,
-      ...details,
-    };
-    setState((current) => ({ ...current, customProjects: [...current.customProjects, project] }));
-    setExpandedProject(project.id); setModal(null); openProjectDetail(project.id); notify('Yeni proje eklendi.');
   };
 
   const openProgram = () => {
@@ -1164,14 +1197,6 @@ export default function PersonalOS() {
     ...(state.projectExtraTasks[project.id] ?? []),
   ].filter((task) => !(state.projectRemovedTasks[project.id] ?? []).includes(task));
 
-  const addProjectSubtask = (projectId: string, taskIndex: number) => {
-    if (!projectSubtaskDraft.trim()) return;
-    const key = `${projectId}:${taskIndex}`;
-    const subtask: PersonalSubtask = { id: `project-subtask-${Date.now()}`, title: projectSubtaskDraft.trim() };
-    setState((current)=>({...current,projectSubtasks:{...current.projectSubtasks,[key]:[...(current.projectSubtasks[key]??[]),subtask]}}));
-    setProjectSubtaskDraft('');setProjectSubtaskParent(null);notify('Alt görev eklendi.');
-  };
-
   const removeProjectSubtask = (key: string, subtask: PersonalSubtask) => {
     setState((current)=>({...current,projectSubtasks:{...current.projectSubtasks,[key]:(current.projectSubtasks[key]??[]).filter((item)=>item.id!==subtask.id)},completed:Object.fromEntries(Object.entries(current.completed).filter(([id])=>id!==subtask.id))}));
     notify('Alt görev kaldırıldı.');
@@ -1197,108 +1222,6 @@ export default function PersonalOS() {
     return { ...project, ...edit, stage: state.projectStages[project.id] ?? edit.stage ?? project.stage };
   };
 
-  const clearProjectDragTimer = () => {
-    if (projectDragTimerRef.current !== null) window.clearTimeout(projectDragTimerRef.current);
-    projectDragTimerRef.current = null;
-  };
-
-  const activateProjectDrag = () => {
-    const pending = projectDragRef.current;
-    if (!pending) return;
-    const activeDrag = { ...pending, active: true };
-    projectDragRef.current = activeDrag;
-    setProjectDrag(activeDrag);
-    playFeedback('confirm', true);
-  };
-
-  const updateProjectDragPosition = (clientX: number, clientY: number) => {
-    const current = projectDragRef.current;
-    if (!current) return;
-    if (!current.active) {
-      if (Math.hypot(clientX - current.startX, clientY - current.startY) > 12) {
-        clearProjectDragTimer();
-        projectDragRef.current = null;
-        projectDragCleanupRef.current?.();
-      }
-      return;
-    }
-    const target = document.elementFromPoint(clientX, clientY);
-    const column = target?.closest<HTMLElement>('[data-project-stage]');
-    const candidateStage = Number(column?.dataset.projectStage);
-    const overStage = Number.isInteger(candidateStage) && candidateStage >= 0 && candidateStage <= 3 ? candidateStage : current.overStage;
-    const next = { ...current, x: clientX, y: clientY, overStage };
-    projectDragRef.current = next;
-    setProjectDrag(next);
-    const board = document.querySelector<HTMLElement>('.kanban-board');
-    if (clientX < 72) board?.scrollBy({ left: -22, behavior: 'auto' });
-    else if (clientX > window.innerWidth - 72) board?.scrollBy({ left: 22, behavior: 'auto' });
-  };
-
-  const finishProjectDrag = () => {
-    clearProjectDragTimer();
-    const current = projectDragRef.current;
-    if (current?.active && current.overStage !== current.sourceStage) {
-      setState((value) => ({ ...value, projectStages: { ...value.projectStages, [current.projectId]: current.overStage } }));
-      notify(`Proje ${['Fikirler', 'Devam ediyor', 'İnceleme', 'Tamamlandı'][current.overStage]} aşamasına taşındı.`);
-    }
-    if (current?.active) playFeedback('confirm', true);
-    projectDragRef.current = null;
-    setProjectDrag(null);
-    projectDragCleanupRef.current?.();
-  };
-
-  const cancelProjectDrag = () => {
-    clearProjectDragTimer();
-    projectDragRef.current = null;
-    setProjectDrag(null);
-    projectDragCleanupRef.current?.();
-  };
-
-  const beginProjectDrag = (event: ReactPointerEvent<HTMLButtonElement>, project: Project) => {
-    event.stopPropagation();
-    projectDragCleanupRef.current?.();
-    const pointerId = event.pointerId;
-    const pending: ProjectDragState = {
-      projectId: project.id,
-      title: project.title,
-      color: project.color,
-      sourceStage: project.stage,
-      overStage: project.stage,
-      active: false,
-      x: event.clientX,
-      y: event.clientY,
-      startX: event.clientX,
-      startY: event.clientY,
-      pointerId,
-    };
-    projectDragRef.current = pending;
-    clearProjectDragTimer();
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      if (moveEvent.pointerId !== pointerId) return;
-      if (projectDragRef.current?.active) moveEvent.preventDefault();
-      updateProjectDragPosition(moveEvent.clientX, moveEvent.clientY);
-    };
-    const handlePointerUp = (upEvent: PointerEvent) => {
-      if (upEvent.pointerId === pointerId) finishProjectDrag();
-    };
-    const handlePointerCancel = (cancelEvent: PointerEvent) => {
-      if (cancelEvent.pointerId === pointerId) cancelProjectDrag();
-    };
-    const detach = () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerCancel);
-      window.removeEventListener('blur', cancelProjectDrag);
-      if (projectDragCleanupRef.current === detach) projectDragCleanupRef.current = null;
-    };
-    projectDragCleanupRef.current = detach;
-    window.addEventListener('pointermove', handlePointerMove, { passive: false });
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerCancel);
-    window.addEventListener('blur', cancelProjectDrag);
-    if (event.pointerType === 'mouse') activateProjectDrag();
-    else projectDragTimerRef.current = window.setTimeout(activateProjectDrag, 180);
-  };
 
   const allCaptureProjects = [...projectSeed, ...state.customProjects].map(projectWithEdits);
   const allCapturePrograms = [...programs.map((program) => ({ ...program, ...(state.programEdits[program.id] ?? {}) })), ...state.customPrograms].filter((program) => !state.removedProgramIds.includes(program.id));
@@ -1458,7 +1381,7 @@ export default function PersonalOS() {
     }
     if (capturePage === 'projects') {
       const extraLines = captureDetails.split('\n').map((line) => line.trim()).filter((line) => line && line !== title);
-      setState((current) => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title, ...extraLines.map((line) => line.startsWith('>') ? line : `> ${line}`)] } })); setExpandedProject(captureArea);
+      setState((current) => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title, ...extraLines.map((line) => line.startsWith('>') ? line : `> ${line}`)] } })); setActiveProjectId(captureArea);
     }
     if (capturePage === 'kibleteyn') {
       setState((current) => ({ ...current, customDepartmentTasks: { ...current.customDepartmentTasks, [captureArea]: [...(current.customDepartmentTasks[captureArea] ?? []), title] } })); setExpandedDepartment(captureArea);
@@ -1683,16 +1606,6 @@ export default function PersonalOS() {
     notify('Not arşive taşındı.');
   };
 
-  const archiveProject = (project: Project) => {
-    setState((current) => ({
-      ...current,
-      customProjects: current.customProjects.filter((item) => item.id !== project.id),
-      projectStages: { ...current.projectStages, [project.id]: 3 },
-      archive: [{ id: `archive-${project.id}-${Date.now()}`, title: project.title, type: 'project', label: 'Proje', date: 'Bugün', source: project }, ...current.archive],
-    }));
-    setExpandedProject(null); notify('Proje arşive taşındı.');
-  };
-
   const restoreArchiveItem = (item: ArchiveItem) => {
     setState((current) => {
       const next = { ...current, archive: current.archive.filter((entry) => entry.id !== item.id), restoredArchiveIds: [...new Set([...current.restoredArchiveIds, item.id])] };
@@ -1869,97 +1782,23 @@ export default function PersonalOS() {
   /></Suspense>;
 
   const renderProjects = () => {
-    const stages = ['Fikirler', 'Devam ediyor', 'İnceleme', 'Tamamlandı'];
     const allProjects = metricProjects;
     if (activeProjectId) {
       const project = allProjects.find(item => item.id === activeProjectId);
       if (!hydrated) return <p role="status">Proje yükleniyor…</p>;
       if (!project) return <section className="surface"><h2>Bu proje bulunamadı.</h2><button onClick={() => go('projects')}>Proje panosuna dön</button></section>;
-      return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => go('projects')} onEdit={() => openProjectEdit(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
+      return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => go('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
         onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
         onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}
         onRemoveSubtask={(index, task) => removeProjectSubtask(`${project.id}:${index}`, task)}
         onDetails={(id, update) => setState(current => ({ ...current, projectTaskDetails: { ...current.projectTaskDetails, [id]: update(current.projectTaskDetails[id] ?? emptyTask) } }))}
-        onWorkspace={update => setState(current => ({ ...current, projectWorkspaces: { ...current.projectWorkspaces, [project.id]: update(current.projectWorkspaces[project.id] ?? emptyWorkspace) } }))}
+        onWorkspace={update => setState(current => { const workspace = update(current.projectWorkspaces[project.id] ?? emptyWorkspace); return { ...current,
+          projectWorkspaces: { ...current.projectWorkspaces, [project.id]: workspace },
+          projectStages: workspace.planning ? { ...current.projectStages, [project.id]: stageFromLifecycle(workspace.planning.lifecycle) } : current.projectStages }; })}
       /></Suspense>;
     }
-    const visibleProjects = allProjects.filter((project) => `${project.title} ${project.tags.join(' ')}`.toLocaleLowerCase('tr').includes(projectQuery.toLocaleLowerCase('tr')));
-    const averageProgress = Math.round(projectMetrics.reduce((total, item) => total + item.progress, 0) / Math.max(1, projectMetrics.length));
-    return <>
-      <PageTitle eyebrow="PROJELER" title="Fikirden gerçeğe." description="Tüm üretim yolculuğun; sade, görsel ve hareketli." action={<button className="primary-button compact" onClick={() => openProject()}><Plus size={15}/> Yeni proje</button>}/>
-      <div className="project-thesis"><Sparkles size={15}/><span><strong>Proje filtresi</strong><small>Tasarım + teknoloji + uzay + dinozor + retro + futuristic + görsel üretim + interaktif deneyim.</small></span><label className="inline-search"><Search size={13}/><input aria-label="Projelerde ara" value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} placeholder="Ara..."/></label></div>
-      <div className={`kanban-board ${projectDrag?.active ? 'is-dragging' : ''}`}>
-        {stages.map((stage, stageIndex) => {
-          const stageProjects = visibleProjects.filter((project) => project.stage === stageIndex);
-          return <section
-            className={`kanban-column ${projectDrag?.active && projectDrag.overStage === stageIndex ? 'drag-over' : ''}`}
-            data-project-stage={stageIndex}
-            key={stage}
-          >
-            <header>
-              <span><i className={`stage-dot s${stageIndex}`}/>{stage}</span>
-              <b>{stageProjects.length}</b>
-              <IconButton label={`${stage} sütununa proje ekle`} onClick={() => openProject(stageIndex)}><Plus size={15}/></IconButton>
-            </header>
-            <div className="kanban-stack">
-              {stageProjects.map((project) => {
-                const tasks = visibleProjectTasks(project);
-                const nestedSubtasks = tasks.flatMap((_,index)=>state.projectSubtasks[`${project.id}:${index}`]??[]);
-                const done = tasks.filter((_, index) => state.completed[`project-${project.id}-${index}`]).length+nestedSubtasks.filter((subtask)=>state.completed[subtask.id]).length;
-                const totalTaskCount = tasks.length+nestedSubtasks.length;
-                const progress = completionRate(done, totalTaskCount);
-                const isCustom = state.customProjects.some((item) => item.id === project.id);
-                return <article
-                  key={project.id}
-                  className={`project-card tone-${project.color} ${expandedProject === project.id ? 'expanded' : ''} ${projectDrag?.active && projectDrag.projectId === project.id ? 'dragging' : ''}`}
-                >
-                  <div className="project-card-tools">
-                    <button aria-label={`${project.title} görevlerini hızlı göster`} aria-expanded={expandedProject === project.id} onClick={() => setExpandedProject(expandedProject === project.id ? null : project.id)}><ChevronDown size={15}/></button>
-                    <button className="project-edit-button" aria-label={`${project.title} projesini düzenle`} onClick={() => openProjectEdit(project)}><Pencil size={15}/></button>
-                    <button
-                      className="project-drag-handle"
-                      aria-label={`${project.title} projesini sürükle`}
-                      title="Basılı tutup sürükle"
-                      onClick={(event) => event.stopPropagation()}
-                      onPointerDown={(event) => beginProjectDrag(event, project)}
-                    ><GripVertical size={17}/></button>
-                  </div>
-                  <button className="project-card-main" aria-label={`${project.title} proje detaylarını aç`} onClick={() => openProjectDetail(project.id)}>
-                    <div className={`project-cover cover-${project.cover ?? 'orbit'}`}><span className="mini-orbit"/><i>{progress}%</i></div>
-                    <div className="project-info">
-                      <span className="tag-row">{project.tags.length ? project.tags.map((tag) => <em key={tag}>{tag}</em>) : <em>Yeni</em>}</span>
-                      <h3>{project.title}</h3>
-                      <div className="project-progress"><i style={{ width: `${progress}%` }}/></div>
-                      <span className="project-meta"><small><Clock3 size={13}/>{project.due}</small><small>{done}/{totalTaskCount} görev</small></span>
-                    </div>
-                  </button>
-                  <div className="project-subtasks">
-                    {tasks.length ? tasks.map((task, index) => {
-                      const id = `project-${project.id}-${index}`;
-                      const isSubtask = task.startsWith('>');
-                      const subtaskKey=`${project.id}:${index}`;
-                      const subtasks=state.projectSubtasks[subtaskKey]??[];
-                      return <div className={`project-task-group ${isSubtask?'legacy-subtask':''}`} key={`${task}-${index}`}><div className={`project-task-row ${state.completed[id] ? 'completed ' : ''}${isSubtask ? 'subtask' : ''}`.trim()}><button onClick={() => toggle(id)}><span>{state.completed[id] && <Check size={10}/>}</span>{isSubtask ? task.slice(1).trim() : task}</button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={() => scheduleItem(isSubtask ? task.slice(1).trim() : task, `Proje · ${project.title}`)}><CalendarDays size={15}/></button></div>{!isSubtask&&subtasks.length>0&&<div className="project-nested-subtasks">{subtasks.map((subtask)=><div className={`project-nested-row ${state.completed[subtask.id]?'completed':''}`} key={subtask.id}><button onClick={()=>toggle(subtask.id)}><span>{state.completed[subtask.id]?<Check size={10}/>:<Circle size={10}/>}</span>{subtask.title}</button><button aria-label={`${subtask.title} alt görevini takvime ekle`} onClick={()=>scheduleItem(subtask.title,`Proje · ${project.title}`)}><CalendarDays size={13}/></button><button aria-label={`${subtask.title} alt görevini kaldır`} onClick={()=>removeProjectSubtask(subtaskKey,subtask)}><X size={12}/></button></div>)}</div>}{!isSubtask&&(projectSubtaskParent===subtaskKey?<div className="project-subtask-composer"><input autoFocus value={projectSubtaskDraft} onChange={(event)=>setProjectSubtaskDraft(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter')addProjectSubtask(project.id,index);if(event.key==='Escape'){setProjectSubtaskParent(null);setProjectSubtaskDraft('')}}} placeholder="Alt görevi yaz..."/><button disabled={!projectSubtaskDraft.trim()} onClick={()=>addProjectSubtask(project.id,index)}><Check size={13}/> Ekle</button><button aria-label="Alt görev eklemeyi kapat" onClick={()=>{setProjectSubtaskParent(null);setProjectSubtaskDraft('')}}><X size={13}/></button></div>:<button className="project-add-subtask" onClick={()=>{setProjectSubtaskParent(subtaskKey);setProjectSubtaskDraft('')}}><Plus size={12}/> Alt görev ekle</button>)}</div>;
-                    }) : <p className="empty-inline">Bu proje için henüz görev eklenmedi.</p>}
-                    {stageIndex === 3
-                      ? <button className="move-project" disabled={!isCustom} onClick={() => isCustom && archiveProject(project)}>{isCustom ? 'Arşive taşı' : 'Tamamlandı'}<Archive size={13}/></button>
-                      : <button className="move-project" onClick={() => {
-                        setState((current) => ({ ...current, projectStages: { ...current.projectStages, [project.id]: Math.min(3, stageIndex + 1) } }));
-                        notify(stageIndex === 2 ? 'Proje tamamlandı. İstersen arşive taşıyabilirsin.' : 'Proje bir sonraki aşamaya taşındı.');
-                      }}>{`${stages[stageIndex + 1]} aşamasına taşı`}<ArrowRight size={13}/></button>}
-                  </div>
-                </article>;
-              })}
-            </div>
-            {!stageProjects.length && <p className="empty-column">Bu sütun boş.</p>}
-            <button className="add-card" onClick={() => openProject(stageIndex)}><Plus size={14}/> Kart ekle</button>
-          </section>;
-        })}
-      </div>
-      {projectDrag?.active && <div className={`project-drag-ghost tone-${projectDrag.color}`} style={{ left: projectDrag.x, top: projectDrag.y }}><GripVertical size={18}/><span><strong>{projectDrag.title}</strong><small>{stages[projectDrag.overStage]}</small></span></div>}
-      <div className="project-summary analytics-bottom"><div><span className="project-stat-icon violet"><LayoutGrid size={18}/></span><span><strong>{allProjects.length}</strong><small>Proje havuzu</small></span></div><div><span className="project-stat-icon mint"><Zap size={18}/></span><span><strong>{averageProgress}%</strong><small>Ortalama ilerleme</small></span></div><div><span className="project-stat-icon blue"><Clock3 size={18}/></span><span><strong>{allProjects.filter((project)=>project.stage>0&&project.stage<3).length}</strong><small>Aktif üretim</small></span></div></div>
-    </>;
+    return <Suspense fallback={<p role="status">Projeler açılıyor…</p>}><ProjectsHub projects={projectMetrics} workspaces={state.projectWorkspaces} hasDraft={!!state.projectCreationDraft} onNew={openProject} onOpen={openProjectDetail}/></Suspense>;
   };
 
   const renderKibleteynNav = (current: 'operations' | 'tours', action?: React.ReactNode) => (
@@ -2141,6 +1980,7 @@ export default function PersonalOS() {
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
     <section className="workspace"><header className="topbar"><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><form action="/auth/logout" method="post" onSubmit={logout}><button type="submit" className="icon-button" aria-label={loggingOut?"Çıkış yapılıyor":"Çıkış yap"} title="Çıkış yap" disabled={loggingOut}><LogOut size={16}/></button></form><IconButton label={resolvedTheme==='dark'?'Açık moda geç':'Koyu moda geç'} className="theme-toggle" onClick={()=>updateSetting('theme',resolvedTheme==='dark'?'light':'dark')}>{resolvedTheme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</IconButton><button className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Sesli kayıt" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label={unreadNotificationCount?`${unreadNotificationCount} okunmamış bildirim`:'Bildirimler'} className={unreadNotificationCount?'has-notifications':''} onClick={()=>setModal('notifications')}><Bell size={16}/>{unreadNotificationCount>0&&<span className="notification-badge" aria-hidden="true">{unreadNotificationCount>9?'9+':unreadNotificationCount}</span>}</IconButton></div></header><main ref={pageContentRef} tabIndex={-1} key={active} className={`content page-${active}`}>{renderPage()}</main></section>
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action ai" aria-label="AI ile akıllı kayıt ekle" onClick={()=>beginCapture('ai')}><Sparkles size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
+    {projectCreatorOpen && state.projectCreationDraft && <Suspense fallback={<p role="status">Proje atölyesi açılıyor…</p>}><ProjectCreator draft={state.projectCreationDraft} onChange={draft => setState(current => ({ ...current, projectCreationDraft: draft }))} onClose={() => setProjectCreatorOpen(false)} onDiscard={() => { setState(current => ({ ...current, projectCreationDraft: null })); setProjectCreatorOpen(false); }} onSave={saveProjectPlan}/></Suspense>}
     {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi" onKeyDownCapture={handleModalKeyDown} onChangeCapture={handleModalChange} onFocusCapture={handleModalFocus}><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input required autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button type="button" key={key} aria-pressed={quickTarget===key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" disabled={!quickText.trim()} onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='notifications'&&<><div className="notification-center-head"><span className="modal-icon"><Bell size={20}/></span><div><span className="eyebrow">BİLDİRİM MERKEZİ</span><h2>Yaklaşan akışın.</h2></div>{unreadNotificationCount>0&&<button onClick={markAllNotificationsRead}><CheckCheck size={15}/> Tümünü okundu say</button>}</div><p className="notification-center-copy">Yalnızca bugün ve yarın için takviminde gerçekten bulunan kayıtlar burada görünür.</p><div className="notification-list">{notifications.length?notifications.map((item)=>{const isUnread=!state.notificationReadIds.includes(item.id);return <article key={item.id} className={isUnread?'unread':''}><button className="notification-main" onClick={()=>openNotification(item)}><span className={`notification-tone ${item.tone}`}><CalendarDays size={16}/></span><span><strong>{item.title}</strong><small>{item.description}</small></span><ChevronRight size={15}/></button><button className="notification-dismiss" aria-label={`${item.title} bildirimini kaldır`} onClick={()=>dismissNotification(item.id)}><X size={14}/></button></article>}):<div className="notification-empty"><span><Bell size={22}/><Check size={12}/></span><strong>Yeni bildirimin yok.</strong><p>Takvimine bugün veya yarın için bir kayıt eklendiğinde burada görünecek.</p></div>}</div><div className="notification-center-footer"><span><i className={state.settings.notifications?'active':''}/>{state.settings.notifications?'Sistem hatırlatmaları açık':'Sistem hatırlatmaları kapalı'}</span><button onClick={()=>{setModal(null);setSettingsTab('notifications');go('settings')}}>Bildirim ayarları <ArrowRight size={13}/></button></div></>}
