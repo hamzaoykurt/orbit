@@ -20,8 +20,12 @@ const cookieValue = (request: Request) => {
   const value = matches[0].slice(cookieName(request).length + 1);
   return /^[A-Za-z0-9_-]{43}$/.test(value) ? value : null;
 };
-function cookie(request: Request, token: string, remembered: boolean, clear = false) {
-  return `${cookieName(request)}=${token}; Path=/; HttpOnly; SameSite=Strict${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}${clear ? '; Max-Age=0' : remembered ? `; Max-Age=${REMEMBER_SECONDS}` : ''}`;
+function cookie(request: Request, token: string, remembered: boolean, clear = false, expiresAt = seconds() + REMEMBER_SECONDS) {
+  // Installed-app launches can start outside the site's browsing context.
+  // Lax permits their top-level GET; all mutations still require sameOrigin().
+  const lifetime = clear ? '; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    : remembered ? `; Max-Age=${Math.max(0, expiresAt - seconds())}; Expires=${new Date(expiresAt * 1000).toUTCString()}` : '';
+  return `${cookieName(request)}=${token}; Path=/; HttpOnly; SameSite=Lax${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}${lifetime}`;
 }
 const redirect = (location: string, setCookie?: string) => new Response(null, {
   status: 303, headers: { Location: location, ...(setCookie ? { 'Set-Cookie': setCookie } : {}) },
@@ -69,9 +73,10 @@ async function login(request: Request, env: Cloudflare.Env, version: string) {
   const form = await readForm(request);
   if (!form) return loginPage({ error: 'Geçerli giriş bilgilerini gönder.', status: 400 });
   const next = safeNext(form.get('next'));
+  const remembered = form.get('remember') === '1';
   const username = form.get('username') ?? '';
   const password = form.get('password') ?? '';
-  if (!username || username.length > 64 || !password || password.length > 256) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next });
+  if (!username || username.length > 64 || !password || password.length > 256) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next, remembered });
   const now = seconds();
   // CF-Connecting-IP is assigned by Cloudflare, not forwarded client identity.
   const key = await hash(`login:${request.headers.get('cf-connecting-ip') ?? 'local'}`);
@@ -79,12 +84,11 @@ async function login(request: Request, env: Cloudflare.Env, version: string) {
     ON CONFLICT(key) DO UPDATE SET attempts = CASE WHEN expires_at <= ? THEN 1 ELSE attempts + 1 END,
     expires_at = CASE WHEN expires_at <= ? THEN excluded.expires_at ELSE expires_at END
     RETURNING attempts, expires_at`).bind(key, now + ATTEMPT_WINDOW, now, now).first<{ attempts: number; expires_at: number }>();
-  if (!attempt || attempt.attempts > 10) return loginPage({ error: 'Çok fazla giriş denemesi. Biraz sonra tekrar dene.', status: 429, retryAfter: Math.max(1, (attempt?.expires_at ?? now + ATTEMPT_WINDOW) - now), next });
+  if (!attempt || attempt.attempts > 10) return loginPage({ error: 'Çok fazla giriş denemesi. Biraz sonra tekrar dene.', status: 429, retryAfter: Math.max(1, (attempt?.expires_at ?? now + ATTEMPT_WINDOW) - now), next, remembered });
   const passwordMatches = verifyPassword(password, env.ORBIT_AUTH_PASSWORD_HASH);
   const userMatches = timingSafeEqual(await digest(username), await digest(env.ORBIT_AUTH_USERNAME));
-  if (!passwordMatches || !userMatches) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next });
+  if (!passwordMatches || !userMatches) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next, remembered });
   const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
-  const remembered = form.get('remember') === '1';
   const previous = cookieValue(request);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM orbit_auth_sessions WHERE expires_at <= ? OR token_hash = ? OR credential_version != ?').bind(now, previous ? await hash(previous) : '', version),
@@ -144,6 +148,10 @@ export async function withAuthentication(request: Request, env: Cloudflare.Env, 
         .bind(now, now + REMEMBER_SECONDS, session.token_hash, now).run();
       if (!update.meta.changes) return secureResponse(unauthorized());
       refreshedCookie = cookie(request, token!, true);
+    }
+    if (!refreshedCookie && (url.pathname === '/auth/session' || (request.method === 'GET' && (url.pathname === '/' || request.headers.get('sec-fetch-dest') === 'document')))) {
+      // Upgrade existing Strict cookies without extending the database expiry.
+      refreshedCookie = cookie(request, token!, Boolean(session.remembered), false, session.expires_at);
     }
     const response = url.pathname === '/auth/session'
       ? Response.json({ authenticated: true, remembered: Boolean(session.remembered) })

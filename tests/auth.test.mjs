@@ -66,7 +66,8 @@ test('remembered login survives new requests, uses a secure 90-day HttpOnly cook
   const response = await login({ remember: '1' });
   assert.equal(response.status, 303);
   const header = response.headers.get('set-cookie');
-  for (const setting of ['__Host-orbit_session=', 'Max-Age=7776000', 'HttpOnly', 'SameSite=Strict', 'Secure', 'Path=/']) assert.ok(header.includes(setting));
+  for (const setting of ['__Host-orbit_session=', 'Max-Age=', 'Expires=', 'HttpOnly', 'SameSite=Lax', 'Secure', 'Path=/']) assert.ok(header.includes(setting));
+  assert.ok(Number(header.match(/Max-Age=(\d+)/)[1]) >= 7775999);
   const value = cookie(response);
   const row = await database.prepare('SELECT * FROM orbit_auth_sessions WHERE token_hash = ?').bind(sessionHash(value)).first();
   assert.equal(row.remembered, 1);
@@ -90,10 +91,41 @@ test('remembered sessions roll forward after use without requiring credentials a
   await database.prepare('UPDATE orbit_auth_sessions SET refreshed_at = ?, expires_at = ? WHERE token_hash = ?').bind(now - 2 * day, now + 80 * day, sessionHash(value)).run();
   const response = await request('/auth/session', { headers: { cookie: value } });
   assert.equal(response.status, 200);
-  assert.match(response.headers.get('set-cookie'), /Max-Age=7776000/);
+  assert.ok(Number(response.headers.get('set-cookie').match(/Max-Age=(\d+)/)[1]) >= 7775999);
   const row = await database.prepare('SELECT * FROM orbit_auth_sessions WHERE token_hash = ?').bind(sessionHash(value)).first();
   assert.ok(row.expires_at >= now + 90 * day);
-  assert.equal((await request('/auth/session', { headers: { cookie: value } })).headers.get('set-cookie'), null);
+  const refreshed = await request('/auth/session', { headers: { cookie: value } });
+  assert.match(refreshed.headers.get('set-cookie'), /SameSite=Lax/);
+  const unchanged = await database.prepare('SELECT * FROM orbit_auth_sessions WHERE token_hash = ?').bind(sessionHash(value)).first();
+  assert.equal(unchanged.expires_at, row.expires_at);
+  assert.equal(unchanged.refreshed_at, row.refreshed_at);
+});
+
+test('installed-app top-level navigation can reuse the remembered session without allowing cross-site writes', async () => {
+  const value=cookie(await login({remember:'1'}));
+  const response=await request('/',{headers:{cookie:value,'sec-fetch-site':'cross-site','sec-fetch-mode':'navigate','sec-fetch-dest':'document',accept:'text/html'}});
+  assert.equal(response.status,200);
+  assert.match(response.headers.get('set-cookie'),/SameSite=Lax/);
+  assert.equal((await request('/api/state',{method:'PUT',headers:{cookie:value,origin:'https://other.test','sec-fetch-site':'cross-site'},body:'{}'})).status,403);
+});
+
+test('legacy-cookie recovery reissues only the remaining lifetime and does not turn temporary login into remember-me', async () => {
+  const value=cookie(await login({remember:'1'}));
+  const now=Math.floor(Date.now()/1000);
+  await database.prepare('UPDATE orbit_auth_sessions SET expires_at = ? WHERE token_hash = ?').bind(now+3600,sessionHash(value)).run();
+  const response=await request('/auth/session',{headers:{cookie:value}});
+  const maxAge=Number(response.headers.get('set-cookie').match(/Max-Age=(\d+)/)[1]);
+  assert.ok(maxAge<=3600&&maxAge>=3598);
+  const temporary=cookie(await login());
+  const restored=await request('/auth/session',{headers:{cookie:temporary}});
+  assert.equal(restored.status,200);assert.match(restored.headers.get('set-cookie'),/SameSite=Lax/);
+  assert.doesNotMatch(restored.headers.get('set-cookie'),/Max-Age|Expires=/);
+});
+
+test('remember choice survives an incorrect password', async () => {
+  const response=await login({password:'wrong',remember:'1'});
+  assert.equal(response.status,401);
+  assert.match(await response.text(),/name="remember" value="1" checked/);
 });
 
 test('logout revokes the server token and a captured cookie cannot be reused', async () => {

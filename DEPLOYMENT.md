@@ -20,12 +20,16 @@ The Worker entry point (`worker/index.ts`) authenticates all pages, APIs, RSC re
 
 Before the first authenticated deployment:
 
-1. Run `node scripts/setup-auth.mjs emir` locally. It creates ignored `.dev.vars`, `outputs/auth-secrets.json` and `outputs/orbit-giris.txt`. Never commit or share these files. Existing credentials are not overwritten.
+1. Run `node scripts/setup-auth.mjs hamz` locally. It creates ignored `.dev.vars`, `outputs/auth-secrets.json` and `outputs/orbit-giris.txt`. Never commit or share these files. Existing credentials are not overwritten.
 2. Apply the additive auth migration with `npm run db:migrate:remote` (and `npm run db:migrate:local` for development). Existing `orbit_state` data and its workspace ID stay unchanged.
 3. Run `npx wrangler secret bulk outputs/auth-secrets.json --config wrangler.jsonc`. This uploads the username and salted scrypt hash, never the plaintext password. Preserve existing Google secrets.
 4. Build, test and deploy normally. Missing credentials or unavailable authentication storage fail closed.
 
-On your own device select **Beni hatırla**: the HttpOnly, Secure, SameSite=Strict cookie lasts 90 days, renewed during authenticated use at most once daily. The session is stored in D1 using only a SHA-256 hash of a random 256-bit token. Without this option, the cookie lasts for the browser session, with a 24-hour server expiry. Logout revokes that device's token and clears private browser caches. Changing the username/password hash invalidates all existing sessions.
+On your own device select **Beni hatırla**: the HttpOnly, Secure, SameSite=Lax cookie lasts 90 days, renewed during authenticated use at most once daily. Both Max-Age and Expires are set. Lax supports top-level installed-app launches; same-origin validation still protects every mutation. The session is stored in D1 using only a SHA-256 hash of a random 256-bit token. Without this option, the cookie lasts for the browser session, with a 24-hour server expiry. Logout revokes that device's token and clears private browser caches. Changing the username/password hash invalidates all existing sessions.
+
+The login screen rechecks `/auth/session` using a same-origin request before clearing old private snapshots. This recovers existing Strict cookies that were omitted from an external launch. A successful session check or document navigation reissues the cookie with its remaining server lifetime, upgrading old attributes without prolonging expired sessions. Offline/503 responses never trigger snapshot deletion or grant access. Installed mode preselects **Beni hatırla**, and failed logins preserve the checkbox choice. No credentials or session tokens are kept in JavaScript storage.
+
+The current login username is `hamz`. A rename must preserve the password hash and the existing workspace. Generation history is keyed by username, so inspect and migrate its ownership if there are existing rows; the history was empty when renaming `emir` to `hamz`. Do not alter `orbit_state` or recreate the database. A rename requires one new login on each device because it changes the credential version.
 
 Password hashes use scrypt (`N=16384`, `r=8`, `p=5`, 16-byte random salt). Login attempts are limited in D1 per Cloudflare client IP; mutation requests require a matching Origin. There is no public registration or password reset endpoint. Rotate credentials through the same server secrets, generating a new salted hash locally; do not add a client-side password or public setup bypass.
 

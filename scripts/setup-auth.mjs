@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 // Run locally once. Upload outputs/auth-secrets.json with `wrangler secret bulk`.
 // Existing credentials are never overwritten implicitly.
-const username = process.argv[2] || 'emir';
+const username = process.argv[2] || 'hamz';
 if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(username)) throw new Error('Invalid username');
 if (existsSync('.dev.vars') || existsSync('outputs/auth-secrets.json')) throw new Error('Credentials already exist; rotate them deliberately.');
 const password = randomBytes(24).toString('base64url');
