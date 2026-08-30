@@ -1,4 +1,4 @@
-export type ActivityArea = 'body' | 'curiosity' | 'creativity' | 'language' | 'solo' | 'social' | 'career' | 'space';
+export type ActivityArea = 'body' | 'curiosity' | 'creativity' | 'language' | 'expression' | 'solo' | 'social' | 'career' | 'space';
 export type Exercise = { name: string; sets: string; reps: string; weight: string };
 export type ActivityDraft = {
   areaId: ActivityArea; title: string; date: string; duration: number;
@@ -14,6 +14,7 @@ export const activityLabels: Record<ActivityArea, { name: string; title: string;
   curiosity: { name: 'MERAK / ARAŞTIRMA DEFTERİ', title: 'Bir sorunun peşinde.', action: 'Bulguyu deftere ekle' },
   creativity: { name: 'YARATICILIK / ÇALIŞMA MASASI', title: 'Bugün ne ürettin?', action: 'Çalışmayı arşivle' },
   language: { name: 'DİL / PRATİK ODASI', title: 'Söz sende.', action: 'Pratiği tamamla' },
+  expression: { name: 'İFADE / PROVA ALANI', title: 'Kendi sesinle anlat.', action: 'Provayı tamamla' },
   solo: { name: 'SOLO / KEŞİF GÜNLÜĞÜ', title: 'Nerelere gittin?', action: 'Keşfi günlüğe ekle' },
   social: { name: 'SOSYAL / BAĞLANTI NOTU', title: 'Bir sohbetten kalan.', action: 'Teması hatırla' },
   career: { name: 'KARİYER / DENEY PANOSU', title: 'Fikri dışarı çıkar.', action: 'Deney adımını kaydet' },
@@ -28,7 +29,7 @@ export function activityError(draft: ActivityDraft): string {
   if (!draft.title.trim()) return 'Önce bu çalışmaya bir isim ver.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date) || Number.isNaN(Date.parse(draft.date)) || new Date(draft.date).toISOString().slice(0,10) !== draft.date) return 'Geçerli bir tarih seç.';
   if (!Number.isFinite(draft.duration) || draft.duration < 0 || draft.duration > 1440) return 'Süre 0–1440 dakika arasında olmalı.';
-  if (['body', 'creativity', 'language', 'career', 'space'].includes(draft.areaId) && draft.duration < 1) return 'Bu çalışma için harcadığın süreyi ekle.';
+  if (['body', 'creativity', 'language', 'expression', 'career', 'space'].includes(draft.areaId) && draft.duration < 1) return 'Bu çalışma için harcadığın süreyi ekle.';
   if (draft.areaId === 'curiosity' && !draft.note.trim()) return 'Bulduğun cevabı ya da henüz açık kalan soruyu yaz.';
   if (draft.areaId === 'social' && !draft.person.trim()) return 'Kiminle veya hangi toplulukla görüştüğünü yaz.';
   if (draft.areaId === 'solo' && !draft.stops.some(stop => stop.trim())) return 'Rotana en az bir durak ekle.';
