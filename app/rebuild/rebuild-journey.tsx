@@ -83,6 +83,8 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
     <header className="rd-heading"><div><span className="rd-kicker">REBUILD</span><h1>Bu hafta<span>.</span></h1><p>{shortDate(weekKey)} — {shortDate(addDays(weekKey,6))}</p></div><button className="rd-week-index" aria-label={`26 haftalık yolculuk · hafta ${position.week}`} onClick={()=>{setDateDraft(start);setOverlay('context');}}><span><b>{String(position.week).padStart(2,'0')}</b><i>/ 26</i><ArrowUpRight size={15}/></span><small>{position.complete?'yolculuk tamamlandı':position.future?'başlangıç yaklaşıyor':'küçük adımlarla'}</small></button></header>
     <div className="rd-list-tools"><span>KENDİ RİTMİNDE</span><button className="rd-icon" aria-label="Haftalık hedefleri düzenle" onClick={()=>{setGoalDraft(week.goals.filter(goal=>['body','english','social'].includes(goal.kind)).map(goal=>({...goal})));setOverlay('settings');}}><Settings2 size={17}/></button></div>
     <div className="rd-domains">
+      <div className="rd-domain-group rd-rhythm-group">
+        <div className="rd-group-heading"><span>KENDİ RİTMİN</span><p>Bu haftanın küçük ve sürdürülebilir adımları.</p></div>
       <section className={`rd-domain rd-sport ${expanded==='body'?'is-open':''}`}>
         <div className="rd-domain-line">{rowHeading('body','Spor',<><Dots count={sportCount} target={sport?.target||3}/><span>{sportCount} / {sport?.target||3}</span></>)}{sport&&<button className="rd-complete" aria-label="Spor: bir seans tamamla" disabled={sportCount>=sport.target} onClick={()=>done(sport)}><Check size={20}/></button>}</div>
         <div className="rd-row-action"><FitnessLink/></div>
@@ -92,31 +94,35 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
         <div className="rd-domain-line">{rowHeading('english','English',<span>{practice.words.length} kelime · {due.length} tekrar · {sessions} / {english?.target||2} konuşma</span>)}</div><div className="rd-row-action"><button className="rd-text-button" onClick={()=>toggle('english')}>{expanded==='english'?'Kapat':'Devam et'} <ArrowRight size={15}/></button></div>
         {expansion('english',<EnglishPractice practice={practice} onUpdate={onUpdatePractice}/>)}
       </section>
-      <section className={`rd-domain rd-research-row ${expanded==='research'?'is-open':''}`}>
-        <div className="rd-domain-line">{rowHeading('research','Research',<span>{topic?`${topic.questions.filter(question=>question.explored).length} / ${topic.questions.length}`:'Yeni bir meraka yer aç.'}</span>)}</div>{topic&&<p className="rd-current-title">{topic.question}</p>}
-        <div className="rd-row-action">{topic?<button className="rd-text-button" onClick={()=>toggle('research')}>Devam et <ArrowRight size={15}/></button>:<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Bana bir konu ver <Sparkle size={15}/></button>}</div>
-        {expansion('research',<>{topic&&<><ResearchQuestions topic={topic} onChange={(id,change)=>onUpdatePractice(current=>updateQuestion(current,topic.id,id,change))}/>{topic.questions.every(question=>question.explored)&&<p className="rd-inline-copy">Bu araştırmadaki tüm soruları keşfettin. Geçmişte saklanıyor.</p>}</>}<div className="rd-detail-actions">{topic&&<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Yeni konu <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>setOverlay('history')}><History size={15}/> Araştırma geçmişi</button></div></>)}
-      </section>
-      <section className={`rd-domain rd-create-row ${expanded==='make'?'is-open':''}`}>
-        <div className="rd-domain-line">{rowHeading('make','Create',<span>{linkedProject?`${linkedProject.progress}%`:'Henüz bağlı bir proje yok.'}</span>)}</div>{linkedProject&&<p className="rd-current-title">{linkedProject.title}</p>}
-        <div className="rd-row-action">{linkedProject?<button className="rd-text-button" onClick={()=>onOpenProject(linkedProject.id)}>Projeyi aç <ArrowUpRight size={16}/></button>:<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Bana bir proje ver <Sparkle size={15}/></button>}</div>
-        {expansion('make',<><p className="rd-inline-copy">İlginç ne yapabilirim? Yazılım, fiziksel üretim, elektronik, fotoğraf, el işi veya beklenmedik bir deney. Her alana açık.</p>{linkedProject&&<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Başka bir proje fikri <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>openIdea({type:'project'},true)}><History size={15}/> Create geçmişi</button></>)}
-      </section>
-      <section className={`rd-domain rd-digital-row ${expanded==='digital'?'is-open':''}`}>
-        <div className="rd-domain-line">{rowHeading('digital','Digital',<span>Uygulama, oyun, araç. Yalnızca yazılım.</span>)}</div>
-        <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project',goal:'make'})}>Bana bir dijital proje ver <Sparkle size={15}/></button></div>
-        {expansion('digital',<><p className="rd-inline-copy">Bilgisayarda ne geliştirebilirim? Mobil uygulamalar, web ve masaüstü araçları, oyunlar, eklentiler, simülasyonlar. Yalnızca yazılım; her seferinde yeni bir fikir.</p><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project'},true)}><History size={15}/> Digital geçmişi</button></>)}
-      </section>
-      <section className={`rd-domain rd-visual-row ${expanded==='visual'?'is-open':''}`}>
-        <div className="rd-domain-line">{rowHeading('visual','Visual Lab',<span>Konsept → prompt → yeni yorumlar.</span>)}</div>
-        <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'prompt',goal:'make'})}>Bana bir görsel promptu ver <Sparkle size={15}/></button></div>
-        {expansion('visual',<><p className="rd-inline-copy">Rastgele bir konu, atmosfer ve görsel yaklaşım. Promptu kopyala, kullandığın görsel üretim aracına taşı. Burada görsel değil, metin üretilir.</p><div className="rd-detail-actions"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'concept',goal:'make'})}>Önce bir konsept bul <Sparkle size={15}/></button><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt'},true)}><History size={15}/> Visual Lab geçmişi</button></div></>)}
-      </section>
       <section className={`rd-domain rd-social-row ${expanded==='social'?'is-open':''}`}>
         <div className="rd-domain-line">{rowHeading('social','Social',<><Dots count={socialCount} target={social?.target||1}/><span>{socialCount} / {social?.target||1}</span></>)}{social&&<button className="rd-complete" aria-label="Social: bir aksiyon tamamla" disabled={socialCount>=social.target} onClick={()=>done(social)}><Check size={20}/></button>}</div>
         {expansion('social',<><p className="rd-inline-copy">{social&&week.ideas[social.id]?week.ideas[social.id].text:'Bu hafta alıştığın rutinin dışında bir şey yap.'}</p><div className="rd-detail-actions"><button className="rd-text-button" onClick={()=>openIdea({type:'activity',goal:'social'})}>Bana bir fikir ver <Sparkle size={15}/></button>{social&&socialCount>0&&<button className="rd-text-button" onClick={()=>undo(social)}><RotateCcw size={15}/> Son işareti geri al</button>}</div></>)}
       </section>
       {week.goals.filter(goal=>goal.kind==='any').map(goal=><section className="rd-domain" key={goal.id}><div className="rd-domain-line"><span className="rd-domain-title">{goal.name}</span><span className="rd-domain-summary">{week.marks[goal.id]?.length||0} / {goal.target}</span><button className="rd-complete" aria-label={`${goal.name}: tamamla veya geri al`} onClick={()=>{if((week.marks[goal.id]?.length||0)>=goal.target)undo(goal);else done(goal);}}><Check size={20}/></button></div></section>)}
+      </div>
+      <div className="rd-domain-group rd-explore-group">
+        <div className="rd-group-heading"><span>ÜRET / KEŞFET</span><p>Merakını bir fikre, projeye veya görsel dünyaya çevir.</p></div>
+        <section className={`rd-domain rd-research-row ${expanded==='research'?'is-open':''}`}>
+          <div className="rd-domain-line">{rowHeading('research','Research',<span>{topic?`${topic.questions.filter(question=>question.explored).length} / ${topic.questions.length}`:'Yeni bir meraka yer aç.'}</span>)}</div>{topic&&<p className="rd-current-title">{topic.question}</p>}
+          <div className="rd-row-action">{topic?<button className="rd-text-button" onClick={()=>toggle('research')}>Devam et <ArrowRight size={15}/></button>:<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Bana bir konu ver <Sparkle size={15}/></button>}</div>
+          {expansion('research',<>{topic&&<><ResearchQuestions topic={topic} onChange={(id,change)=>onUpdatePractice(current=>updateQuestion(current,topic.id,id,change))}/>{topic.questions.every(question=>question.explored)&&<p className="rd-inline-copy">Bu araştırmadaki tüm soruları keşfettin. Geçmişte saklanıyor.</p>}</>}<div className="rd-detail-actions">{topic&&<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Yeni konu <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>setOverlay('history')}><History size={15}/> Araştırma geçmişi</button></div></>)}
+        </section>
+        <section className={`rd-domain rd-create-row ${expanded==='make'?'is-open':''}`}>
+          <div className="rd-domain-line">{rowHeading('make','Create',<span>{linkedProject?`${linkedProject.progress}%`:'Yeni bir fikre açık.'}</span>)}</div>{linkedProject&&<p className="rd-current-title">{linkedProject.title}</p>}
+          <div className="rd-row-action">{linkedProject?<button className="rd-text-button" onClick={()=>onOpenProject(linkedProject.id)}>Projeyi aç <ArrowUpRight size={16}/></button>:<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Bana bir proje ver <Sparkle size={15}/></button>}</div>
+          {expansion('make',<><p className="rd-inline-copy">Yazılım, fiziksel üretim, elektronik, fotoğraf, el işi veya beklenmedik bir deney. Her alana açık.</p>{linkedProject&&<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Başka bir proje fikri <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>openIdea({type:'project'},true)}><History size={15}/> Create geçmişi</button></>)}
+        </section>
+        <section className={`rd-domain rd-digital-row ${expanded==='digital'?'is-open':''}`}>
+          <div className="rd-domain-line">{rowHeading('digital','Digital',<span>Uygulama, oyun, araç.</span>)}</div>
+          <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project',goal:'make'})}>Bana bir dijital proje ver <Sparkle size={15}/></button></div>
+          {expansion('digital',<><p className="rd-inline-copy">Mobil, web ve masaüstü araçları, oyunlar, eklentiler ve simülasyonlar. Yalnızca yazılım; her seferinde yeni bir fikir.</p><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project'},true)}><History size={15}/> Digital geçmişi</button></>)}
+        </section>
+        <section className={`rd-domain rd-visual-row ${expanded==='visual'?'is-open':''}`}>
+          <div className="rd-domain-line">{rowHeading('visual','Visual Lab',<span>Konsept, prompt, varyasyon.</span>)}</div>
+          <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'prompt',goal:'make'})}>Bana bir görsel promptu ver <Sparkle size={15}/></button></div>
+          {expansion('visual',<><p className="rd-inline-copy">Rastgele bir konu, atmosfer ve görsel yaklaşım. Promptu kopyala ve kullandığın üretim aracına taşı.</p><div className="rd-detail-actions"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'concept',goal:'make'})}>Önce bir konsept bul <Sparkle size={15}/></button><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt'},true)}><History size={15}/> Visual Lab geçmişi</button></div></>) }
+        </section>
+      </div>
     </div>
     <footer className="rd-trigger-area"><button className="rd-trigger" onClick={()=>openIdea({type:'surprise'})}><span className="rd-trigger-object" aria-hidden="true"><Sparkle size={29} strokeWidth={1.15}/></span><span><strong>Beni şaşırt</strong><small>Alıştığın alanın dışına çık.</small></span></button></footer>
     <button className="rd-text-button rd-history-trigger" onClick={()=>openIdea({type:'surprise'},true)}>Üretim geçmişi <History size={14}/></button>
