@@ -181,7 +181,7 @@ html.reduce-motion .rebuild-deck *,html.reduce-motion .rd-overlay,html.reduce-mo
   .rd-instrument .rd-current-title{font-size:18px}
 }
 .rd-generation-message>svg{margin-inline:auto}
-.rd-dialog-idea .rd-idea-stage{flex:1 0 auto}
+.rd-dialog-idea :is(.rd-idea-stage,.rd-generation-history){flex:1 0 auto}
 .rd-prompt-stage{width:100%;padding-block:30px;min-height:0;text-align:left}
 .rd-prompt-stage .rd-drawn-idea{width:min(720px,100%)}
 .rd-prompt-stage .rd-drawn-idea h2{font-size:clamp(24px,4vw,36px);line-height:1.2;margin:18px 0}
