@@ -49,7 +49,7 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { state?: unknown };
+    const body = (await request.json()) as { state?: unknown; revision?: number };
     if (!body.state || typeof body.state !== 'object' || Array.isArray(body.state)) {
       return json({ error: 'Geçerli bir Orbit durumu gerekli.' }, { status: 400 });
     }
@@ -60,24 +60,22 @@ export async function PUT(request: Request) {
     }
 
     const database = await ensureOrbitSchema();
-    await database
-      .prepare(`
-        INSERT INTO orbit_state (workspace_id, state_json, revision, updated_at)
-        VALUES (?, ?, 1, CURRENT_TIMESTAMP)
-        ON CONFLICT(workspace_id) DO UPDATE SET
-          state_json = excluded.state_json,
-          revision = orbit_state.revision + 1,
-          updated_at = CURRENT_TIMESTAMP
-      `)
-      .bind(WORKSPACE_ID, stateJson)
-      .run();
-
-    const metadata = await database
-      .prepare('SELECT revision, updated_at FROM orbit_state WHERE workspace_id = ?')
-      .bind(WORKSPACE_ID)
-      .first<{ revision: number; updated_at: string }>();
-
-    return json({ saved: true, revision: metadata?.revision ?? 1, updatedAt: metadata?.updated_at ?? null });
+    // Compare and write atomically. An old tab must not erase a newer plan.
+    const validRevision = Number.isSafeInteger(body.revision) && body.revision! >= 0;
+    const metadata = !validRevision ? null : body.revision === 0
+      ? await database.prepare(`INSERT INTO orbit_state (workspace_id, state_json, revision, updated_at)
+          VALUES (?, ?, 1, CURRENT_TIMESTAMP) ON CONFLICT(workspace_id) DO NOTHING RETURNING revision, updated_at`)
+          .bind(WORKSPACE_ID, stateJson).first<{ revision: number; updated_at: string }>()
+      : await database.prepare(`UPDATE orbit_state SET state_json = ?, revision = revision + 1, updated_at = CURRENT_TIMESTAMP
+          WHERE workspace_id = ? AND revision = ? RETURNING revision, updated_at`)
+          .bind(stateJson, WORKSPACE_ID, body.revision).first<{ revision: number; updated_at: string }>();
+    if (!metadata) {
+      const latest = await database.prepare('SELECT state_json, revision, updated_at FROM orbit_state WHERE workspace_id = ?')
+        .bind(WORKSPACE_ID).first<StateRow>();
+      return json({ error: validRevision ? 'Daha yeni değişiklikler var; yeniden eşitleniyor.' : 'Kaydetmeden önce sayfayı yenile.',
+        state: latest ? JSON.parse(latest.state_json) : null, revision: latest?.revision ?? 0 }, { status: 409 });
+    }
+    return json({ saved: true, revision: metadata.revision, updatedAt: metadata.updated_at });
   } catch (error) {
     console.error('D1 state write failed', error);
     return json({ error: 'Veri şu anda kaydedilemedi.' }, { status: 503 });

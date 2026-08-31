@@ -1,4 +1,4 @@
-type StartupPayload = { state?: unknown } | null;
+type StartupPayload = { state?: unknown; revision?: number } | null;
 declare global {
   interface Window { __orbitStartupState?: Promise<StartupPayload> }
 }

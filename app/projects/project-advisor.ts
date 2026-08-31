@@ -1,6 +1,7 @@
 import { designCatalog } from './design-catalog';
 import type { DesignAxis } from './design-catalog';
 import type { AnswerKey, CreationDraft, ProjectAnalysis } from './planning-types';
+import type { DigitalPlatform } from '../rebuild/idea-engine';
 
 type Option = { id: string; label: string; detail: string };
 export type PlanningQuestion = { id: AnswerKey; title: string; hint: string; options?: Option[]; placeholder?: string };
@@ -30,14 +31,18 @@ export function planningQuestions(draft: CreationDraft): PlanningQuestion[] {
   return questions;
 }
 const normalize = (value: string) => value.toLocaleLowerCase('tr').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i');
-type Medium = 'web' | 'mobile' | 'game' | 'physical' | 'content' | 'experiment';
+type Medium = 'web' | 'mobile' | 'desktop' | 'game' | 'physical' | 'electronics' | 'content' | 'experiment';
 const mediumSignals: Record<Medium, string[]> = {
-  web:['web','site','dashboard','panel','not','takip','yonetim','planlama','uygulama','arac'],
+  web:['web','site','dashboard','panel','takip','yonetim','planlama','uygulama','yazilim','app','saas','eklenti'],
+  desktop:['masaustu','desktop','windows','macos','linux','pc yazilim'],
   mobile:['mobil','telefon','android','ios','apk'],game:['oyun','game','oynanis','oyuncu'],
   physical:['fiziksel','masa nesnesi','urun tasarimi','maket','kagit','ahsap','3d baski'],
+  electronics:['arduino','elektronik','sensor','devre','mikrodenetleyici','robot'],
   content:['yayin','bulten','dergi','video','belgesel','icerik','podcast'],experiment:['simulasyon','deney','gorsellestir','enstalasyon'],
 };
 const media: Record<Medium,{label:string;build:string;test:string;tech:string[];extension:string}> = {
+  desktop:{label:'Masaüstü uygulaması',build:'Tek dosya veya veri kümesiyle ana işlevi çalışan bir masaüstü prototipine bağla',test:'Hedef işletim sisteminde kurulum, dosya izinleri ve veriyi yeniden açmayı dene',tech:['Hedef işletim sistemine uygun tek masaüstü çatısı','Önce yerel dosya / veri saklama; uzaktaki servisleri gerekirse ekle'],extension:'İhtiyaç doğrulanırsa toplu işlem ve klavye kısayollarını ekle'},
+  electronics:{label:'Elektronik / donanım prototipi',build:'Tek giriş ve çıkışı düşük gerilimli geliştirme kartında sınayan devreyi prototiple',test:'Sensör girdisi ile beklenen tepkiyi ölç; bağlantı ve güç sınırlarını kontrol et',tech:['Bileşen veri sayfaları ve devre simülasyonu','Tek geliştirme kartı, düşük gerilim ve gerekli ölçüm araçları'],extension:'İlk işlev doğrulanınca muhafaza ve bağlantı dayanıklılığını iyileştir'},
   web:{label:'Web / dijital araç',build:'Tek temel akışın giriş ve sonuç ekranını çalışan bir web prototipinde bağla',test:'İlk kullanıcının temel işi yardım almadan tamamlayıp tamamlayamadığını gözle',tech:['İlk arayüz: HTML / CSS ve gerektiği kadar JavaScript','Veri saklama ihtiyacını kanıtladıktan sonra sunucu / veritabanı ekle'],extension:'Temel akış işe yararsa paylaşım veya dışa aktarmayı değerlendir'},
   mobile:{label:'Mobil deneyim',build:'Bir telefon ekran boyutunda temel etkileşimi ve sonuç durumunu prototiple',test:'Akışı gerçek telefonda dokunma, klavye ve geri dönüş davranışıyla dene',tech:['Önce dokunulabilir ekran prototipi','Cihaz özelliği gerekliyse ilgili platform API’sini küçük bir denemeyle doğrula'],extension:'Gerçek ihtiyaç oluşursa çevrimdışı kullanım veya bildirim ekle'},
   game:{label:'Oyun / oynanabilir deneyim',build:'Tek mekaniği, kısa bir oynanış döngüsü ve bitiş koşuluyla çalıştır',test:'Bir kişinin oyunu açıklama olmadan denemesini izle; takıldığı anı kaydet',tech:['Tek bir 2D / 3D oyun motoru veya tarayıcı tuvali','İlk testte geçici görseller ve tek sahne yeterli'],extension:'Temel döngü ilgi görürse ikinci bir mekanik veya bölüm dene'},
@@ -49,10 +54,11 @@ export const suggestedTitle = (idea: string) => {
   const phrase=idea.trim().split(/[.!?\n]/)[0];
   return phrase.length<=65?phrase:phrase.slice(0,65).replace(/\s+\S*$/,'')+'…';
 };
-export function analyzeProject(draft: CreationDraft): ProjectAnalysis {
+export function analyzeProject(draft: CreationDraft, platform?: DigitalPlatform): ProjectAnalysis {
   const input=normalize(`${draft.idea} ${draft.answers.difference || ''}`), a=draft.answers;
   const medium=(Object.entries(mediumSignals) as [Medium,string[]][]).map(([id,words])=>({id,score:words.reduce((sum,word)=>sum+(input.includes(word)?word.length>6?2:1:0),0)})).sort((x,y)=>y.score-x.score)[0];
-  const recipe=media[medium.score?medium.id:'experiment'];
+  const platforms: Record<DigitalPlatform, Medium> = {mobile_app:'mobile',web_app:'web',desktop_app:'desktop',game:'game',browser_extension:'web',plugin:'desktop',automation:'desktop',interactive_experience:'web'};
+  const recipe=media[platform ? platforms[platform] : medium.score?medium.id:'experiment'];
   const axes: Record<DesignAxis,number>={clarity:3,expression:2,trust:2,density:2,depth:1,nostalgia:0,play:1};
   const signals: { words:string[]; weights:Partial<Record<DesignAxis,number>> }[]=[
     {words:['finans','para','gorev','takip','plan','dashboard','yonetim','not'],weights:{clarity:2,trust:2,density:2}},

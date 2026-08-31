@@ -2,6 +2,18 @@
 
 The only production target is **https://os.cosmibit.com**, served by Cloudflare Worker `personalos`.
 
+## Workspace persistence and project planning
+
+`/api/state` uses atomic optimistic revision checks. PUT requires the revision returned by GET; a stale or pre-update client receives 409 without changing the stored workspace. The current client rebases its changes against the latest server snapshot and retries. Refresh older open tabs after deployment before editing. No database reset or migration is required for this update.
+
+The browser journals pending edits in `orbit-pending-state-v1` before the 650 ms autosave debounce. Reload replays those changes over the server snapshot using the last acknowledged baseline. A receipt only clears the matching pending snapshot; an older receipt cannot clear newer edits. Independent project/resource edits merge by stable IDs; same-field conflicts retain this device's explicit edit. Failed saves remain pending, retry on reconnection and expose a manual retry. Normal logout and confirmed unauthorized-session cleanup clear these private device snapshots.
+
+New wizard projects and accepted Rebuild projects receive a persisted planning record, a task-derived editable route diagram and a success-criteria note. Reassessment preserves existing/deleted diagrams, notes and profile overrides. AI-imported tasks and scope stay tied to the accepted concept; medium classification and design recommendations are explicitly labeled local assessment.
+
+## Rebuild creation areas
+
+CREATE remains open to any medium, including software, hardware and physical experiments. DIGITAL has separate software-only instructions, required platform metadata and independent concept/plan boundary checks. Both accept into the same Projects workflow. VISUAL LAB dynamically generates short visual concepts, standalone image prompts and source-linked variations; it creates text, not images. Filtered generation history lives in the existing owner-scoped history table and is filtered before pagination. There is no static idea/prompt pool or fallback.
+
 ## AI generation provider
 
 Rebuild generation supports OpenAI Responses and Gemini GenerateContent. For Gemini, add `GEMINI_API_KEY` as a **Secret** on the `personalos` Worker and `AI_PROVIDER=gemini` as a text variable. The default model is `gemini-2.0-flash`; optional `GEMINI_MODEL` overrides it. Secrets must never be added to `NEXT_PUBLIC_*`, source files or browser storage. Local development uses ignored `.dev.vars`, not the production secrets.

@@ -181,3 +181,9 @@ html.reduce-motion .rebuild-deck *,html.reduce-motion .rd-overlay,html.reduce-mo
   .rd-instrument .rd-current-title{font-size:18px}
 }
 .rd-generation-message>svg{margin-inline:auto}
+.rd-dialog-idea .rd-idea-stage{flex-shrink:0}
+.rd-prompt-stage{width:100%;padding-block:30px;min-height:0;text-align:left}
+.rd-prompt-stage .rd-drawn-idea{width:min(720px,100%)}
+.rd-prompt-stage .rd-drawn-idea h2{font-size:clamp(24px,4vw,36px);line-height:1.2;margin:18px 0}
+.rd-prompt-stage textarea{display:block;width:100%;min-height:280px;max-height:55vh;resize:vertical;padding:18px;background:var(--canvas);color:var(--ink);border:1px solid var(--line);border-radius:12px;font:inherit;font-size:16px;line-height:1.7}
+.rd-idea-secondary{flex-wrap:wrap}

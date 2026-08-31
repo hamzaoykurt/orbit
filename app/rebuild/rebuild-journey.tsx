@@ -20,7 +20,7 @@ type Props = {
   practice:Practice;linkedProject:{id:string;title:string;progress:number}|null;
   onUpdateDeck:(update:(current:WeeklyDeck)=>WeeklyDeck)=>void;onStartChange:(date:string)=>void;
   onUpdatePractice:(update:(current:Practice)=>Practice)=>void;
-  onCreateProject:(idea:GeneratedIdea)=>void;onOpenProject:(id:string)=>void;
+  onCreateProject:(idea:GeneratedIdea)=>Promise<void>;onOpenProject:(id:string)=>void;
 };
 const shortDate=(date:string)=>new Intl.DateTimeFormat('tr-TR',{day:'numeric',month:'short'}).format(new Date(`${date}T12:00:00`));
 type OverlayKind='idea'|'settings'|'context'|'history';
@@ -69,8 +69,8 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
   const openIdea=(request:Omit<IdeaRequest,'signal'>,history=false)=>{setGeneration(request);setGenerationKey(value=>value+1);setHistoryOnly(history);setOverlay('idea');};
   const done=(goal:WeeklyGoal)=>{const mark={id:crypto.randomUUID(),at:new Date().toISOString(),...(week.ideas[goal.id]?{idea:week.ideas[goal.id]}:{})};update(current=>completeGoal(current,weekKey,goal.id,mark));setNotice(`${goal.name}: tamamlanma kaydedildi.`);};
   const undo=(goal:WeeklyGoal)=>update(current=>undoCompletion(current,weekKey,goal.id));
-  const saveIdea=(idea:GeneratedIdea)=>{
-    if(idea.type==='project'){onCreateProject(idea);setNotice('Proje, açıklaması ve görevleriyle Projeler’e eklendi.');}
+  const saveIdea=async(idea:GeneratedIdea)=>{
+    if(idea.type==='project'||idea.type==='digital_project'){await onCreateProject(idea);setNotice('Proje, planı ve akış diyagramıyla Projeler’e eklendi.');}
     else if(idea.type==='research'||idea.type==='vocabulary'){onUpdatePractice(current=>acceptIntoPractice(current,idea));setExpanded(idea.type==='research'?'research':'english');setNotice(idea.type==='research'?'Araştırma soruların hazır.':'Kelimeler kaydedildi.');}
     else if(idea.type==='activity'){update(current=>attachIdea(current,weekKey,idea,social?.id));setExpanded('social');setNotice('Bu haftanın sosyal fikri kaydedildi.');}
     else if(idea.type==='meal'){onUpdatePractice(current=>acceptIntoPractice(current,idea));setExpanded('body');setNotice('Yemek fikri kaydedildi.');}
@@ -100,7 +100,17 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
       <section className={`rd-domain rd-create-row ${expanded==='make'?'is-open':''}`}>
         <div className="rd-domain-line">{rowHeading('make','Create',<span>{linkedProject?`${linkedProject.progress}%`:'Henüz bağlı bir proje yok.'}</span>)}</div>{linkedProject&&<p className="rd-current-title">{linkedProject.title}</p>}
         <div className="rd-row-action">{linkedProject?<button className="rd-text-button" onClick={()=>onOpenProject(linkedProject.id)}>Projeyi aç <ArrowUpRight size={16}/></button>:<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Bana bir proje ver <Sparkle size={15}/></button>}</div>
-        {expansion('make',<><p className="rd-inline-copy">Fikri burada bul; görevleri ve üretimi Projeler’de sürdür.</p>{linkedProject&&<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Başka bir proje fikri <Sparkle size={15}/></button>}</>)}
+        {expansion('make',<><p className="rd-inline-copy">İlginç ne yapabilirim? Yazılım, fiziksel üretim, elektronik, fotoğraf, el işi veya beklenmedik bir deney. Her alana açık.</p>{linkedProject&&<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Başka bir proje fikri <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>openIdea({type:'project'},true)}><History size={15}/> Create geçmişi</button></>)}
+      </section>
+      <section className={`rd-domain rd-digital-row ${expanded==='digital'?'is-open':''}`}>
+        <div className="rd-domain-line">{rowHeading('digital','Digital',<span>Yeni bir dijital projeye hazır.</span>)}</div>
+        <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project',goal:'make'})}>Bana bir dijital proje ver <Sparkle size={15}/></button></div>
+        {expansion('digital',<><p className="rd-inline-copy">Bilgisayarda ne geliştirebilirim? Mobil uygulamalar, web ve masaüstü araçları, oyunlar, eklentiler, simülasyonlar. Yalnızca yazılım; her seferinde yeni bir fikir.</p><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project'},true)}><History size={15}/> Digital geçmişi</button></>)}
+      </section>
+      <section className={`rd-domain rd-visual-row ${expanded==='visual'?'is-open':''}`}>
+        <div className="rd-domain-line">{rowHeading('visual','Visual Lab',<span>Yeni bir görsel dünya keşfet.</span>)}</div>
+        <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'prompt',goal:'make'})}>Bana bir görsel promptu ver <Sparkle size={15}/></button></div>
+        {expansion('visual',<><p className="rd-inline-copy">Rastgele bir konu, atmosfer ve görsel yaklaşım. Promptu kopyala, kullandığın görsel üretim aracına taşı. Burada görsel değil, metin üretilir.</p><div className="rd-detail-actions"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'concept',goal:'make'})}>Önce bir konsept bul <Sparkle size={15}/></button><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt'},true)}><History size={15}/> Visual Lab geçmişi</button></div></>)}
       </section>
       <section className={`rd-domain rd-social-row ${expanded==='social'?'is-open':''}`}>
         <div className="rd-domain-line">{rowHeading('social','Social',<><Dots count={socialCount} target={social?.target||1}/><span>{socialCount} / {social?.target||1}</span></>)}{social&&<button className="rd-complete" aria-label="Social: bir aksiyon tamamla" disabled={socialCount>=social.target} onClick={()=>done(social)}><Check size={20}/></button>}</div>

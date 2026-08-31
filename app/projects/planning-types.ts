@@ -26,6 +26,7 @@ export type ProjectPlanning = {
   analysis: ProjectAnalysis; selectedStyle: string; lifecycle: ProjectLifecycle;
   overrides: Partial<Pick<ProjectAnalysis, 'type' | 'difficulty' | 'mvpFit' | 'revenue' | 'audience' | 'priority' | 'scope' | 'solo' | 'technical' | 'designIntensity' | 'contentIntensity'>>;
   researchId?: string;
+  origin?: 'rebuild';
 };
 export const newCreationDraft = (id: string): CreationDraft => ({ id, idea: '', title: '', answers: {}, step: 'idea', question: 0, selectedStyle: null });
 export const lifecycleFromStage = (stage: number): ProjectLifecycle => stage === 3 ? 'completed' : stage === 1 ? 'active' : stage === 2 ? 'research' : 'idea';

@@ -1,4 +1,4 @@
-import type { GeneratedIdea } from '../app/rebuild/idea-engine';
+import type { GeneratedIdea, SuggestionType } from '../app/rebuild/idea-engine';
 import { GENERATION_SCHEMA } from './schema';
 
 export class GenerationRepository {
@@ -15,8 +15,9 @@ export class GenerationRepository {
     }
     return ideas;
   }
-  async page(before: number) {
-    const page = await this.db.prepare('SELECT seq, idea_json, status FROM orbit_generation_history WHERE owner = ? AND seq < ? ORDER BY seq DESC LIMIT 31').bind(this.owner, before).all<{ seq: number; idea_json: string; status: GeneratedIdea['status'] }>();
+  async page(before: number, type?: SuggestionType) {
+    const query = this.db.prepare(`SELECT seq, idea_json, status FROM orbit_generation_history WHERE owner = ? AND seq < ?${type ? " AND json_extract(idea_json, '$.type') = ?" : ''} ORDER BY seq DESC LIMIT 31`);
+    const page = await (type ? query.bind(this.owner, before, type) : query.bind(this.owner, before)).all<{ seq: number; idea_json: string; status: GeneratedIdea['status'] }>();
     return { items: page.results.slice(0,30).map(row => ({ ...JSON.parse(row.idea_json), status: row.status } as GeneratedIdea)), next: page.results.length > 30 ? String(page.results[29].seq) : null };
   }
   async get(id: string): Promise<GeneratedIdea | null> {

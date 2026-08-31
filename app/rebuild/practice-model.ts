@@ -30,7 +30,7 @@ export function normalizePractice(value: unknown): Practice {
 }
 export function acceptIntoPractice(practice:Practice,idea:GeneratedIdea):Practice {
   if(idea.status!=='accepted'||!idea.resultingId)throw new Error('Kabul edilmiş fikir gerekli.');
-  if(idea.type==='project')return {...practice,activeProjectId:idea.resultingId};
+  if(idea.type==='project'||idea.type==='digital_project')return {...practice,activeProjectId:idea.resultingId};
   if(idea.type==='meal')return {...practice,lastMeal:{id:idea.id,text:idea.text}};
   if(idea.type==='research'&&idea.researchPlan){
     const exists=practice.research.some(topic=>topic.id===idea.resultingId);

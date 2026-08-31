@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import ts from 'typescript';
+import { loadModuleUrl } from './load-module.mjs';
 
 const url=(file,replacements={})=>{
   let code=ts.transpileModule(readFileSync(new URL(file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -14,7 +15,7 @@ const providerUrl=url('../generation/provider.ts'),engineUrl=url('../app/rebuild
 const {GenerationRepository}=await import(repoUrl),{GenerationService}=await import(serviceUrl),{createModelProvider}=await import(providerUrl);
 const {resolveModelConfig}=await import(providerUrl);
 const practice=await import(url('../app/rebuild/practice-model.ts'));
-const {projectFromIdea}=await import(url('../app/rebuild/project-import.ts'));
+const {projectFromIdea}=await import(loadModuleUrl(new URL('../app/rebuild/project-import.ts',import.meta.url)));
 const deck=await import(url('../app/rebuild/weekly-deck-model.ts',{"'./idea-engine'":JSON.stringify(engineUrl)}));
 function database(){
   const sqlite=new DatabaseSync(':memory:');
@@ -203,5 +204,78 @@ test('API denies anonymous and cross-origin requests, validates inputs and expos
     assert.equal((await api.POST(request({action:'generate',words:['x'.repeat(5000)]}))).status,413);
     const missing=await api.POST(request({action:'generate',type:'project'}));assert.equal(missing.status,503);assert.equal((await missing.json()).code,'not_configured');
     assert.equal((await api.GET(new Request('https://orbit.test/api/ideas?before=bad'))).status,400);
+  });
+});
+
+const digital={title:'Sesli labirent',text:'Tarayıcıda yalnızca konumsal seslerle çıkışını bulduğun, tek seviyelik küçük bir oyun geliştir.',domain:'Oyun',type:'digital_project',platform:'game',kind:'MAKE',goal:'make'};
+test('CREATE remains open to physical and digital media; DIGITAL independently rejects hardware',async()=>{
+  const {store}=await repo();const prompts=[];let attempts=0,checks=0;
+  const service=new GenerationService(store,async request=>{
+    prompts.push(request);
+    if(request.name==='orbit_novelty')return {duplicate:false,digitalOnly:++checks>1};
+    if(request.input.requestType==='project')return project;
+    return ++attempts===1?{...digital,title:'Sensör oyunu',text:'Arduino devresiyle ses üreten bir fiziksel oyun cihazı yap.'}:digital;
+  },'test');
+  assert.equal((await service.generateCreateIdea()).type,'project');
+  const created=await service.generateDigitalProjectIdea();assert.equal(created.platform,'game');assert.equal(attempts,2);
+  assert.match(prompts[0].instructions,/Digital ideas remain welcome/);
+  assert.match(prompts.find(p=>p.input.requestType==='digital_project').instructions,/ONLY a software project/);
+  assert.equal((await store.all()).length,2);
+});
+test('DIGITAL never falls back to physical concepts and validates platform labels',async()=>{
+  const {store}=await repo();
+  const service=new GenerationService(store,async request=>request.name==='orbit_novelty'?{duplicate:false,digitalOnly:false}:digital,'test');
+  await assert.rejects(service.generateDigitalProjectIdea(),e=>e.code==='no-digital-result');assert.deepEqual(await store.all(),[]);
+  await assert.rejects(new GenerationService(store,async()=>({...digital,platform:'arduino'}),'test').generateDigitalProjectIdea(),e=>e.code==='invalid-provider-output');
+});
+test('accepted DIGITAL plans integrate into Projects once without physical CREATE constraints',async()=>{
+  const {store}=await repo();let planRequest;
+  const gamePlan={description:'Konumsal sesle oynanan bir tarayıcı oyunu.',goal:'Çıkışı sesi takip ederek bul.',scope:'Tek labirent',tasks:['Ses kaynağını sahneye yerleştir','Oyuncunun hareketini klavyeye bağla','Çıkış alanının geri bildirimini üret'],approach:'Geçici seslerle tek seviyeyi dene.'};
+  const service=new GenerationService(store,async request=>{
+    if(request.name==='orbit_novelty'||request.name==='orbit_digital_plan_check')return {duplicate:false,digitalOnly:true};
+    if(request.name==='orbit_accepted_plan'){planRequest=request;return gamePlan;}
+    return digital;
+  },'test');
+  const idea=await service.generateDigitalProjectIdea();const accepted=await service.generateDigitalProjectPlan(idea.id);
+  assert.match(planRequest.instructions,/Keep every task/);assert.ok(!planRequest.instructions.includes('Set type=digital_project'));
+  const imported=projectFromIdea(accepted);assert.deepEqual(imported.project.tasks,gamePlan.tasks);
+  assert.equal(practice.acceptIntoPractice(practice.emptyPractice(),accepted).activeProjectId,accepted.resultingId);
+  assert.deepEqual(await service.generateDigitalProjectPlan(idea.id),accepted);
+});
+test('Visual Lab generates concepts, full prompts and sourced variations with durable independent history',async()=>{
+  const {store,db}=await repo();let counter=0;const calls=[];
+  const service=new GenerationService(store,async request=>{
+    calls.push(request);if(request.name==='orbit_novelty')return {duplicate:false};
+    const number=++counter;
+    return {title:`Işık bahçesi ${number}`,text:number===1?'Gece açan cam çiçeklerden oluşan bir bahçe.':`${number} numaralı sahne: `+'Gece ışığında cam çiçekler, yumuşak gölgeler ve derin lacivert bir arka plan. '.repeat(15),domain:'Deneysel fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
+  },'test');
+  const concept=await service.generateVisualConcept();assert.equal(concept.visualMode,'concept');
+  const prompt=await service.generateVisualPrompt({sourceId:concept.id});assert.equal(prompt.parentId,concept.id);assert.ok(prompt.text.length>600);
+  assert.ok((await import(engineUrl)).isIdea(prompt));
+  const variation=await service.generateVisualVariation({sourceId:prompt.id});assert.equal(variation.visualMode,'variation');assert.equal(variation.parentId,prompt.id);
+  assert.equal(calls.filter(x=>x.input.source).length,2);
+  const saved=await (await repo('owner',db)).store.page(Number.MAX_SAFE_INTEGER,'image_prompt');assert.equal(saved.items.length,3);assert.equal(saved.items[0].text,variation.text);
+  await assert.rejects(service.generateVisualVariation({}),e=>e.code==='invalid-request');
+  await assert.rejects(new GenerationService((await repo('different',db)).store,async()=>{throw Error('should not call');},'test').generateVisualPrompt({sourceId:prompt.id}),e=>e.code==='idea-not-found');
+});
+test('DIGITAL acceptance does not persist a plan that introduces a hardware requirement',async()=>{
+  const {store}=await repo();
+  const service=new GenerationService(store,async request=>request.name==='orbit_novelty'?{duplicate:false,digitalOnly:true}:request.name==='orbit_digital_plan_check'?{digitalOnly:false}:request.name==='orbit_accepted_plan'?plan:digital,'test');
+  const idea=await service.generateDigitalProjectIdea();
+  await assert.rejects(service.generateDigitalProjectPlan(idea.id),e=>e.code==='no-digital-result');
+  assert.equal((await store.get(idea.id)).status,'generated');
+});
+test('history filtering happens before pagination and respects ownership',async()=>{
+  const {store,db}=await repo();
+  for(let i=0;i<75;i++)await store.insert({...digital,id:`filter-${i}`,type:i%2?'project':'digital_project',generatedAt:'2026-08-31',model:'test',status:'generated'},`filter-${i}`);
+  const page=await store.page(Number.MAX_SAFE_INTEGER,'digital_project');assert.equal(page.items.length,30);assert.ok(page.items.every(x=>x.type==='digital_project'));
+  assert.equal((await store.page(Number(page.next),'digital_project')).items.length,8);
+  assert.equal((await (await repo('different',db)).store.page(Number.MAX_SAFE_INTEGER,'digital_project')).items.length,0);
+});
+test('API validates Visual Lab requests and new generation types still require configured AI',async()=>{
+  await authenticatedRequest.run({username:'owner'},async()=>{
+    for(const body of [{type:'image_prompt',visualMode:'bad'},{type:'project',visualMode:'prompt'},{type:'image_prompt',visualMode:'variation'},{type:'image_prompt',sourceId:'../bad'}])assert.equal((await api.POST(request({action:'generate',...body}))).status,400);
+    for(const type of ['digital_project','image_prompt'])assert.equal((await api.POST(request({action:'generate',type}))).status,503);
+    assert.equal((await api.GET(new Request('https://orbit.test/api/ideas?type=invalid'))).status,400);
   });
 });

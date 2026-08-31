@@ -5,6 +5,7 @@ import type { CSSProperties, FocusEvent as ReactFocusEvent, FormEvent, KeyboardE
 import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
 import { readStartupState } from './startup';
+import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
 import { emptyTask, emptyWorkspace } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
 import { newCreationDraft, normalizeCreationDraft, normalizePlanning, lifecycleFromStage, stageFromLifecycle } from './projects/planning-types';
@@ -17,7 +18,6 @@ import { emptyDeck, normalizeDeck } from './rebuild/weekly-deck-model';
 import type { WeeklyDeck } from './rebuild/weekly-deck-model';
 import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
 import type { Practice } from './rebuild/practice-model';
-import { projectFromIdea } from './rebuild/project-import';
 import {
   Archive, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight,
@@ -364,6 +364,7 @@ export default function PersonalOS() {
   const [hydrated, setHydrated] = useState(false);
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
   const lastSyncedState = useRef('');
+  const serverRevision = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastFeedbackAtRef = useRef(0);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -464,16 +465,25 @@ export default function PersonalOS() {
       let resolvedState = defaultState;
 
       try {
-        const saved = localStorage.getItem('orbit-personal-os');
-        if (saved) resolvedState = mergePersistedState(JSON.parse(saved));
+        const pending = readPending(localStorage);
+        const saved = pending?.state || localStorage.getItem(STATE_KEY);
+        if (pending) lastSyncedState.current = pending.base;
+        if (saved) {
+          resolvedState = mergePersistedState(JSON.parse(saved));
+          if (!pending) lastSyncedState.current = JSON.stringify(resolvedState);
+        }
         localStorage.removeItem('orbit-active-page');
       } catch { /* corrupted local data falls back safely */ }
 
       try {
         const payload = await readStartupState();
-        if (payload?.state) {
-          resolvedState = mergePersistedState(payload.state);
-          lastSyncedState.current = JSON.stringify(resolvedState);
+        if (payload && Number.isSafeInteger(payload.revision)) {
+          const serverState = mergePersistedState(payload.state || defaultState);
+          let pending = null;
+          try { pending = readPending(localStorage); } catch { /* Device storage unavailable. */ }
+          resolvedState = pending ? mergePersistedState(rebaseState(pending.base ? JSON.parse(pending.base) : undefined, JSON.parse(pending.state), serverState)) : serverState;
+          lastSyncedState.current = JSON.stringify(serverState);
+          serverRevision.current = payload.revision!;
         }
       } catch { /* D1 unavailable: local state remains active */ }
 
@@ -515,24 +525,52 @@ export default function PersonalOS() {
   useEffect(() => {
     if (!hydrated) return;
     const serializedState = JSON.stringify(state);
-    try { localStorage.setItem('orbit-personal-os', serializedState); } catch { /* Server persistence still runs if browser storage is full. */ }
+    try { journalState(localStorage, serializedState, lastSyncedState.current); } catch { /* Server persistence still runs if browser storage is full. */ }
     document.documentElement.dataset.accent = state.settings.accent;
     document.documentElement.dataset.density = state.settings.density;
     document.documentElement.classList.toggle('reduce-motion', !state.settings.motion);
 
     const version = ++syncVersion.current;
-    if (serializedState === lastSyncedState.current && pendingSaves.current === 0) { setSyncStatus('saved'); return; }
+    if (serverRevision.current !== null && serializedState === lastSyncedState.current && pendingSaves.current === 0) {
+      try { acknowledgeState(localStorage, serializedState); } catch { /* Retry on next save. */ }
+      setSyncStatus('saved'); return;
+    }
     setSyncStatus('saving');
     const saveTimer = window.setTimeout(() => {
       pendingSaves.current += 1;
       syncQueue.current = syncQueue.current.then(async () => {
         try {
+          if (version !== syncVersion.current) return;
+          if (serverRevision.current === null) {
+            const read = await fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+            if (!read.ok) throw new Error('State read failed');
+            const payload = await read.json() as { state: unknown; revision: number };
+            if (!Number.isSafeInteger(payload.revision)) throw new Error('Invalid revision');
+            const remote = mergePersistedState(payload.state || defaultState);
+            const base = lastSyncedState.current ? JSON.parse(lastSyncedState.current) : undefined;
+            lastSyncedState.current = JSON.stringify(remote); serverRevision.current = payload.revision;
+            setState(current => mergePersistedState(rebaseState(base, current, remote)));
+            setSyncRetry(value => value + 1); return;
+          }
           const response = await fetch('/api/state', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state }), signal: AbortSignal.timeout(20000),
+            body: JSON.stringify({ state, revision: serverRevision.current }), signal: AbortSignal.timeout(20000),
           });
+          if (response.status === 409) {
+            const payload = await response.json() as { state: unknown; revision: number };
+            if (!Number.isSafeInteger(payload.revision)) throw new Error('Invalid revision');
+            const remote = mergePersistedState(payload.state || defaultState);
+            const base = JSON.parse(lastSyncedState.current);
+            lastSyncedState.current = JSON.stringify(remote); serverRevision.current = payload.revision;
+            setState(current => mergePersistedState(rebaseState(base, current, remote)));
+            setSyncRetry(value => value + 1); return;
+          }
           if (!response.ok) throw new Error('D1 state save failed');
+          const metadata = await response.json() as { revision: number };
+          if (!Number.isSafeInteger(metadata.revision)) throw new Error('Invalid save receipt');
+          serverRevision.current = metadata.revision;
           lastSyncedState.current = serializedState;
+          try { acknowledgeState(localStorage, serializedState); } catch { /* Journal is safe to replay. */ }
           if (version === syncVersion.current) setSyncStatus('saved');
         } catch { if (version === syncVersion.current) setSyncStatus('error'); }
         finally { pendingSaves.current -= 1; }
@@ -541,6 +579,12 @@ export default function PersonalOS() {
 
     return () => window.clearTimeout(saveTimer);
   }, [state, hydrated, syncRetry]);
+
+  useEffect(() => {
+    const retry = () => setSyncRetry(value => value + 1);
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, []);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1768,14 +1812,17 @@ export default function PersonalOS() {
     linkedProject={projectMetrics.filter(item => item.project.id === state.rebuildPractice.activeProjectId).map(({ project, progress }) => ({ id: project.id, title: project.title, progress }))[0] ?? null}
     onUpdatePractice={update => setState(current => ({ ...current, rebuildPractice: update(current.rebuildPractice) }))}
     onOpenProject={openProjectDetail}
-    onCreateProject={idea => {
+    onCreateProject={async idea => {
+      const { projectFromIdea } = await import('./rebuild/project-import');
       const { project, workspace } = projectFromIdea(idea);
       setState(current => ({
         ...current,
         customProjects: current.customProjects.some(item => item.id === project.id) ? current.customProjects : [...current.customProjects, project],
-        projectWorkspaces: current.projectWorkspaces[project.id] ? current.projectWorkspaces : { ...current.projectWorkspaces, [project.id]: workspace },
+        projectWorkspaces: current.projectWorkspaces[project.id]?.planning ? current.projectWorkspaces : { ...current.projectWorkspaces,
+          [project.id]: current.projectWorkspaces[project.id] ? applyPlanning(current.projectWorkspaces[project.id],workspace.planning!) : workspace },
         rebuildPractice: acceptIntoPractice(current.rebuildPractice, idea),
       }));
+      openProjectDetail(project.id);
     }}
     onUpdateDeck={update => setState(current => { const next = update(current.rebuildDeck); return next === current.rebuildDeck ? current : { ...current, rebuildDeck: next }; })}
     onStartChange={date => setState(current => ({ ...current, rebuildJourney: { ...current.rebuildJourney, startDate: date } }))}
@@ -1902,9 +1949,10 @@ export default function PersonalOS() {
       if (hydrated && JSON.stringify(state) !== lastSyncedState.current) {
         const response = await fetch('/api/state', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state }), signal: AbortSignal.timeout(20000),
+          body: JSON.stringify({ state, revision: serverRevision.current }), signal: AbortSignal.timeout(20000),
         });
         if (!response.ok) throw new Error('save failed');
+        try { acknowledgeState(localStorage, JSON.stringify(state)); } catch { /* Cleared on logout. */ }
       }
       form.submit();
     } catch {
