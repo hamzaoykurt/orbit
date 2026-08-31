@@ -245,7 +245,7 @@ test('accepted DIGITAL plans integrate into Projects once without physical CREAT
 test('Visual Lab generates concepts, full prompts and sourced variations with durable independent history',async()=>{
   const {store,db}=await repo();let counter=0;const calls=[];
   const service=new GenerationService(store,async request=>{
-    calls.push(request);if(request.name==='orbit_novelty')return {duplicate:false};
+    calls.push(request);if(request.name==='orbit_novelty')return {duplicate:false,sourceMatch:true};
     const number=++counter;
     return {title:`Işık bahçesi ${number}`,text:number===1?'Gece açan cam çiçeklerden oluşan bir bahçe.':`${number} numaralı sahne: `+'Gece ışığında cam çiçekler, yumuşak gölgeler ve derin lacivert bir arka plan. '.repeat(15),domain:'Deneysel fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
   },'test');
@@ -253,7 +253,7 @@ test('Visual Lab generates concepts, full prompts and sourced variations with du
   const prompt=await service.generateVisualPrompt({sourceId:concept.id});assert.equal(prompt.parentId,concept.id);assert.ok(prompt.text.length>600);
   assert.ok((await import(engineUrl)).isIdea(prompt));
   const variation=await service.generateVisualVariation({sourceId:prompt.id});assert.equal(variation.visualMode,'variation');assert.equal(variation.parentId,prompt.id);
-  assert.equal(calls.filter(x=>x.input.source).length,2);
+  assert.equal(calls.filter(x=>x.name==='orbit_suggestion'&&x.input.source).length,2);
   const saved=await (await repo('owner',db)).store.page(Number.MAX_SAFE_INTEGER,'image_prompt');assert.equal(saved.items.length,3);assert.equal(saved.items[0].text,variation.text);
   await assert.rejects(service.generateVisualVariation({}),e=>e.code==='invalid-request');
   await assert.rejects(new GenerationService((await repo('different',db)).store,async()=>{throw Error('should not call');},'test').generateVisualPrompt({sourceId:prompt.id}),e=>e.code==='idea-not-found');
@@ -264,6 +264,17 @@ test('DIGITAL acceptance does not persist a plan that introduces a hardware requ
   const idea=await service.generateDigitalProjectIdea();
   await assert.rejects(service.generateDigitalProjectPlan(idea.id),e=>e.code==='no-digital-result');
   assert.equal((await store.get(idea.id)).status,'generated');
+});
+test('Visual Lab retries unrelated variations instead of saving them under the source',async()=>{
+  const {store}=await repo();let n=0,checks=0;
+  const source=await new GenerationService(store,async()=>({title:'Mantarlar',text:'Ormandaki mantarların makro fotoğrafı.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'}),'test').generateVisualPrompt();
+  const service=new GenerationService(store,async request=>{
+    if(request.name==='orbit_novelty'){assert.equal(request.input.source.id,source.id);return {duplicate:false,sourceMatch:++checks>1};}
+    assert.match(request.input.direction,/preserving its main subject/);
+    return ++n===1?{title:'Atölye',text:'Cam üfleyen bir ustanın fotoğrafı.',domain:'Zanaat',type:'image_prompt',kind:'MAKE',goal:'make'}:{title:'Gece mantarları',text:'Mor ay ışığında alçak açıdan görülen orman mantarları, yumuşak sis.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
+  },'test');
+  const variation=await service.generateVisualVariation({sourceId:source.id});
+  assert.match(variation.text,/mantarları/);assert.equal(n,2);assert.equal((await store.all()).length,2);
 });
 test('history filtering happens before pagination and respects ownership',async()=>{
   const {store,db}=await repo();
