@@ -245,7 +245,8 @@ test('accepted DIGITAL plans integrate into Projects once without physical CREAT
 test('Visual Lab generates concepts, full prompts and sourced variations with durable independent history',async()=>{
   const {store,db}=await repo();let counter=0;const calls=[];
   const service=new GenerationService(store,async request=>{
-    calls.push(request);if(request.name==='orbit_novelty')return {duplicate:false,sourceMatch:true};
+    calls.push(request);if(request.name==='orbit_visual_source')return {sourceMatch:true};
+    if(request.name==='orbit_novelty'){assert.equal(request.input.source,undefined);return {duplicate:false};}
     const number=++counter;
     return {title:`Işık bahçesi ${number}`,text:number===1?'Gece açan cam çiçeklerden oluşan bir bahçe.':`${number} numaralı sahne: `+'Gece ışığında cam çiçekler, yumuşak gölgeler ve derin lacivert bir arka plan. '.repeat(15),domain:'Deneysel fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
   },'test');
@@ -269,7 +270,8 @@ test('Visual Lab retries unrelated variations instead of saving them under the s
   const {store}=await repo();let n=0,checks=0;
   const source=await new GenerationService(store,async()=>({title:'Mantarlar',text:'Ormandaki mantarların makro fotoğrafı.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'}),'test').generateVisualPrompt();
   const service=new GenerationService(store,async request=>{
-    if(request.name==='orbit_novelty'){assert.equal(request.input.source.id,source.id);return {duplicate:false,sourceMatch:++checks>1};}
+    if(request.name==='orbit_visual_source'){assert.equal(request.input.source.id,source.id);return {sourceMatch:++checks>1};}
+    if(request.name==='orbit_novelty'){assert.equal(request.input.source,undefined);return {duplicate:false};}
     assert.match(request.input.direction,/preserving its main subject/);
     return ++n===1?{title:'Atölye',text:'Cam üfleyen bir ustanın fotoğrafı.',domain:'Zanaat',type:'image_prompt',kind:'MAKE',goal:'make'}:{title:'Gece mantarları',text:'Mor ay ışığında alçak açıdan görülen orman mantarları, yumuşak sis.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
   },'test');
@@ -279,7 +281,7 @@ test('Visual Lab retries unrelated variations instead of saving them under the s
 test('an already detailed visual concept can become a copyable prompt without a fingerprint collision',async()=>{
   const {store}=await repo();
   const output={title:'Kristal bahçe',text:'Mor ışıkla parlayan kristal çiçeklerin üzerinde saydam bir kelebek. Sisli arka plan, makro görünüm.',domain:'Botanik',type:'image_prompt',kind:'MAKE',goal:'make'};
-  const service=new GenerationService(store,async request=>request.name==='orbit_novelty'?{duplicate:false,sourceMatch:true}:output,'test');
+  const service=new GenerationService(store,async request=>request.name==='orbit_visual_source'?{sourceMatch:true}:request.name==='orbit_novelty'?{duplicate:false}:output,'test');
   const concept=await service.generateVisualConcept();
   const prompt=await service.generateVisualPrompt({sourceId:concept.id});
   assert.equal(prompt.visualMode,'prompt');assert.equal(prompt.parentId,concept.id);assert.equal(prompt.text,concept.text);assert.equal((await store.all()).length,2);

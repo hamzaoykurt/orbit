@@ -103,12 +103,12 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
         {expansion('make',<><p className="rd-inline-copy">İlginç ne yapabilirim? Yazılım, fiziksel üretim, elektronik, fotoğraf, el işi veya beklenmedik bir deney. Her alana açık.</p>{linkedProject&&<button className="rd-text-button" onClick={()=>openIdea({type:'project',goal:'make'})}>Başka bir proje fikri <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>openIdea({type:'project'},true)}><History size={15}/> Create geçmişi</button></>)}
       </section>
       <section className={`rd-domain rd-digital-row ${expanded==='digital'?'is-open':''}`}>
-        <div className="rd-domain-line">{rowHeading('digital','Digital',<span>Yeni bir dijital projeye hazır.</span>)}</div>
+        <div className="rd-domain-line">{rowHeading('digital','Digital',<span>Uygulama, oyun, araç. Yalnızca yazılım.</span>)}</div>
         <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project',goal:'make'})}>Bana bir dijital proje ver <Sparkle size={15}/></button></div>
         {expansion('digital',<><p className="rd-inline-copy">Bilgisayarda ne geliştirebilirim? Mobil uygulamalar, web ve masaüstü araçları, oyunlar, eklentiler, simülasyonlar. Yalnızca yazılım; her seferinde yeni bir fikir.</p><button className="rd-text-button" onClick={()=>openIdea({type:'digital_project'},true)}><History size={15}/> Digital geçmişi</button></>)}
       </section>
       <section className={`rd-domain rd-visual-row ${expanded==='visual'?'is-open':''}`}>
-        <div className="rd-domain-line">{rowHeading('visual','Visual Lab',<span>Yeni bir görsel dünya keşfet.</span>)}</div>
+        <div className="rd-domain-line">{rowHeading('visual','Visual Lab',<span>Konsept → prompt → yeni yorumlar.</span>)}</div>
         <div className="rd-row-action"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'prompt',goal:'make'})}>Bana bir görsel promptu ver <Sparkle size={15}/></button></div>
         {expansion('visual',<><p className="rd-inline-copy">Rastgele bir konu, atmosfer ve görsel yaklaşım. Promptu kopyala, kullandığın görsel üretim aracına taşı. Burada görsel değil, metin üretilir.</p><div className="rd-detail-actions"><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt',visualMode:'concept',goal:'make'})}>Önce bir konsept bul <Sparkle size={15}/></button><button className="rd-text-button" onClick={()=>openIdea({type:'image_prompt'},true)}><History size={15}/> Visual Lab geçmişi</button></div></>)}
       </section>

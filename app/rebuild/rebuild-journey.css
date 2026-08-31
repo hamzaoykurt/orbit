@@ -187,3 +187,52 @@ html.reduce-motion .rebuild-deck *,html.reduce-motion .rd-overlay,html.reduce-mo
 .rd-prompt-stage .rd-drawn-idea h2{font-size:clamp(24px,4vw,36px);line-height:1.2;margin:18px 0}
 .rd-prompt-stage textarea{display:block;width:100%;min-height:280px;max-height:55vh;resize:vertical;padding:18px;background:var(--canvas);color:var(--ink);border:1px solid var(--line);border-radius:12px;font:inherit;font-size:16px;line-height:1.7}
 .rd-idea-secondary{flex-wrap:wrap}
+
+/* Readable ideas, contextual controls, and a clear rhythm without dashboard cards. */
+.rd-domain-toggle:hover .rd-domain-title,.rd-domain.is-open .rd-domain-title{color:var(--accent)}
+.rd-domain-title{transition:color .2s}
+.rd-instrument .rd-row-action .rd-text-button{font-size:13px;color:var(--ink-2);gap:10px}
+.rd-row-action .rd-text-button>svg{color:var(--accent);transition:transform .2s}
+.rd-row-action .rd-text-button:hover>svg{transform:translateX(3px)}
+.rd-domain.is-open{border-bottom-color:rgba(var(--accent-rgb),.35)}
+.rd-domain-detail{border-left:2px solid rgba(var(--accent-rgb),.2);margin-block:14px 5px;padding-block:6px 4px}
+.rd-instrument button:focus-visible,.rd-dialog-idea button:focus-visible,.rd-dialog-idea textarea:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.rd-dialog-idea{max-width:1040px;padding:32px 48px 28px;scroll-padding-block:32px}
+.rd-draw-brand{padding-right:40px;font-size:10px;letter-spacing:.1em}
+.rd-draw-brand>span{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.rd-draw-brand i{font-style:normal;color:var(--soft)}
+.rd-draw-brand strong{font-size:12px;font-weight:550;letter-spacing:0;color:var(--ink-2)}
+.rd-draw-brand small{font-size:10px;letter-spacing:0;color:var(--muted)}
+.rd-dialog-idea .rd-idea-stage{padding-block:44px;min-height:200px;text-align:left}
+.rd-dialog-idea .rd-drawn-idea{max-width:720px}
+.rd-dialog-idea .rd-drawn-idea h2{font-size:clamp(27px,4vw,44px);line-height:1.16;letter-spacing:-.04em;text-wrap:balance;max-width:30ch;margin:16px 0 20px}
+.rd-dialog-idea .rd-drawn-idea .rd-idea-description{font-size:clamp(18px,2.2vw,23px);line-height:1.65;color:var(--ink-2);letter-spacing:-.012em;margin:0;white-space:pre-line;overflow-wrap:anywhere}
+.rd-dialog-idea .rd-drawn-idea .rd-kicker{letter-spacing:.09em;font-size:11px;line-height:1.8}
+.rd-dialog-idea .rd-generation-message{text-align:center;margin-inline:auto}
+.rd-dialog-idea .rd-generation-message h2{font-size:clamp(25px,3.5vw,34px);text-wrap:balance}
+.rd-idea-bottom{width:min(720px,100%);margin-inline:auto;border-top:1px solid var(--line);padding-top:20px}
+.rd-idea-actions{gap:12px}
+.rd-idea-actions .primary-button,.rd-idea-actions .rd-another{min-height:50px;padding:13px 22px;border-radius:13px;font-size:14px}
+.rd-idea-footnote{margin-top:12px;line-height:1.65;color:var(--muted)}
+.rd-generation-error{width:min(720px,100%);border-left:2px solid var(--accent);padding:4px 16px;text-align:left;margin-bottom:24px}
+.rd-generation-error p{margin:4px 0;font-size:13px;line-height:1.6;color:var(--muted)}
+.rd-generation-error .rd-error{color:var(--ink-2)}
+.rd-drawn-idea .rd-processing{display:flex;align-items:center;gap:10px;color:var(--accent);font-size:13px;margin:20px 0 0}
+.rd-processing>svg{flex-shrink:0;animation:rd-spin 1.3s linear infinite}
+.rd-loading-icon{animation:rd-spin 1.3s linear infinite}
+.rd-prompt-stage textarea{min-height:240px;max-height:50dvh;background:rgba(var(--accent-rgb),.025);padding:20px;line-height:1.75}
+.rd-drawn-idea .rd-prompt-hint{font-size:12px;margin:12px 0 0}
+.rd-generation-history>button:hover{background:rgba(var(--accent-rgb),.045)}
+@keyframes rd-spin{to{transform:rotate(360deg)}}
+@media(max-width:700px){
+  .rd-domain-detail{padding-left:14px}
+  .rd-dialog-idea{padding:26px 22px calc(22px + env(safe-area-inset-bottom))}
+  .rd-dialog-idea .rd-close{top:15px;right:12px}
+  .rd-dialog-idea .rd-idea-stage{padding-block:32px;min-height:180px}
+  .rd-dialog-idea .rd-drawn-idea h2{font-size:29px;margin-top:14px}
+  .rd-dialog-idea .rd-drawn-idea .rd-idea-description{font-size:18px;line-height:1.65}
+  .rd-idea-actions .primary-button{flex:1 1 175px}
+  .rd-idea-actions .rd-another{flex:1 1 110px}
+  .rd-idea-bottom{padding-top:16px}
+  .rd-prompt-stage textarea{padding:15px;min-height:230px}
+}
