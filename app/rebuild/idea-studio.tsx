@@ -13,13 +13,16 @@ export function IdeaStudio({request,onSave,onClose,historyOnly=false}:{request:O
   const promptField=useRef<HTMLTextAreaElement>(null);
   const controller=useRef<AbortController|null>(null);
   const requestRef=useRef(request);
+  const lastRequest=useRef(request);
   const mounted=useRef(true);
   const start=()=>{controller.current?.abort();const next=new AbortController();controller.current=next;setError('');return next;};
-  async function draw(previous:GeneratedIdea|null=null, visualMode?:IdeaRequest['visualMode']) {
+  async function draw(previous:GeneratedIdea|null=null, visualMode?:IdeaRequest['visualMode'], retry=false) {
     const active=start();setBusy(true);setSaving(false);setIdea(null);setShowHistory(false);setFromHistory(false);setCopied(false);
     try {
       if(previous&&!visualMode&&previous.status!=='accepted')await recordIdeaDecision(previous.id,'skipped',active.signal);
-      const value=await generateIdea({...requestRef.current,...(visualMode?{type:'image_prompt' as const,visualMode,sourceId:previous?.id}:{}),signal:active.signal});
+      const nextRequest=retry?lastRequest.current:{...requestRef.current,...(visualMode?{type:'image_prompt' as const,visualMode,sourceId:previous?.id}:{})};
+      lastRequest.current=nextRequest;
+      const value=await generateIdea({...nextRequest,signal:active.signal});
       if(!active.signal.aborted)setIdea(value);
     }catch(cause){if(!active.signal.aborted)setError(cause instanceof Error?cause.message:GENERATION_UNAVAILABLE);}
     finally{if(!active.signal.aborted)setBusy(false);}
@@ -65,7 +68,7 @@ export function IdeaStudio({request,onSave,onClose,historyOnly=false}:{request:O
     </div>}
     {error&&<p className="rd-error rd-generation-error" role="alert">{error}</p>}
     <div className="rd-idea-bottom">
-      {!showHistory&&<div className="rd-idea-actions">{visual?<button className="primary-button" disabled={busy||saving} onClick={()=>void(concept?draw(idea,'prompt'):copyPrompt())}>{concept?<Sparkle size={18}/>:copied?<Check size={18}/>:<Copy size={18}/>} {concept?'Prompta dönüştür':copied?'Kopyalandı':'Promptu kopyala'}</button>:<button className="primary-button" disabled={!idea||busy||saving} onClick={()=>void save()}><Plus size={18}/>{idea?.status==='accepted'?'Kaydı aç / geri yükle':label}</button>}<button className="rd-another" disabled={busy||saving} onClick={()=>void draw(idea)}><RotateCcw size={18}/>{error&&!idea?'Tekrar dene':'Başka'}</button></div>}
+      {!showHistory&&<div className="rd-idea-actions">{visual?<button className="primary-button" disabled={busy||saving} onClick={()=>void(concept?draw(idea,'prompt'):copyPrompt())}>{concept?<Sparkle size={18}/>:copied?<Check size={18}/>:<Copy size={18}/>} {concept?'Prompta dönüştür':copied?'Kopyalandı':'Promptu kopyala'}</button>:<button className="primary-button" disabled={!idea||busy||saving} onClick={()=>void save()}><Plus size={18}/>{idea?.status==='accepted'?'Kaydı aç / geri yükle':label}</button>}<button className="rd-another" disabled={busy||saving} onClick={()=>void draw(idea,undefined,!!error&&!idea)}><RotateCcw size={18}/>{error&&!idea?'Tekrar dene':'Başka'}</button></div>}
       <div className="rd-idea-secondary">{visual&&!showHistory&&<button className="rd-text-button" disabled={busy||saving} onClick={()=>void draw(idea,'variation')}>Varyasyon üret <Sparkle size={15}/></button>}{!showHistory&&<button className="rd-text-button" disabled={busy||saving} onClick={()=>void loadHistory()}><History size={15}/> Geçmiş</button>}{showHistory&&<button className="rd-text-button" disabled={busy} onClick={()=>void draw()}>Yeni fikir üret <Sparkle size={15}/></button>}{idea&&!showHistory&&!visual&&idea.status!=='accepted'&&<button className="rd-text-button" disabled={busy||saving} onClick={()=>void reject()}>Bana göre değil</button>}</div>
       <span className="rd-idea-footnote">{fromHistory?(idea?.status==='accepted'?'Daha önce kaydedilmiş kayıt. Planı yeniden üretmeden açılır.':'Daha önce üretilmiş fikir. Seçimin henüz kaydedilmedi.'):'Yeni istek, yeni fikir. Merakının dışına da çıkabilir.'}</span>
     </div>
