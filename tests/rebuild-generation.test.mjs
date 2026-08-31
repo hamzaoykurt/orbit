@@ -276,6 +276,15 @@ test('Visual Lab retries unrelated variations instead of saving them under the s
   const variation=await service.generateVisualVariation({sourceId:source.id});
   assert.match(variation.text,/mantarları/);assert.equal(n,2);assert.equal((await store.all()).length,2);
 });
+test('an already detailed visual concept can become a copyable prompt without a fingerprint collision',async()=>{
+  const {store}=await repo();
+  const output={title:'Kristal bahçe',text:'Mor ışıkla parlayan kristal çiçeklerin üzerinde saydam bir kelebek. Sisli arka plan, makro görünüm.',domain:'Botanik',type:'image_prompt',kind:'MAKE',goal:'make'};
+  const service=new GenerationService(store,async request=>request.name==='orbit_novelty'?{duplicate:false,sourceMatch:true}:output,'test');
+  const concept=await service.generateVisualConcept();
+  const prompt=await service.generateVisualPrompt({sourceId:concept.id});
+  assert.equal(prompt.visualMode,'prompt');assert.equal(prompt.parentId,concept.id);assert.equal(prompt.text,concept.text);assert.equal((await store.all()).length,2);
+  await assert.rejects(service.generateVisualVariation({sourceId:prompt.id}),e=>e.code==='no-novel-result');
+});
 test('history filtering happens before pagination and respects ownership',async()=>{
   const {store,db}=await repo();
   for(let i=0;i<75;i++)await store.insert({...digital,id:`filter-${i}`,type:i%2?'project':'digital_project',generatedAt:'2026-08-31',model:'test',status:'generated'},`filter-${i}`);

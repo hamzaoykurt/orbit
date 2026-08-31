@@ -93,6 +93,8 @@ export class GenerationService {
     if (request.goal === 'body' && requestType !== 'meal') throw new GenerationError('workouts-not-supported', 400);
     if (request.goal === 'english' && !['vocabulary','speaking'].includes(requestType)) throw new GenerationError('english-needs-continuity', 400);
     const unrelated = requestType === 'surprise' || this.random() < .35;
+    const conceptExpansion = visualSource?.visualMode==='concept' && request.visualMode==='prompt';
+    let rejection = requestType==='digital_project'?'no-digital-result':'no-novel-result';
     const previousWords = new Set(history.flatMap(idea => idea.words || []).map(word => normalizeText(word.word)));
     for (let attempt = 0; attempt < 3; attempt++) {
       signal?.throwIfAborted();
@@ -125,7 +127,7 @@ export class GenerationService {
         if (goal !== correctGoal || (request.goal && request.goal !== 'any' && goal !== request.goal)) throw new GenerationError('invalid-provider-output');
         if(type==='digital_project'&&!digitalPlatforms.includes(source.platform as DigitalPlatform))throw new GenerationError('invalid-provider-output');
         candidate = this.newIdea({ title:sourceTitle,text:sourceText,domain:sourceDomain,type:type as GeneratedIdea['type'],kind:kind as GeneratedIdea['kind'],goal:correctGoal,...(type==='digital_project'?{platform:source.platform as DigitalPlatform}:{}),...(type==='image_prompt'?{visualMode:request.visualMode||'prompt',...(request.sourceId?{parentId:request.sourceId}:{})}:{}) });
-        if (history.some(old => (request.sourceId ? normalizeText(old.text)===normalizeText(candidate.text) : similarity(old.text,candidate.text) >= .65 || normalizeText(old.title) === normalizeText(candidate.title)))) continue;
+        if (history.some(old => !(conceptExpansion&&old.id===request.sourceId) && (request.sourceId ? normalizeText(old.text)===normalizeText(candidate.text) : similarity(old.text,candidate.text) >= .65 || normalizeText(old.title) === normalizeText(candidate.title)))) continue;
         // Compare likely paraphrases and same-domain history as well as recent ideas. No preference ranking.
         const ranked = [...history].sort((a,b)=>similarity(b.text,candidate.text)-similarity(a.text,candidate.text)).slice(0,30);
         const comparison = [...new Map([...history.slice(0,25),...ranked,...history.filter(old=>normalizeText(old.domain)===normalizeText(candidate.domain)).slice(0,30)].map(old=>[old.id,old])).values()].filter(old=>old.id!==request.sourceId && !(visualSource&&old.visualMode==='concept'));
@@ -142,15 +144,17 @@ ${visualSource?'Independently verify sourceMatch: true only if the proposed visu
             if(!check.digitalOnly)continue;
           }
           if (check.duplicate) continue;
-          if (visualSource && check.sourceMatch!==true) continue;
+          if (visualSource && check.sourceMatch!==true) { rejection='visual-source-mismatch'; continue; }
         }
       }
       signal?.throwIfAborted();
-      const bytes = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(normalizeText(candidate.text)));
+      // Turning an already detailed concept into a copyable prompt is a distinct
+      // operation, even if the model retains its wording. Other repeats still fail.
+      const bytes = await crypto.subtle.digest('SHA-256',new TextEncoder().encode((conceptExpansion?'visual-concept-expansion:':'')+normalizeText(candidate.text)));
       const fingerprint = [...new Uint8Array(bytes)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
       if (await this.store.insert(candidate,fingerprint)) return candidate;
     }
-    throw new GenerationError(requestType==='digital_project'?'no-digital-result':'no-novel-result');
+    throw new GenerationError(rejection);
   }
   private newIdea(input: Pick<GeneratedIdea,'type'|'title'|'text'|'domain'|'kind'|'goal'> & {words?:WordSuggestion[];platform?:DigitalPlatform;visualMode?:GeneratedIdea['visualMode'];parentId?:string}): GeneratedIdea {
     return {...input,id:crypto.randomUUID(),generatedAt:new Date().toISOString(),model:this.modelName,status:'generated'};
