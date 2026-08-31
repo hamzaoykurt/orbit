@@ -42,9 +42,46 @@ test('Gemini uses server-side key and schema, ignores thought parts and never fa
   const provider=createModelProvider(config,async(endpoint,options)=>{calls++;sent={endpoint:String(endpoint),headers:options.headers,body:JSON.parse(options.body)};return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{thought:true,text:'private thought'},{text:JSON.stringify(project)}]}}]});});
   assert.deepEqual(await provider({name:'test',instructions:'Generate',input:{request:'new'},schema:{type:'object'}}),project);
   assert.equal(calls,1);assert.equal(sent.headers['x-goog-api-key'],'test-gemini-key');assert.ok(!sent.endpoint.includes('test-gemini-key'));
-  assert.equal(sent.body.generationConfig.responseMimeType,'application/json');assert.equal(sent.body.generationConfig.responseSchema,undefined);
+  assert.equal(sent.body.generationConfig.responseMimeType,'application/json');assert.deepEqual(sent.body.generationConfig.responseSchema,{type:'object'});
   calls=0;await assert.rejects(createModelProvider(config,async()=>{calls++;return new Response('quota',{status:429});})({name:'test',input:{},schema:{}}),/provider-http-429/);assert.equal(calls,1);
   for(const payload of [{promptFeedback:{blockReason:'SAFETY'}},{candidates:[{finishReason:'MAX_TOKENS'}]},{candidates:[{finishReason:'STOP',content:{parts:[{text:'not json'}]}}]}])await assert.rejects(createModelProvider(config,async()=>Response.json(payload))({name:'test',input:{},schema:{}}));
+});
+
+test('Gemini receives every output contract through generation, novelty, vocabulary and accepted plans',async()=>{
+  const {store}=await repo();const contracts=[];
+  const provider=createModelProvider({provider:'gemini',apiKey:'test-only-key'},async(endpoint,options)=>{
+    const body=JSON.parse(options.body),wire=body.generationConfig.responseSchema;
+    // Simulate an upstream that cannot invent the application's missing fields.
+    if(!wire)return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'{"suggestion":"A new idea"}'}]}}]});
+    const instructions=body.systemInstruction.parts[0].text;
+    const full=JSON.parse(instructions.slice(instructions.lastIndexOf('\n')+1));
+    contracts.push(full);
+    const verify=(source,converted)=>{
+      assert.equal(converted.type,source.type);
+      for(const key of ['enum','required','minItems','maxItems'])assert.deepEqual(converted[key],source[key]);
+      for(const key of ['additionalProperties','minLength','maxLength'])assert.equal(converted[key],undefined);
+      if(source.properties){assert.deepEqual(Object.keys(converted.properties),Object.keys(source.properties));assert.deepEqual(converted.propertyOrdering,Object.keys(source.properties));for(const key in source.properties)verify(source.properties[key],converted.properties[key]);}
+      if(source.items)verify(source.items,converted.items);
+    };
+    verify(full,wire);
+    const input=JSON.parse(body.contents[0].parts[0].text);
+    let output;
+    if(wire.properties.duplicate)output={duplicate:false};
+    else if(wire.properties.tasks)output=plan;
+    else if(wire.properties.subquestions)output=questions;
+    else if(wire.properties.words)output={words:['arrive','borrow','quiet','instead','nearby'].map(word=>({word,meaning:'örnek anlam',example:`We use ${word} here.`}))};
+    else output=input.requestType==='research'?topic:project;
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(output)}]}}]});
+  });
+  const service=new GenerationService(store,provider,'gemini/test');
+  const idea=await service.generate({type:'project'});
+  assert.deepEqual((await service.accept(idea.id)).projectPlan,plan);
+  const research=await service.generate({type:'research'});
+  assert.deepEqual((await service.accept(research.id)).researchPlan,questions);
+  assert.equal((await service.generate({type:'vocabulary',goal:'english'})).words.length,5);
+  assert.equal(contracts.length,6);
+  assert.equal((await store.all()).length,3);
+  assert.equal(contracts[0].properties.text.maxLength,600);
 });
 test('provider sends strict server-side schema and rejects incomplete, refusal and malformed outputs',async()=>{
   let sent;const provider=createModelProvider({apiKey:'test-only-key',model:'configured-model'},async(endpoint,options)=>{sent={endpoint:String(endpoint),...JSON.parse(options.body)};return response(project);});

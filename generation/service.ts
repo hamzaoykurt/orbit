@@ -30,6 +30,7 @@ Do not assume interests. Often introduce unrelated domains; do not keep recombin
 Surprise can be a project, research question or social/real-world experience, NEVER a workout or English plan.
 Do not generate workout programs, exercises, rehabilitation or medical advice. Food is an ordinary meal idea, not diet/calorie/macro/medical advice.
 For research, text must be ONE specific main research question. For projects, text is a concise concept. Do not generate subquestions or tasks yet.
+Match type to requestType; surprise must choose project, research or activity. Match goal to type: project=make, research=research, activity=social, meal=body, speaking=english. Respect a requested goal other than any.
 Do not invent events, opening times or availability. Do not output links or cite sources you did not consult.`;
 const suggestionSchema = schema({
   title: stringSchema(120), text: stringSchema(600), domain: stringSchema(90),

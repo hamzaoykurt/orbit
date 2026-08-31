@@ -8,6 +8,8 @@ Rebuild generation supports OpenAI Responses and Gemini GenerateContent. For Gem
 
 Use a Google AI Studio project on the free tier if no charges are wanted. The application cannot inspect or enforce the Google project's billing tier; enabling billing there changes usage costs. Quota errors stop generation with an explicit message. There is no automatic switch to OpenAI or another paid model, and no hard-coded idea fallback. Gemini's free tier may use submitted content for product improvement. Rebuild sends generation requests, generated idea history for deduplication and selected vocabulary; it does not send private project notes, photos, calendar data or the workspace snapshot. Quick-capture organization remains separate and uses its existing local path unless OpenAI is configured.
 
+Gemini receives an OpenAPI-compatible `responseSchema` for every generation, novelty check and accepted plan. The adapter keeps required fields, enum values, nested objects, arrays and property ordering; it omits unsupported JSON Schema keywords from that API field. The full output contract is also included in the system instruction, with string limits still checked by the server. Do not remove the schema to fix a dialect error: JSON mode alone does not tell Gemini which fields Orbit needs and causes `invalid-provider-output` failures.
+
 OpenAI remains available via `AI_PROVIDER=openai`, `OPENAI_API_KEY` and optional `OPENAI_MODEL`. ChatGPT Plus does not provide API credits. When no provider is selected, a configured Gemini key selects Gemini; otherwise OpenAI is selected. An explicitly selected provider never borrows the other provider's credentials.
 
 - Push changes to `main` in `hamzaoykurt/orbit`.

@@ -48,6 +48,23 @@ export function createModelProvider(config: ModelConfig, transport: typeof fetch
   };
 }
 
+// Gemini's responseSchema is an OpenAPI subset, not the OpenAI JSON Schema
+// dialect. Keep structural constraints, including nested objects and arrays;
+// the full contract below and server validation retain string length limits.
+function geminiSchema(schema: object): Record<string, unknown> {
+  const source = schema as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const key of ['type', 'description', 'enum', 'required', 'minItems', 'maxItems']) {
+    if (source[key] !== undefined) result[key] = source[key];
+  }
+  if (source.properties && typeof source.properties === 'object') {
+    result.properties = Object.fromEntries(Object.entries(source.properties).map(([key, value]) => [key, geminiSchema(value)]));
+    result.propertyOrdering = Object.keys(source.properties);
+  }
+  if (source.items && typeof source.items === 'object') result.items = geminiSchema(source.items);
+  return result;
+}
+
 async function generateGemini(config:ModelConfig,request:ModelRequest,transport:typeof fetch):Promise<unknown> {
   const model=config.model||'gemini-2.0-flash';
   if(!/^gemini-[a-zA-Z0-9._-]+$/.test(model))throw new Error('provider-config-invalid');
@@ -55,11 +72,8 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
   const call=async (selected:string)=>transport(`https://generativelanguage.googleapis.com/v1beta/models/${selected}:generateContent`,{
     method:'POST',signal:request.signal||AbortSignal.timeout(45_000),
     headers:{'x-goog-api-key':config.apiKey!,'Content-Type':'application/json'},
-    body:JSON.stringify({systemInstruction:{parts:[{text:request.instructions}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
-    // Gemini's JSON mode is intentionally paired with the server-side validator.
-    // Its schema dialect differs across model versions; sending the full OpenAI
-    // schema can cause an otherwise valid request to be rejected before generation.
-    generationConfig:{responseMimeType:'application/json',maxOutputTokens:6500},
+    body:JSON.stringify({systemInstruction:{parts:[{text:`${request.instructions}\n\nReturn only one JSON object matching this output contract. Keep field names and enum values exactly as specified; translate content only. Do not wrap the object or add markdown. Respect all string length and array size limits.\n${JSON.stringify(request.schema)}`}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
+    generationConfig:{responseMimeType:'application/json',responseSchema:geminiSchema(request.schema),maxOutputTokens:6500},
     }),
   });
   let response=await call(model);
