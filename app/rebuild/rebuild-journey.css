@@ -224,6 +224,32 @@ html.reduce-motion .rebuild-deck *,html.reduce-motion .rd-overlay,html.reduce-mo
 .rd-drawn-idea .rd-prompt-hint{font-size:12px;margin:12px 0 0}
 .rd-generation-history>button:hover{background:rgba(var(--accent-rgb),.045)}
 @keyframes rd-spin{to{transform:rotate(360deg)}}
+
+/* The weekly rows stay light, while their next actions now share the site's
+   tactile control language with a compact surface and a clear hit area. */
+.rd-row-action .rd-text-button{
+  min-height:40px;
+  padding:9px 13px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel);
+  box-shadow:0 5px 14px rgba(47,38,78,.055),var(--inset);
+  color:var(--ink-2);
+  font-size:12px;
+  font-weight:560;
+  white-space:nowrap;
+  transition:transform .2s,background .2s,border-color .2s,box-shadow .2s;
+}
+.rd-row-action .rd-text-button:hover{
+  transform:translateY(-1px);
+  background:var(--panel-solid);
+  border-color:rgba(var(--accent-rgb),.28);
+  box-shadow:0 8px 18px rgba(var(--accent-rgb),.1),var(--inset);
+  color:var(--ink);
+}
+.rd-row-action .rd-text-button:active{transform:translateY(0);box-shadow:inset 2px 3px 7px rgba(47,38,78,.1)}
+html[data-theme=dark] .rd-row-action .rd-text-button{background:rgba(255,255,255,.045);box-shadow:0 6px 16px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.06)}
+html[data-theme=dark] .rd-row-action .rd-text-button:hover{background:rgba(var(--accent-rgb),.14);border-color:rgba(var(--accent-rgb),.4);box-shadow:0 8px 20px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.07)}
 @media(max-width:700px){
   .rd-domain-detail{padding-left:14px}
   .rd-dialog-idea{padding:26px 22px calc(22px + env(safe-area-inset-bottom))}
@@ -235,4 +261,5 @@ html.reduce-motion .rebuild-deck *,html.reduce-motion .rd-overlay,html.reduce-mo
   .rd-idea-actions .rd-another{flex:1 1 110px}
   .rd-idea-bottom{padding-top:16px}
   .rd-prompt-stage textarea{padding:15px;min-height:230px}
+  .rd-row-action .rd-text-button{min-height:44px;padding-inline:15px;font-size:13px}
 }
