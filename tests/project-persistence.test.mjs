@@ -49,6 +49,14 @@ test('an older save receipt does not clear newer edits; explicit reversions surv
   assert.deepEqual(sync.readPending(device),{state:'{"title":"second"}',base:'{"title":"intermediate"}'});
   assert.deepEqual(sync.rebaseState({title:'intermediate'},{title:'first'},{title:'intermediate'}),{title:'first'});
 });
+test('first-visit offline defaults never overwrite server data on recovery',()=>{
+  const defaults={profile:{name:'Default'},projects:[],workspaces:{}};
+  const remote={profile:{name:'Owner'},projects:[{id:'saved',title:'Saved project'}],workspaces:{saved:workspace()}};
+  assert.deepEqual(sync.rebaseState(defaults,defaults,remote),remote);
+  const local={...defaults,projects:[{id:'offline',title:'New offline idea'}]};
+  const merged=sync.rebaseState(defaults,local,remote);
+  assert.equal(merged.profile.name,'Owner');assert.equal(merged.projects.length,2);assert.deepEqual(merged.workspaces,remote.workspaces);
+});
 test('concurrent project and nested resource changes merge by stable IDs without reviving deletions',()=>{
   const base={projects:[{id:'a',title:'A'},{id:'b',title:'B'}],workspaces:{a:{style:'calm',notes:[{id:'n',body:'old'}]}}};
   const local={projects:[{id:'a',title:'Renamed'}],workspaces:{a:{style:'bold',notes:[{id:'n',body:'old'}]}}};

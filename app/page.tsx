@@ -463,6 +463,8 @@ export default function PersonalOS() {
 
     async function hydrate() {
       let resolvedState = defaultState;
+      // If a first visit starts offline, defaults are a baseline, not user edits.
+      lastSyncedState.current = JSON.stringify(defaultState);
 
       try {
         const pending = readPending(localStorage);
