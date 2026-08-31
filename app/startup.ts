@@ -5,7 +5,7 @@ declare global {
 
 // Start the private data request while the browser is still downloading React.
 // This is a per-document promise, not a persistent or shared response cache.
-export const startupScript = `(function(){if(!window.__orbitStartupState){window.__orbitStartupState=fetch('/api/state',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).catch(function(){return null})}})();`;
+export const startupScript = `(function(){if(!window.__orbitStartupState){window.__orbitStartupState=fetch('/api/state',{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(15000)}).then(function(r){return r.ok?r.json():null}).catch(function(){return null})}})();`;
 
 export async function readStartupState(): Promise<StartupPayload> {
   const pending = window.__orbitStartupState;
@@ -13,7 +13,7 @@ export async function readStartupState(): Promise<StartupPayload> {
     try { return await pending; }
     finally { if (window.__orbitStartupState === pending) delete window.__orbitStartupState; }
   }
-  const response = await fetch('/api/state', { cache: 'no-store' });
+  const response = await fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error('State request failed');
   return response.json() as Promise<StartupPayload>;
 }

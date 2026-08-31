@@ -18,9 +18,9 @@ test('data starts before hydration and is reused without a second request', asyn
   try {
     globalThis.window = window;
     globalThis.fetch = fetch;
-    runInNewContext(startupScript, { window, fetch });
+    runInNewContext(startupScript, { window, fetch, AbortSignal });
     assert.equal(requests, 1);
-    runInNewContext(startupScript, { window, fetch });
+    runInNewContext(startupScript, { window, fetch, AbortSignal });
     assert.equal(requests, 1);
     const first = readStartupState();
     const strictModeSecond = readStartupState();
@@ -34,7 +34,7 @@ test('data starts before hydration and is reused without a second request', asyn
 
 test('early data request fails safely without an unhandled rejection', async () => {
   const window = {};
-  runInNewContext(startupScript, { window, fetch: async () => { throw new Error('offline'); } });
+  runInNewContext(startupScript, { window, AbortSignal, fetch: async () => { throw new Error('offline'); } });
   assert.equal(await window.__orbitStartupState, null);
 });
 
