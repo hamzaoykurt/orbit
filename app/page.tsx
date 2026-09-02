@@ -1588,8 +1588,13 @@ export default function PersonalOS() {
         return;
       }
 
-      const token = await requestGoogleAccess('', true);
-      if (token) await syncGoogleCalendar(token, calendarCursor, googleCalendarId);
+      // Google Identity Services cannot refresh this browser token without a
+      // user gesture. Trying here opens an account chooser on every later
+      // visit after the one-hour token expires. Keep startup passive and let
+      // the user reconnect from the calendar when they actually need sync.
+      localStorage.removeItem(GOOGLE_SESSION_KEY);
+      googleAccessTokenRef.current = '';
+      setGoogleCalendarStatus('disconnected');
     };
 
     void restoreConnection();
