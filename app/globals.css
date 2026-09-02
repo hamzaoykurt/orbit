@@ -287,6 +287,68 @@ html[data-motion=reduced] *,html[data-motion=reduced] *:before,html[data-motion=
 .project-card.expanded .project-subtasks{max-height:1600px}
 .program-content{overflow:hidden;transition:grid-template-rows .48s cubic-bezier(.22,1,.36,1),opacity .24s ease}
 
+/* Tour cards: dates read as a journey, not as one compressed token. */
+.page-programs .program-list-intro{display:flex;align-items:end;justify-content:space-between;gap:24px;margin:30px 2px 16px}
+.page-programs .program-list-intro h1{margin:6px 0 0;font-size:25px;line-height:1.05;letter-spacing:-.045em}
+.page-programs .program-list-intro p{margin:0 0 2px;color:var(--muted);font-size:10px}
+.page-programs .program-card{position:relative;border-color:rgba(var(--accent-rgb),.09);box-shadow:0 15px 36px rgba(42,35,62,.055),inset 0 1px rgba(255,255,255,.78);transition:border-color .22s ease,box-shadow .22s ease,transform .22s ease}
+.page-programs .program-card:before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:linear-gradient(180deg,rgba(var(--accent-rgb),.82),rgba(var(--accent-rgb),.18));opacity:.7}
+.page-programs .program-card:hover{border-color:rgba(var(--accent-rgb),.18);box-shadow:0 19px 44px rgba(42,35,62,.085),inset 0 1px rgba(255,255,255,.82)}
+.page-programs .program-card.open{border-color:rgba(var(--accent-rgb),.2)}
+.page-programs .program-head{grid-template-columns:148px minmax(0,1fr) 150px 42px;min-height:112px;padding:17px 22px 17px 20px}
+.page-programs .program-date{position:relative;width:148px;height:78px;display:grid;grid-template-columns:1fr 22px 1fr;align-items:center;border:1px solid rgba(255,255,255,.5);border-radius:20px;background:linear-gradient(145deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.07));box-shadow:inset 0 1px rgba(255,255,255,.55)}
+.page-programs .program-date-point{display:grid;grid-template-columns:auto auto;grid-template-rows:auto auto;align-items:end;justify-content:center;column-gap:4px;text-align:center}
+.page-programs .program-date-point i{grid-column:1/-1;margin-bottom:4px;color:var(--muted);font-size:6px;font-style:normal;font-weight:800;letter-spacing:.12em}
+.page-programs .program-date-point strong{font-size:25px;line-height:.9;letter-spacing:-.06em}
+.page-programs .program-date-point small{align-self:end;margin:0 0 1px;font-size:8px;font-weight:800;letter-spacing:.04em}
+.page-programs .program-date-divider{width:22px;height:22px;display:grid;place-items:center;color:rgba(var(--accent-rgb),.72)}
+.page-programs .program-date>b{position:absolute;left:50%;bottom:3px;color:var(--muted);font-size:5px;letter-spacing:.1em;transform:translateX(-50%)}
+.page-programs .program-date-fallback{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 10px;text-align:left}
+.page-programs .program-date-fallback small{max-width:86px;margin:0;font-size:8px;line-height:1.25}
+.page-programs .program-status-row{display:flex;align-items:center;gap:8px}
+.page-programs .program-status-row em{display:inline-flex;align-items:center;min-height:24px;padding:5px 8px;border:1px solid rgba(76,148,122,.12);border-radius:8px;color:#4f8c76;background:rgba(78,151,124,.1);font-size:8px;font-style:normal;font-weight:750}
+.page-programs .program-status-row em.planned{border-color:rgba(73,121,175,.13);color:#527eaf;background:rgba(77,127,181,.1)}
+.page-programs .program-status-row em.preparing{border-color:rgba(var(--accent-rgb),.16);color:var(--accent);background:rgba(var(--accent-rgb),.1)}
+.page-programs .program-status-row small{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:8px}
+.page-programs .program-name h2{margin:10px 0 0;font-size:20px;line-height:1.18;letter-spacing:-.035em}
+.page-programs .program-progress{display:grid;grid-template-columns:auto;align-content:center}
+.page-programs .program-progress>i{overflow:hidden}
+.page-programs .program-progress>i b{background:linear-gradient(90deg,var(--accent),rgba(var(--accent-rgb),.65))}
+.page-programs .program-chevron{border:1px solid rgba(var(--accent-rgb),.08);background:rgba(var(--accent-rgb),.065);color:var(--muted)}
+.page-programs .program-card.open .program-chevron{background:rgba(var(--accent-rgb),.13);color:var(--accent)}
+.page-programs .program-overview{margin-top:18px}
+
+html[data-theme=dark] .page-programs .program-card{border-color:rgba(255,255,255,.07);box-shadow:0 18px 45px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.035)}
+html[data-theme=dark] .page-programs .program-date{border-color:rgba(255,255,255,.055);background:linear-gradient(145deg,rgba(var(--accent-rgb),.15),rgba(255,255,255,.025));box-shadow:inset 0 1px rgba(255,255,255,.04)}
+html[data-theme=dark] .page-programs .program-status-row em{border-color:rgba(93,185,151,.18);background:rgba(71,155,125,.11);color:#77b9a0}
+html[data-theme=dark] .page-programs .program-status-row em.planned{border-color:rgba(95,147,207,.18);background:rgba(72,124,184,.11);color:#83a9d2}
+
+@media(max-width:560px){
+  .page-programs .program-list-intro{align-items:start;flex-direction:column;gap:7px;margin:25px 1px 13px}
+  .page-programs .program-list-intro h1{font-size:24px}
+  .page-programs .program-list-intro p{font-size:10px}
+  .page-programs .program-stack{gap:12px}
+  .page-programs .program-card{border-radius:22px}
+  .page-programs .program-card:before{width:3px}
+  .page-programs .program-head{grid-template-columns:124px minmax(0,1fr) 38px;grid-template-rows:auto auto;min-height:0;gap:13px 11px;padding:16px 14px 14px 15px}
+  .page-programs .program-date{width:124px;height:72px;border-radius:17px;grid-template-columns:1fr 18px 1fr}
+  .page-programs .program-date-point strong{font-size:23px}
+  .page-programs .program-date-point small{font-size:8px}
+  .page-programs .program-date-point i{font-size:5px;margin-bottom:4px}
+  .page-programs .program-date-divider{width:18px}
+  .page-programs .program-name h2{margin-top:9px;font-size:17px;line-height:1.18}
+  .page-programs .program-status-row{gap:6px}
+  .page-programs .program-status-row em{min-height:22px;padding:4px 7px;font-size:8px}
+  .page-programs .program-status-row small{font-size:7px}
+  .page-programs .program-chevron{grid-column:3;grid-row:1;width:36px;height:36px;border-radius:12px}
+  .page-programs .program-progress{display:grid;grid-column:1/-1;grid-row:2;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:9px;padding:9px 11px;border-radius:12px;background:rgba(var(--accent-rgb),.045)}
+  .page-programs .program-progress strong,.page-programs .program-progress small{text-align:left}
+  .page-programs .program-progress strong{font-size:11px}
+  .page-programs .program-progress>i{height:4px;margin:0}
+  .page-programs .program-progress small{font-size:8px;white-space:nowrap}
+  .page-programs .program-overview{margin-top:14px}
+}
+
 :is(.kanban-board,.roadmap-track,.project-summary,.program-overview,.archive-tabs,.settings-nav,.calendar-card){overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 :is(.kanban-board,.roadmap-track,.project-summary,.program-overview,.archive-tabs,.settings-nav,.calendar-card)::-webkit-scrollbar{display:none}
 
