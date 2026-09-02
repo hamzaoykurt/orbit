@@ -13,6 +13,7 @@ import type { Practice, ResearchTopic } from './practice-model';
 import { IdeaStudio } from './idea-studio';
 import { EnglishPractice } from './english-practice';
 import { FitnessLink } from './fitness-link';
+import { ResearchNotebook } from './research-notebook';
 import './rebuild-journey.css';
 
 type Props = {
@@ -105,7 +106,7 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
         <section className={`rd-domain rd-research-row ${expanded==='research'?'is-open':''}`}>
           <div className="rd-domain-line">{rowHeading('research','Research',<span>{topic?`${topic.questions.filter(question=>question.explored).length} / ${topic.questions.length}`:'Yeni bir meraka yer aç.'}</span>)}</div>{topic&&<p className="rd-current-title">{topic.question}</p>}
           <div className="rd-row-action">{topic?<button className="rd-text-button" onClick={()=>toggle('research')}>Devam et <ArrowRight size={15}/></button>:<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Bana bir konu ver <Sparkle size={15}/></button>}</div>
-          {expansion('research',<>{topic&&<><ResearchQuestions topic={topic} onChange={(id,change)=>onUpdatePractice(current=>updateQuestion(current,topic.id,id,change))}/>{topic.questions.every(question=>question.explored)&&<p className="rd-inline-copy">Bu araştırmadaki tüm soruları keşfettin. Geçmişte saklanıyor.</p>}</>}<div className="rd-detail-actions">{topic&&<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Yeni konu <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>setOverlay('history')}><History size={15}/> Araştırma geçmişi</button></div></>)}
+          {expansion('research',<>{topic&&<ResearchNotebook key={topic.id} topic={topic} onChange={change=>onUpdatePractice(current=>({...current,research:current.research.map(item=>item.id===topic.id?change(item):item)}))}/>}<div className="rd-detail-actions">{topic&&<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Yeni konu <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>setOverlay('history')}><History size={15}/> Araştırma geçmişi</button></div></>)}
         </section>
         <section className={`rd-domain rd-create-row ${expanded==='make'?'is-open':''}`}>
           <div className="rd-domain-line">{rowHeading('make','Create',<span>{linkedProject?`${linkedProject.progress}%`:'Yeni bir fikre açık.'}</span>)}</div>{linkedProject&&<p className="rd-current-title">{linkedProject.title}</p>}

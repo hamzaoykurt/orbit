@@ -22,7 +22,7 @@ test('plan, style, tasks and flow survive JSON reload and normalization',()=>{
   assert.equal(restored.diagrams.length,1);
   assert.equal(restored.diagrams[0].edges.length,restored.diagrams[0].nodes.length-1);
   assert.equal(restored.diagrams[0].nodes.length,5);
-  assert.match(restored.notes[0].body,/İlk kapsam/);
+  assert.match(restored.notes[0].context,/İlk kapsam/);
   assert.ok(restored.diagrams[0].nodes.every(node=>node.x<=820&&node.y<=520&&node.label.length<=140));
 });
 test('reevaluation preserves user diagrams, notes, overrides, creation time and deleted flows',()=>{

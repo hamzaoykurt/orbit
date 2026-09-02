@@ -17,7 +17,8 @@ export function addPlanningResearch(practice:Practice,projectId:string,title:str
   if(practice.research.some(topic=>topic.id===id))return {...practice,currentResearchId:id};
   const topic:ResearchTopic={id,ideaId:'',projectId,source:'project-planning',title:title.slice(0,120),
     question:`“${title}” fikrinin ilk denemesi hangi kullanıcı ihtiyacını, hangi gözlenebilir sonuçla doğrulayabilir?`,startedAt:plan.updatedAt,
-    questions:plan.analysis.research.map((text,index)=>({id:`${id}-${index}`,text:text.slice(0,240),explored:false,note:''}))};
+    questions:plan.analysis.research.map((text,index)=>({id:`${id}-${index}`,text:text.slice(0,240),explored:false,note:'',evidence:'',implication:'',unknown:''})),
+    synthesis:{explanation:'',keyPoints:'',openQuestions:''},sources:[],images:[],quiz:null};
   return {...practice,currentResearchId:id,research:[...practice.research,topic]};
 }
 export function applyPlanning(workspace:ProjectWorkspaceData,plan:ProjectPlanning):ProjectWorkspaceData {
@@ -25,8 +26,8 @@ export function applyPlanning(workspace:ProjectWorkspaceData,plan:ProjectPlannin
   return {...workspace,description:workspace.description||plan.input.idea,
     // Only initialize once. Reevaluation must not replace edited or deleted diagrams.
     diagrams: !workspace.planning && !workspace.diagrams.length ? [planningDiagram(plan)] : workspace.diagrams,
-    notes: !workspace.planning ? [...workspace.notes, { id: `criteria-${plan.input.id}`, title: 'İlk sürümün başarı ölçütü',
-      body: `İlk kapsam\n${plan.analysis.mvp}\n\nDoğrulama adımı\n${plan.analysis.firstSteps.at(-1) || ''}\n\nGözlem ve karar\nDeneme sonucunu buraya yaz; devam etme veya kapsamı değiştirme kararını kanıta bağla.` }] : workspace.notes,
+    notes: !workspace.planning ? [...workspace.notes, { id: `criteria-${plan.input.id}`, title: 'İlk sürümün başarı ölçütü',kind:'decision',context:`İlk kapsam\n${plan.analysis.mvp}`,
+      body:`Doğrulama adımı\n${plan.analysis.firstSteps.at(-1) || ''}`,outcome:'Deneme sonucunu ve devam kararını kanıta bağla.',nextStep:'',links:[],images:[] }] : workspace.notes,
     planning:{...plan,
     createdAt:workspace.planning?.createdAt||plan.createdAt,
     overrides:workspace.planning?.overrides||plan.overrides,

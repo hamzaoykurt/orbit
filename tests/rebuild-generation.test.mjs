@@ -134,7 +134,7 @@ test('history is durable and paginated; decisions, ownership, concurrency leases
 });
 test('new week resets only weekly marks; vocabulary, incomplete research, project and speaking history survive',()=>{
   let state=practice.emptyPractice();state.activeProjectId='generated-project';state.sessions=[{id:'session',at:'2026-08-25T12:00:00Z',seconds:42,prompt:'A real prompt',words:['use']}];
-  state.research=[{id:'research',ideaId:'idea',title:'Current',question:'Question?',startedAt:'2026-08-25T12:00:00Z',questions:[{id:'q',text:'Why?',explored:false,note:''}]}];state.currentResearchId='research';
+  state.research=[{id:'research',ideaId:'idea',title:'Current',question:'Question?',startedAt:'2026-08-25T12:00:00Z',questions:[{id:'q',text:'Why?',explored:false,note:'',evidence:'',implication:'',unknown:''}],synthesis:{explanation:'',keyPoints:'',openQuestions:''},sources:[],images:[],quiz:null}];state.currentResearchId='research';
   const prior=JSON.stringify(state);let weekly=deck.ensureWeek(deck.emptyDeck(),'2026-08-24');weekly=deck.completeGoal(weekly,'2026-08-24','body',{id:'sport',at:'2026-08-25T12:00:00Z'});weekly=deck.ensureWeek(weekly,'2026-08-31');
   assert.deepEqual(weekly.weeks['2026-08-31'].marks,{});assert.equal(JSON.stringify(state),prior);assert.deepEqual(practice.normalizePractice(JSON.parse(prior)),state);assert.equal(practice.speakingCount(state,'2026-08-31'),0);assert.equal(practice.speakingCount(state,'2026-08-24'),1);
 });

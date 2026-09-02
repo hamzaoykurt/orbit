@@ -20,7 +20,7 @@ export function projectFromIdea(idea:GeneratedIdea) {
   input.selectedStyle = analysis.recommendations[0].styleId;
   const planning: ProjectPlanning = { version:1, origin:'rebuild', createdAt:idea.generatedAt, updatedAt:idea.generatedAt,
     input, analysis, selectedStyle:input.selectedStyle, lifecycle:analysis.suggestedLifecycle, overrides:{} };
-  const workspace: ProjectWorkspaceData = {description:plan.description,diagrams:[],links:[],notes:[{id:`${idea.id}-plan`,title:'Amaç ve kapsam',body:`Amaç\n${plan.goal}\n\nKapsam\n${plan.scope}${plan.approach?`\n\nYaklaşım\n${plan.approach}`:''}`} ]};
+  const workspace: ProjectWorkspaceData = {description:plan.description,diagrams:[],links:[],notes:[{id:`${idea.id}-plan`,title:'Amaç ve kapsam',kind:'idea',context:`Amaç\n${plan.goal}`,body:`Kapsam\n${plan.scope}`,outcome:plan.approach?`Yaklaşım\n${plan.approach}`:'',nextStep:'',links:[],images:[]} ]};
   return {
     project:{id:idea.resultingId,title:idea.title,stage:stageFromLifecycle(planning.lifecycle),progress:0,color:'violet',due:'',tags:[...new Set([idea.domain,analysis.type])],tasks:[...plan.tasks],cover:'minimal' as const},
     workspace:applyPlanning(workspace,planning),

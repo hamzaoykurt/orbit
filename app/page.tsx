@@ -6,8 +6,11 @@ import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
 import { readStartupState } from './startup';
 import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
-import { emptyTask, emptyWorkspace } from './projects/project-types';
+import { emptyTask, emptyWorkspace, normalizeWorkspace } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
+import { NotesWorkspace } from './notes/notes-workspace';
+import { newNote, normalizeNotes } from './notes/note-model';
+import type { Note } from './notes/note-model';
 import { newCreationDraft, normalizeCreationDraft, normalizePlanning, lifecycleFromStage, stageFromLifecycle } from './projects/planning-types';
 import type { CreationDraft, ProjectPlanning } from './projects/planning-types';
 import { applyPlanning, addPlanningResearch, planningResearchId } from './projects/planning-actions';
@@ -34,7 +37,6 @@ const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(
 const ProjectsHub = lazy(() => import('./projects/projects-hub').then(module => ({ default: module.ProjectsHub })));
 const ProjectCreator = lazy(() => import('./projects/project-creator').then(module => ({ default: module.ProjectCreator })));
 const RebuildJourney = lazy(() => import('./rebuild/rebuild-journey').then(module => ({ default: module.RebuildJourney })));
-type Note = { id: string; title: string; body: string; date: string; tone: string };
 type PersonalListKey = 'todo' | 'buy' | 'visit';
 type PersonalItemDetails = { title?: string; note?: string; price?: string; link?: string; locationUrl?: string; priority?: 'normal' | 'important' };
 type PersonalSubtask = { id: string; title: string };
@@ -174,11 +176,11 @@ const defaultState: PersistedState = {
   notificationDismissedIds: [],
   archive: [],
   restoredArchiveIds: [],
-  notes: [
+  notes: normalizeNotes([
     { id: 'n1', title: 'Yol haritası notları', body: 'Sistemi büyütmeden önce her ekranın tek bir net işi olmalı. Sadelik, özellik eksikliği değil; doğru sıradır.', date: 'Bugün · 10:42', tone: 'violet' },
     { id: 'n2', title: 'Orbit Explorer fikri', body: 'Gezegenleri ölçekli yörüngelerde, dokunarak keşfedilen sakin bir deneyime dönüştür.', date: 'Dün · 22:18', tone: 'blue' },
     { id: 'n3', title: 'Eylül turu', body: 'Seminer içeriğinde ilk 15 dakikayı daha görsel ve daha kısa tut. Transfer detaylarını tekrar kontrol et.', date: '21 Ağu · 16:05', tone: 'sand' },
-  ],
+  ]),
   mobileNav: ['personal', 'projects', 'kibleteyn', 'calendar'],
   profile: { name: 'Emir Güney', workspace: 'Kişisel çalışma alanı' },
   settings: { notifications: true, motion: true, sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
@@ -209,7 +211,7 @@ function mergePersistedState(value: unknown): PersistedState {
     projectExtraTasks: saved.projectExtraTasks && typeof saved.projectExtraTasks === 'object' && !Array.isArray(saved.projectExtraTasks) ? saved.projectExtraTasks : defaultState.projectExtraTasks,
     projectRemovedTasks: saved.projectRemovedTasks && typeof saved.projectRemovedTasks === 'object' && !Array.isArray(saved.projectRemovedTasks) ? saved.projectRemovedTasks : defaultState.projectRemovedTasks,
     projectSubtasks: saved.projectSubtasks && typeof saved.projectSubtasks === 'object' && !Array.isArray(saved.projectSubtasks) ? saved.projectSubtasks : defaultState.projectSubtasks,
-    projectWorkspaces: saved.projectWorkspaces && typeof saved.projectWorkspaces === 'object' && !Array.isArray(saved.projectWorkspaces) ? Object.fromEntries(Object.entries(saved.projectWorkspaces).map(([id, workspace]) => [id, { ...emptyWorkspace, ...workspace, planning: normalizePlanning(workspace?.planning) }])) : {},
+    projectWorkspaces: saved.projectWorkspaces && typeof saved.projectWorkspaces === 'object' && !Array.isArray(saved.projectWorkspaces) ? Object.fromEntries(Object.entries(saved.projectWorkspaces).map(([id, workspace]) => { const normalized=normalizeWorkspace(workspace); return [id, { ...normalized, planning: normalizePlanning(workspace?.planning) }]; })) : {},
     projectTaskDetails: saved.projectTaskDetails && typeof saved.projectTaskDetails === 'object' && !Array.isArray(saved.projectTaskDetails) ? saved.projectTaskDetails : {},
     customPrograms: Array.isArray(saved.customPrograms) ? saved.customPrograms : defaultState.customPrograms,
     removedProgramIds: Array.isArray(saved.removedProgramIds) ? saved.removedProgramIds : defaultState.removedProgramIds,
@@ -233,7 +235,7 @@ function mergePersistedState(value: unknown): PersistedState {
     notificationDismissedIds: Array.isArray(saved.notificationDismissedIds) ? saved.notificationDismissedIds : defaultState.notificationDismissedIds,
     archive: Array.isArray(saved.archive) ? saved.archive : defaultState.archive,
     restoredArchiveIds: Array.isArray(saved.restoredArchiveIds) ? saved.restoredArchiveIds : defaultState.restoredArchiveIds,
-    notes: Array.isArray(saved.notes) ? saved.notes : defaultState.notes,
+    notes: Array.isArray(saved.notes) ? normalizeNotes(saved.notes) : defaultState.notes,
     mobileNav: migratedMobileNav,
     profile: { ...defaultState.profile, ...(saved.profile ?? {}) },
     settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4 } : {}) },
@@ -420,8 +422,6 @@ export default function PersonalOS() {
   const googleRestoreStartedRef = useRef(false);
   const googleConfigRequestedRef = useRef(false);
   const [profileDraft, setProfileDraft] = useState(defaultState.profile);
-  const [noteSearch, setNoteSearch] = useState('');
-  const [noteFilter, setNoteFilter] = useState<'all' | 'ideas' | 'logs'>('all');
   const [archiveFilter, setArchiveFilter] = useState<'all' | 'project' | 'program' | 'note'>('all');
   const [settingsTab, setSettingsTab] = useState<'general' | 'appearance' | 'notifications' | 'data'>('general');
   const [searchText, setSearchText] = useState('');
@@ -1070,7 +1070,7 @@ export default function PersonalOS() {
 
   const addNote = () => {
     if (!noteDraft.title.trim()) return;
-    const note = { id: `n-${Date.now()}`, title: noteDraft.title.trim(), body: noteDraft.body.trim() || 'Yeni not', date: 'Şimdi', tone: ['violet', 'blue', 'sand'][state.notes.length % 3] };
+    const note: Note = { ...newNote(noteDraft.title.toLocaleLowerCase('tr-TR').includes('fikir') ? 'idea' : 'quick', noteDraft.title.trim()), body: noteDraft.body.trim() || 'Yeni not' };
     setState((current) => ({ ...current, notes: [note, ...current.notes] }));
     setNoteDraft({ title: '', body: '' }); setModal(null); notify('Not kaydedildi.');
   };
@@ -1383,7 +1383,7 @@ export default function PersonalOS() {
           const event: CalendarEvent = { id: `ai-event-${now}-${index}`, title: item.title, tone: 'blue', time: item.time || 'Tüm gün', duration: item.duration || '60 dk', description: item.details, source: 'Orbit AI' };
           next.calendarEvents[date] = [...(next.calendarEvents[date] ?? []), event];
         } else {
-          next.notes.unshift({ id: `ai-note-${now}-${index}`, title: item.title, body: item.details || item.title, date: 'Şimdi · Orbit AI', tone: 'violet' });
+          next.notes.unshift({ ...newNote('quick', item.title), id: `ai-note-${now}-${index}`, body: item.details || item.title, date: 'Şimdi · Orbit AI' });
         }
       });
       return next;
@@ -1442,7 +1442,7 @@ export default function PersonalOS() {
       setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: [...(current.calendarEvents[date] ?? []), event] } }));
       if (googleAccessTokenRef.current) void createGoogleCalendarEvent(event, date).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
     }
-    if (capturePage === 'notes') setState((current) => ({ ...current, notes: [{ id: `note-${Date.now()}`, title, body: captureDetails.trim() || 'Hızlı kayıt', date: 'Şimdi', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
+    if (capturePage === 'notes') setState((current) => ({ ...current, notes: [{ ...newNote('quick', title), body: captureDetails.trim() || 'Hızlı kayıt', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
     setModal(null); go(capturePage); notify('Kayıt seçtiğin alana eklendi.');
   };
 
@@ -1662,7 +1662,7 @@ export default function PersonalOS() {
       const next = { ...current, archive: current.archive.filter((entry) => entry.id !== item.id), restoredArchiveIds: [...new Set([...current.restoredArchiveIds, item.id])] };
       if (item.type === 'note') {
         const source = item.source as Note | undefined;
-        next.notes = [{ id: `restored-note-${Date.now()}`, title: source?.title ?? item.title, body: source?.body ?? 'Arşivden geri yüklendi.', date: 'Şimdi', tone: source?.tone ?? 'violet' }, ...next.notes];
+        next.notes = [{ ...(source ?? newNote('quick', item.title)), id: `restored-note-${Date.now()}`, date: 'Şimdi' }, ...next.notes];
       }
       if (item.type === 'project') {
         const source = item.source as Project | undefined;
@@ -1905,16 +1905,9 @@ export default function PersonalOS() {
   };
 
   const renderNotes = () => {
-    const filteredNotes = state.notes.filter((note) => {
-      const matchesSearch = `${note.title} ${note.body}`.toLocaleLowerCase('tr').includes(noteSearch.toLocaleLowerCase('tr'));
-      const matchesFilter = noteFilter === 'all' || (noteFilter === 'ideas' && note.tone === 'blue') || (noteFilter === 'logs' && note.tone === 'violet');
-      return matchesSearch && matchesFilter;
-    });
     return <>
-      <PageTitle eyebrow="NOTLAR" title="Düşüncelerin için sessiz alan." description="Fikirler, kayıtlar ve küçük keşifler; sade ve aranabilir." action={<button className="primary-button compact" onClick={()=>setModal('note')}><Plus size={15}/> Yeni not</button>}/>
-      <div className="notes-toolbar"><div className="search-field"><Search size={15}/><input aria-label="Notlarda ara" placeholder="Notlarda ara..." value={noteSearch} onChange={(event)=>setNoteSearch(event.target.value)}/>{noteSearch&&<button aria-label="Not aramasını temizle" onClick={()=>setNoteSearch('')}><X size={13}/></button>}</div><div className="note-filters"><button className={noteFilter==='all'?'active':''} onClick={()=>setNoteFilter('all')}>Tümü</button><button className={noteFilter==='ideas'?'active':''} onClick={()=>setNoteFilter('ideas')}>Fikirler</button><button className={noteFilter==='logs'?'active':''} onClick={()=>setNoteFilter('logs')}>Kayıtlar</button></div></div>
-      <div className="notes-grid"><button className="new-note-card" onClick={()=>setModal('note')}><span><Plus size={23}/></span><strong>Yeni düşünce</strong><small>Yazmaya başla</small></button>{filteredNotes.map((note)=><article key={note.id} className={`note-card surface ${note.tone}`}><div className="note-card-top"><span>{note.tone==='violet'?'KAYIT':note.tone==='blue'?'FİKİR':'NOT'}</span><IconButton label="Notu arşivle" onClick={()=>archiveNote(note)}><Archive size={15}/></IconButton></div><h2>{note.title}</h2><p>{note.body}</p><footer><span>{note.date}</span><button aria-label="Notu arşivle" onClick={()=>archiveNote(note)}><Trash2 size={14}/></button></footer></article>)}</div>
-      {!filteredNotes.length&&<div className="notes-empty"><Search size={21}/><strong>Eşleşen not yok.</strong><span>Aramayı veya filtreyi değiştirebilirsin.</span></div>}
+      <PageTitle eyebrow="NOTLAR" title="Düşünceyi doğru biçimde yakala." description="Hızlı not, fikir, günlük ve referanslar için birbirinden farklı başlangıçlar."/>
+      <NotesWorkspace notes={state.notes} onChange={notes=>setState(current=>({...current,notes}))} onArchive={archiveNote}/>
     </>;
   };
 
