@@ -16,6 +16,62 @@ export const emptyWorkspace: ProjectWorkspaceData = { description: '', diagrams:
 export const emptyTask: ProjectTaskDetails = { note: '', photos: [] };
 export type WorkspaceTask = { id: string; index: number; title: string; children: { id: string; title: string; legacy?: boolean }[] };
 
+type ProjectTaskState = {
+  removedTasks: string[];
+  completed: Record<string, boolean>;
+  subtasks: Record<string, { id: string; title: string }[]>;
+  details: Record<string, ProjectTaskDetails>;
+};
+
+const removalKey = (index: number, title: string) => `orbit-task:${index}:${title}`;
+
+export function visibleProjectTaskTitles(tasks: string[], extraTasks: string[], removedTasks: string[]): string[] {
+  return [...tasks, ...extraTasks].filter((title, index) => !removedTasks.includes(title) && !removedTasks.includes(removalKey(index, title)));
+}
+
+// Task identities are index based in the persisted model. Compact every related
+// collection together so removing a task cannot attach its notes/subtasks to the
+// task that moves into the vacated position.
+export function removeProjectTaskState(projectId: string, tasks: string[], extraTasks: string[], taskIndex: number, state: ProjectTaskState): ProjectTaskState {
+  const all = [...tasks, ...extraTasks];
+  const visible = all.map((title, sourceIndex) => ({ title, sourceIndex })).filter(item => !state.removedTasks.includes(item.title) && !state.removedTasks.includes(removalKey(item.sourceIndex, item.title)));
+  if (!visible[taskIndex]) return state;
+  let end = taskIndex + 1;
+  while (end < visible.length && visible[end].title.startsWith('>')) end += 1;
+  const deletedIndexes = new Set(Array.from({ length: end - taskIndex }, (_, offset) => taskIndex + offset));
+  const deletedSubtaskIds = new Set([...deletedIndexes].flatMap(index => (state.subtasks[`${projectId}:${index}`] ?? []).map(item => item.id)));
+  const indexMap = new Map<number, number>();
+  let nextIndex = 0;
+  visible.forEach((_, index) => { if (!deletedIndexes.has(index)) indexMap.set(index, nextIndex++); });
+  const taskIdPrefix = `project-${projectId}-`;
+  const subtaskKeyPrefix = `${projectId}:`;
+  const remapTaskRecord = <T,>(record: Record<string, T>): Record<string, T> => {
+    const result: Record<string, T> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (!key.startsWith(taskIdPrefix)) { if (!deletedSubtaskIds.has(key)) result[key] = value; continue; }
+      const oldIndex = Number(key.slice(taskIdPrefix.length));
+      if (!Number.isInteger(oldIndex)) { result[key] = value; continue; }
+      const mapped = indexMap.get(oldIndex);
+      if (mapped !== undefined) result[`${taskIdPrefix}${mapped}`] = value;
+    }
+    return result;
+  };
+  const subtasks: ProjectTaskState['subtasks'] = {};
+  for (const [key, value] of Object.entries(state.subtasks)) {
+    if (!key.startsWith(subtaskKeyPrefix)) { subtasks[key] = value; continue; }
+    const oldIndex = Number(key.slice(subtaskKeyPrefix.length));
+    if (!Number.isInteger(oldIndex)) { subtasks[key] = value; continue; }
+    const mapped = indexMap.get(oldIndex);
+    if (mapped !== undefined) subtasks[`${subtaskKeyPrefix}${mapped}`] = value;
+  }
+  return {
+    removedTasks: [...new Set([...state.removedTasks, ...visible.slice(taskIndex, end).map(item => removalKey(item.sourceIndex, item.title))])],
+    completed: remapTaskRecord(state.completed),
+    subtasks,
+    details: remapTaskRecord(state.details),
+  };
+}
+
 // Preserve the original indices used by existing completion and subtask records.
 export function buildProjectTasks(projectId: string, titles: string[], subtasks: Record<string, { id: string; title: string }[]>): WorkspaceTask[] {
   const result: WorkspaceTask[] = [];

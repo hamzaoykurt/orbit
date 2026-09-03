@@ -20,6 +20,23 @@ test('legacy and nested subtasks preserve all completion identities', () => {
   assert.deepEqual(result[0].children.map(child => child.id), ['sub-1', 'project-orbit-1']);
   assert.equal(result[0].children[1].legacy, true);
 });
+test('removing a project task also removes its children and safely compacts related state', () => {
+  const state = model.removeProjectTaskState('orbit', ['First', '> Legacy child', 'Second', 'Third'], [], 0, {
+    removedTasks: [],
+    completed: { 'project-orbit-0': true, 'project-orbit-1': true, 'project-orbit-2': true, 'child-1': true, unrelated: true },
+    subtasks: { 'orbit:0': [{ id: 'child-1', title: 'Nested child' }], 'orbit:2': [{ id: 'child-2', title: 'Keep me' }], 'other:0': [{ id: 'other-child', title: 'Other project' }] },
+    details: { 'project-orbit-0': { note: 'delete', photos: [] }, 'project-orbit-2': { note: 'keep', photos: [] } },
+  });
+  assert.deepEqual(model.visibleProjectTaskTitles(['First', '> Legacy child', 'Second', 'Third'], [], state.removedTasks), ['Second', 'Third']);
+  assert.deepEqual(state.completed, { 'project-orbit-0': true, unrelated: true });
+  assert.deepEqual(state.subtasks['orbit:0'], [{ id: 'child-2', title: 'Keep me' }]);
+  assert.deepEqual(state.subtasks['other:0'], [{ id: 'other-child', title: 'Other project' }]);
+  assert.equal(state.details['project-orbit-0'].note, 'keep');
+});
+test('task removal keys distinguish duplicate titles', () => {
+  const state = model.removeProjectTaskState('p', ['Repeat', 'Repeat'], [], 0, { removedTasks: [], completed: {}, subtasks: {}, details: {} });
+  assert.deepEqual(model.visibleProjectTaskTitles(['Repeat', 'Repeat'], [], state.removedTasks), ['Repeat']);
+});
 test('standalone legacy child remains accessible', () => {
   assert.equal(model.buildProjectTasks('x', ['> Legacy'], {})[0].title, 'Legacy');
 });
@@ -56,8 +73,8 @@ test('upload reader limits declared and streamed sizes', async () => {
 
 const objects = new Map();
 globalThis.__projectTestEnv = { MEDIA: {
-  async put(key, value, options) { objects.set(key, { body: value, httpMetadata: options.httpMetadata }); },
-  async get(key) { return objects.get(key) ?? null; },
+  async put(key, value, options) { objects.set(key, { value: value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength), metadata: options.metadata }); },
+  async getWithMetadata(key) { return objects.get(key) ?? { value: null, metadata: null }; },
 } };
 const contextUrl = moduleUrl('../auth/context.ts');
 const { authenticatedRequest } = await import(contextUrl);
@@ -74,7 +91,7 @@ test('missing production storage is only disclosed to an authenticated owner', a
   try {
     const response = await signed(() => api.POST(new Request('https://os.cosmibit.com/api/project-media', { method: 'POST', body: png })));
     assert.equal(response.status, 503);
-    assert.match((await response.json()).error, /depolaması henüz etkin değil/);
+    assert.match((await response.json()).error, /depolaması şu anda kullanılamıyor/);
     assert.equal((await api.GET(new Request('https://os.cosmibit.com/api/project-media?id=missing'))).status, 401);
   } finally { globalThis.__projectTestEnv.MEDIA = media; }
 });

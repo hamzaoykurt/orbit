@@ -17,5 +17,11 @@
       "database_id": "93606aee-098c-4e2d-af46-21c1d10a207f",
       "migrations_dir": "migrations"
     }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "MEDIA",
+      "id": "a612cf79d02845228473634c5119a3b4"
+    }
   ]
 }

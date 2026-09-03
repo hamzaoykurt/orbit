@@ -32,9 +32,9 @@ OpenAI remains available via `AI_PROVIDER=openai`, `OPENAI_API_KEY` and optional
 
 ## Photo storage
 
-The production account currently has R2 disabled. The previous placeholder `site-creator-r2` binding caused three deployments to fail with Cloudflare error `10042` after successful builds. That mandatory binding has been removed; missing storage now returns an explicit 503 instead of blocking all releases.
+Private project, research and note images use the `orbit-media` Workers KV namespace through the `MEDIA` binding. The Free Workers plan provides a hard quota instead of usage overage billing; uploads fail safely if the account limit is reached. Values remain capped at 10 MB by the application, below KV's per-value limit.
 
-Photo uploads now use the verified Worker session, but still need a real, user-approved storage setup. Do not enable billing, trust arbitrary identity headers, or make private photos public to bypass these requirements. No bucket or remote data was deleted by removing the local Sites integration.
+Media is never public. Uploads and reads pass through `/api/project-media`, require the verified Worker session and use a SHA-256 owner prefix. Do not trust arbitrary identity headers or expose the namespace through a public endpoint.
 
 ## Private access and remembered devices
 

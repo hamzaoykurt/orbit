@@ -8,7 +8,7 @@ import { readStartupState } from './startup';
 import { useNavigation, useNavigationState } from './use-navigation';
 import type { PageKey } from './navigation';
 import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
-import { emptyTask, emptyWorkspace, normalizeWorkspace } from './projects/project-types';
+import { emptyTask, emptyWorkspace, normalizeWorkspace, removeProjectTaskState, visibleProjectTaskTitles } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
 import { NotesWorkspace } from './notes/notes-workspace';
 import { newNote, normalizeNotes } from './notes/note-model';
@@ -1221,10 +1221,19 @@ export default function PersonalOS() {
     setModal(null); notify('Operasyon görevi eklendi.');
   };
 
-  const visibleProjectTasks = (project: Project) => [
-    ...project.tasks,
-    ...(state.projectExtraTasks[project.id] ?? []),
-  ].filter((task) => !(state.projectRemovedTasks[project.id] ?? []).includes(task));
+  const visibleProjectTasks = (project: Project) => visibleProjectTaskTitles(project.tasks, state.projectExtraTasks[project.id] ?? [], state.projectRemovedTasks[project.id] ?? []);
+
+  const removeProjectTask = (project: Project, taskIndex: number) => {
+    setState(current => {
+      const result = removeProjectTaskState(project.id, project.tasks, current.projectExtraTasks[project.id] ?? [], taskIndex, {
+        removedTasks: current.projectRemovedTasks[project.id] ?? [], completed: current.completed,
+        subtasks: current.projectSubtasks, details: current.projectTaskDetails,
+      });
+      return { ...current, completed: result.completed, projectSubtasks: result.subtasks, projectTaskDetails: result.details,
+        projectRemovedTasks: { ...current.projectRemovedTasks, [project.id]: result.removedTasks } };
+    });
+    notify('Proje görevi silindi.');
+  };
 
   const removeProjectSubtask = (key: string, subtask: PersonalSubtask) => {
     setState((current)=>({...current,projectSubtasks:{...current.projectSubtasks,[key]:(current.projectSubtasks[key]??[]).filter((item)=>item.id!==subtask.id)},completed:Object.fromEntries(Object.entries(current.completed).filter(([id])=>id!==subtask.id))}));
@@ -1827,6 +1836,7 @@ export default function PersonalOS() {
       return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => backTo('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
         onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
+        onRemoveTask={index => removeProjectTask(project, index)}
         onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}
         onRemoveSubtask={(index, task) => removeProjectSubtask(`${project.id}:${index}`, task)}
         onDetails={(id, update) => setState(current => ({ ...current, projectTaskDetails: { ...current.projectTaskDetails, [id]: update(current.projectTaskDetails[id] ?? emptyTask) } }))}
