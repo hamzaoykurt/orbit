@@ -1,12 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useNavigationState } from '../use-navigation';
 import { Check, Maximize2, ArrowLeft } from 'lucide-react';
 import { designCatalog, findDesignStyle } from './design-catalog';
 import { DesignPreview } from './design-preview';
 import type { DesignRecommendation } from './planning-types';
 
 export function DesignPicker({ selected, recommendations, onSelect }: {selected:string|null;recommendations:DesignRecommendation[];onSelect:(id:string)=>void}) {
-  const [all,setAll]=useState(false), [expanded,setExpanded]=useState<string|null>(null);
+  const [all,setAll]=useNavigationState<boolean>('overlay:creator/design-all',false,true), [expanded,setExpanded]=useNavigationState<string|null>('overlay:creator/design-detail',null,true);
   const ordered=[...recommendations.map(r=>findDesignStyle(r.styleId)).filter(s=>!!s),...designCatalog.filter(s=>!recommendations.some(r=>r.styleId===s.id))];
   const specimen=findDesignStyle(expanded);
   if(specimen) return <section className="pp-style-detail">

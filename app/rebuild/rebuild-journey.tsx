@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigationState } from '../use-navigation';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, History, Minus, Plus, RotateCcw, Settings2, Sparkle, X } from 'lucide-react';
@@ -53,7 +54,7 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
   const [today,setToday]=useState(localDay),[now,setNow]=useState(Date.now);
   const weekKey=calendarWeek(today),seed={activities,selections,curiosity:journey.focus[weekKey]?.curiosity,creation:journey.focus[weekKey]?.create};
   const week=weekView(deck,weekKey,seed),start=journey.startDate||deck.startedOn||weekKey,position=journeyPosition(start,today);
-  const [expanded,setExpanded]=useState<string|null>(null),[overlay,setOverlay]=useState<OverlayKind|null>(null);
+  const [expanded,setExpanded]=useNavigationState<string|null>('rebuild:expanded',null,true),[overlay,setOverlay]=useNavigationState<OverlayKind|null>('overlay:rebuild',null,true);
   const [generation,setGeneration]=useState<Omit<IdeaRequest,'signal'>>({type:'surprise'}),[generationKey,setGenerationKey]=useState(0),[historyOnly,setHistoryOnly]=useState(false);
   const [goalDraft,setGoalDraft]=useState<WeeklyGoal[]>([]),[dateDraft,setDateDraft]=useState(start),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const close=useCallback(()=>{setOverlay(null);setError('');},[setOverlay,setError]);

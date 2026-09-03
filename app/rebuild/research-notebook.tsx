@@ -4,6 +4,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useMemo, useState } from 'react';
+import { useNavigationState } from '../use-navigation';
 import { BookOpen, Check, ChevronDown, ExternalLink, FileQuestion, ImagePlus, Link2, LoaderCircle, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import type { ResearchTopic } from './practice-model';
 import { angleLabels, generateResearchQuiz } from './research-quiz';
@@ -12,7 +13,7 @@ type Props={topic:ResearchTopic;onChange:(change:(topic:ResearchTopic)=>Research
 const safeUrl=(value:string)=>{try{const url=new URL(value.trim());return ['http:','https:'].includes(url.protocol)&&!url.username&&!url.password?url.href:null;}catch{return null;}};
 
 export function ResearchNotebook({topic,onChange}:Props){
-  const [tab,setTab]=useState<'notes'|'sources'|'quiz'>('notes');
+  const [tab,setTab]=useNavigationState<'notes'|'sources'|'quiz'>(`research:${topic.id}:tab`,'notes');
   const [source,setSource]=useState({title:'',url:'',note:''});
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const [revealed,setRevealed]=useState<string[]>([]);

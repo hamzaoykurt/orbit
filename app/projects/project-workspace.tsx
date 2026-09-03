@@ -4,6 +4,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState } from 'react';
+import { useDismissOnBack, useNavigationState } from '../use-navigation';
 import './project-workspace.css';
 import { ArrowLeft, CalendarDays, Check, ChevronDown, ExternalLink, ImagePlus, LayoutList, Link2, Network, Pencil, Plus, StickyNote, Trash2 } from 'lucide-react';
 import { ProjectOverview } from './project-overview';
@@ -45,9 +46,10 @@ function AddLine({ label, onAdd }: { label: string; onAdd: (title: string) => vo
 
 export function ProjectWorkspace(props: Props) {
   const { project, workspace, completed } = props;
-  const [tab, setTab] = useState<'overview' | 'tasks' | 'diagrams' | 'resources'>('overview');
+  const [tab, setTab] = useNavigationState<'overview' | 'tasks' | 'diagrams' | 'resources'>(`project:${project.id}:tab`, 'overview');
   const [filter, setFilter] = useState<'all' | 'open' | 'done'>('all');
   const [editor, setEditor] = useState<{ taskId: string; source: string; name: string; previousId?: string; temporary?: boolean } | null>(null);
+  useDismissOnBack('photo-editor', !!editor, () => setEditor(null));
   const [error, setError] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');

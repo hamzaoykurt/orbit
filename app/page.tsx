@@ -5,6 +5,8 @@ import type { CSSProperties, FocusEvent as ReactFocusEvent, FormEvent, KeyboardE
 import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
 import { readStartupState } from './startup';
+import { useNavigation, useNavigationState } from './use-navigation';
+import type { PageKey } from './navigation';
 import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
 import { emptyTask, emptyWorkspace, normalizeWorkspace } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
@@ -33,7 +35,6 @@ import {
   Volume1, Volume2, X, Zap, GripVertical, RefreshCw,
 } from 'lucide-react';
 
-type PageKey = 'home' | 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes' | 'archive' | 'settings';
 const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(module => ({ default: module.ProjectWorkspace })));
 const ProjectsHub = lazy(() => import('./projects/projects-hub').then(module => ({ default: module.ProjectsHub })));
 const ProjectCreator = lazy(() => import('./projects/project-creator').then(module => ({ default: module.ProjectCreator })));
@@ -361,7 +362,7 @@ function PageTitle({ action }: { eyebrow: string; title: string; description: st
 }
 
 export default function PersonalOS() {
-  const [active, setActive] = useState<PageKey>('home');
+  const { page: active, project: activeProjectId, navigate, backTo } = useNavigation();
   const pageContentRef = useRef<HTMLElement>(null);
   const [state, setState] = useState<PersistedState>(defaultState);
   const [hydrated, setHydrated] = useState(false);
@@ -370,11 +371,10 @@ export default function PersonalOS() {
   const serverRevision = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastFeedbackAtRef = useRef(0);
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [modal, setModal] = useState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>(null);
+  const [mobileMenu, setMobileMenu] = useNavigationState<boolean>('overlay:mobile-menu', false, true);
+  const [modal, setModal] = useNavigationState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | null>('overlay:modal', null, true);
   const [toast, setToast] = useState('');
-  const [projectCreatorOpen, setProjectCreatorOpen] = useState(false);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [projectCreatorOpen, setProjectCreatorOpen] = useNavigationState<boolean>('overlay:creator', false, true);
   const [syncStatus, setSyncStatus] = useState('loading');
   const [loggingOut, setLoggingOut] = useState(false);
   const [syncRetry, setSyncRetry] = useState(0);
@@ -383,19 +383,13 @@ export default function PersonalOS() {
   const pendingSaves = useRef(0);
 
   useEffect(() => {
-    const readProject = () => {
-      const id = new URL(window.location.href).searchParams.get('project');
-      setActiveProjectId(id);
-      if (id) setActive('projects');
-    };
-    readProject();
-    window.addEventListener('popstate', readProject);
-    return () => window.removeEventListener('popstate', readProject);
-  }, []);
+    const frame = window.requestAnimationFrame(() => pageContentRef.current?.focus({ preventScroll: true }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [active, activeProjectId]);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [expandedProgram, setExpandedProgram] = useState<string | null>('p1');
-  const [expandedDepartment, setExpandedDepartment] = useState('general');
-  const [personalTab, setPersonalTab] = useState<keyof typeof personalLists>('todo');
+  const [expandedProgram, setExpandedProgram] = useNavigationState<string | null>('programs:expanded', 'p1');
+  const [expandedDepartment, setExpandedDepartment] = useNavigationState<string>('kibleteyn:department', 'general');
+  const [personalTab, setPersonalTab] = useNavigationState<keyof typeof personalLists>('personal:tab', 'todo');
   const [editingPersonalItemId, setEditingPersonalItemId] = useState<string | null>(null);
   const [personalItemDraft, setPersonalItemDraft] = useState({ list: 'todo' as PersonalListKey, title: '', note: '', price: '', link: '', locationUrl: '', priority: 'normal' as 'normal' | 'important' });
   const [personalSubtaskParent, setPersonalSubtaskParent] = useState<string | null>(null);
@@ -403,8 +397,10 @@ export default function PersonalOS() {
   const [personalDrag, setPersonalDrag] = useState<PersonalDragState | null>(null);
   const personalDragRef = useRef<PersonalDragState | null>(null);
   const personalDragCleanupRef = useRef<(() => void) | null>(null);
-  const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
-  const [calendarCursor, setCalendarCursor] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
+  const [selectedDay, setSelectedDay] = useNavigationState<number>('calendar:day', () => new Date().getDate());
+  const [calendarMonth, setCalendarMonth] = useNavigationState<string>('calendar:month', () => todayKey().slice(0, 7));
+  const calendarCursor = useMemo(() => new Date(`${calendarMonth}-01T12:00:00`), [calendarMonth]);
+  const setCalendarCursor = (date: Date) => setCalendarMonth(localDateKey(date).slice(0, 7));
   const [quickText, setQuickText] = useState('');
   const [quickTarget, setQuickTarget] = useState<keyof typeof personalLists>('todo');
   const [noteDraft, setNoteDraft] = useState({ title: '', body: '' });
@@ -423,14 +419,14 @@ export default function PersonalOS() {
   const googleRestoreStartedRef = useRef(false);
   const googleConfigRequestedRef = useRef(false);
   const [profileDraft, setProfileDraft] = useState(defaultState.profile);
-  const [archiveFilter, setArchiveFilter] = useState<'all' | 'project' | 'program' | 'note'>('all');
-  const [settingsTab, setSettingsTab] = useState<'general' | 'appearance' | 'notifications' | 'data'>('general');
+  const [archiveFilter, setArchiveFilter] = useNavigationState<'all' | 'project' | 'program' | 'note'>('archive:filter', 'all');
+  const [settingsTab, setSettingsTab] = useNavigationState<'general' | 'appearance' | 'notifications' | 'data'>('settings:tab', 'general');
   const [searchText, setSearchText] = useState('');
   const [focusActive, setFocusActive] = useState(false);
   const [focusMode, setFocusMode] = useState<'countdown' | 'stopwatch'>('countdown');
   const [focusMinutes, setFocusMinutes] = useState(50);
   const [focusSeconds, setFocusSeconds] = useState(50 * 60);
-  const [teamView, setTeamView] = useState(false);
+  const [teamView, setTeamView] = useNavigationState<boolean>('kibleteyn:team', false);
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('text');
   const [captureStage, setCaptureStage] = useState<CaptureStage>('compose');
   const [captureListening, setCaptureListening] = useState(false);
@@ -439,7 +435,7 @@ export default function PersonalOS() {
   const [captureExtras, setCaptureExtras] = useState<CaptureExtras>({ price: '', link: '', locationUrl: '', priority: 'normal', date: todayKey(), time: '10:00', duration: '60 dk' });
   const [capturePage, setCapturePage] = useState<CapturePage>('personal');
   const [captureArea, setCaptureArea] = useState('todo');
-  const [captureMenuOpen, setCaptureMenuOpen] = useState(false);
+  const [captureMenuOpen, setCaptureMenuOpen] = useNavigationState<boolean>('overlay:capture-menu', false, true);
   const notifications = useMemo<OrbitNotification[]>(() => {
     const now = new Date();
     const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -637,7 +633,7 @@ export default function PersonalOS() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [setModal, setMobileMenu, setCaptureMenuOpen]);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -820,20 +816,10 @@ export default function PersonalOS() {
   }, [focusActive, focusMode, focusSeconds, notify, playFeedback]);
 
   const go = (page: PageKey) => {
-    setActiveProjectId(null);
-    const url = new URL(window.location.href);
-    if (url.searchParams.has('project')) { url.searchParams.delete('project'); window.history.pushState({}, '', url); }
-    setMobileMenu(false);
-    setCaptureMenuOpen(false);
-
-    if (page === active) {
+    navigate(page);
+    if (page === active && !activeProjectId) {
       window.scrollTo({ top: 0, behavior: state.settings.motion ? 'smooth' : 'auto' });
-      return;
     }
-
-    setActive(page);
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    window.requestAnimationFrame(() => pageContentRef.current?.focus({ preventScroll: true }));
   };
 
   const openNotification = (item: OrbitNotification) => {
@@ -1121,11 +1107,7 @@ export default function PersonalOS() {
   };
 
   const openProjectDetail = (id: string) => {
-    setActive('projects'); setActiveProjectId(id);
-    const url = new URL(window.location.href); url.searchParams.set('project', id);
-    window.history.pushState({}, '', url);
-    window.scrollTo({ top: 0, behavior: 'auto' });
-    window.requestAnimationFrame(() => pageContentRef.current?.focus({ preventScroll: true }));
+    navigate('projects', id);
   };
 
   const addProject = () => {
@@ -1428,7 +1410,7 @@ export default function PersonalOS() {
     }
     if (capturePage === 'projects') {
       const extraLines = captureDetails.split('\n').map((line) => line.trim()).filter((line) => line && line !== title);
-      setState((current) => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title, ...extraLines.map((line) => line.startsWith('>') ? line : `> ${line}`)] } })); setActiveProjectId(captureArea);
+      setState((current) => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title, ...extraLines.map((line) => line.startsWith('>') ? line : `> ${line}`)] } }));
     }
     if (capturePage === 'kibleteyn') {
       setState((current) => ({ ...current, customDepartmentTasks: { ...current.customDepartmentTasks, [captureArea]: [...(current.customDepartmentTasks[captureArea] ?? []), title] } })); setExpandedDepartment(captureArea);
@@ -1444,7 +1426,7 @@ export default function PersonalOS() {
       if (googleAccessTokenRef.current) void createGoogleCalendarEvent(event, date).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
     }
     if (capturePage === 'notes') setState((current) => ({ ...current, notes: [{ ...newNote('quick', title), body: captureDetails.trim() || 'Hızlı kayıt', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
-    setModal(null); go(capturePage); notify('Kayıt seçtiğin alana eklendi.');
+    setModal(null); if (capturePage === 'projects') openProjectDetail(captureArea); else go(capturePage); notify('Kayıt seçtiğin alana eklendi.');
   };
 
   const removeProgramTask = (programId: string, task: string) => {
@@ -1842,7 +1824,7 @@ export default function PersonalOS() {
       const project = allProjects.find(item => item.id === activeProjectId);
       if (!hydrated) return <p role="status">Proje yükleniyor…</p>;
       if (!project) return <section className="surface"><h2>Bu proje bulunamadı.</h2><button onClick={() => go('projects')}>Proje panosuna dön</button></section>;
-      return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => go('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
+      return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => backTo('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
         onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
         onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}

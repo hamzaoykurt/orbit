@@ -2,6 +2,7 @@
 /* Private images are served by the authenticated media endpoint. */
 /* eslint-disable @next/next/no-img-element */
 import { useMemo, useState } from 'react';
+import { useNavigationState } from '../use-navigation';
 import { Archive, ExternalLink, ImagePlus, Lightbulb, Link2, LoaderCircle, NotebookPen, Plus, Search, StickyNote, Trash2, X } from 'lucide-react';
 import type { Note,NoteKind } from './note-model';
 import { newNote } from './note-model';
@@ -16,7 +17,8 @@ function Editor({note,onChange,onArchive,onClose}:{note:Note;onChange:(change:Pa
 }
 
 export function NotesWorkspace({notes,onChange,onArchive}:{notes:Note[];onChange:(notes:Note[])=>void;onArchive:(note:Note)=>void}){
-  const [search,setSearch]=useState(''),[filter,setFilter]=useState<'all'|NoteKind>('all'),[selected,setSelected]=useState<string|null>(null);
+  const [search,setSearch]=useState(''),[filter,setFilter]=useState<'all'|NoteKind>('all');
+  const [selected,setSelected]=useNavigationState<string|null>('notes:selected',null,true);
   const filtered=useMemo(()=>notes.filter(note=>(filter==='all'||note.kind===filter)&&`${note.title} ${note.body} ${note.context} ${note.outcome}`.toLocaleLowerCase('tr-TR').includes(search.toLocaleLowerCase('tr-TR'))),[notes,search,filter]);
   const active=notes.find(note=>note.id===selected)||null;
   const add=(kind:NoteKind)=>{const note=newNote(kind);onChange([note,...notes]);setSelected(note.id);};

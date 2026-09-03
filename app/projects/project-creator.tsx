@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef } from 'react';
+import { navigation, useNavigationState } from '../use-navigation';
 import { ArrowLeft, ArrowRight, Check, X, Lightbulb, Compass, Palette, Flag } from 'lucide-react';
 import { analyzeProject, planningQuestions, suggestedTitle } from './project-advisor';
 import { findDesignStyle } from './design-catalog';
@@ -10,14 +11,20 @@ import type { CreationDraft, ProjectLifecycle, ProjectPlanning } from './plannin
 import './project-planning.css';
 
 const steps = [{id:'idea',name:'Fikir',icon:Lightbulb},{id:'questions',name:'Netleştir',icon:Compass},{id:'design',name:'Görsel dil',icon:Palette},{id:'review',name:'Başlangıç',icon:Flag}] as const;
-export function ProjectCreator({draft,onChange,onClose,onDiscard,onSave}:{draft:CreationDraft;onChange:(draft:CreationDraft)=>void;onClose:()=>void;onDiscard:()=>void;onSave:(plan:ProjectPlanning)=>void}) {
+export function ProjectCreator({draft:savedDraft,onChange,onClose,onDiscard,onSave}:{draft:CreationDraft;onChange:(draft:CreationDraft)=>void;onClose:()=>void;onDiscard:()=>void;onSave:(plan:ProjectPlanning)=>void}) {
+  const [position,setPosition]=useNavigationState(`overlay:creator/position:${savedDraft.id}`,`${savedDraft.step}:${savedDraft.question}`,false,true);
+  const [viewStep,viewQuestion]=position.split(':');
+  const draft=useMemo(()=>({...savedDraft,step:viewStep as CreationDraft['step'],question:Number(viewQuestion)}),[savedDraft,viewStep,viewQuestion]);
   const dialog=useRef<HTMLDialogElement>(null), content=useRef<HTMLDivElement>(null), saving=useRef(false);
   const route=draft.lifecycle;
   const questions=planningQuestions(draft), index=Math.min(draft.question,questions.length-1), question=questions[index];
   const analysis=useMemo(()=>analyzeProject(draft),[draft]);
   const style=findDesignStyle(draft.selectedStyle);
   const step=steps.findIndex(s=>s.id===draft.step);
-  const change=(update:Partial<CreationDraft>)=>onChange({...draft,...update});
+  const change=(update:Partial<CreationDraft>)=>{
+    if(update.step!==undefined||update.question!==undefined)setPosition(`${update.step??draft.step}:${update.question??draft.question}`);
+    onChange({...draft,...update});
+  };
   useEffect(()=>{
     const element=dialog.current, previous=document.activeElement as HTMLElement|null, overflow=document.body.style.overflow;
     element?.showModal();document.body.style.overflow='hidden';
@@ -30,7 +37,10 @@ export function ProjectCreator({draft,onChange,onClose,onDiscard,onSave}:{draft:
     else if(draft.step==='design')change({step:'review'});
     else if(style&&!saving.current){saving.current=true;const now=new Date().toISOString();onSave({version:1,createdAt:now,updatedAt:now,input:draft,analysis,selectedStyle:style.id,lifecycle:route||analysis.suggestedLifecycle,overrides:{}});}
   };
-  const back=()=>{if(draft.step==='questions'&&index>0)change({question:index-1});else if(step>0)change({step:steps[step-1].id,...(draft.step==='design'?{question:questions.length-1}:{})});};
+  const back=()=>{
+    const previous=draft.step==='questions'&&index>0?`questions:${index-1}`:step>0?`${steps[step-1].id}:${draft.step==='design'?questions.length-1:draft.question}`:null;
+    if(previous)navigation.backToView(`overlay:creator/position:${savedDraft.id}`,previous,`${savedDraft.step}:${savedDraft.question}`);
+  };
   const ready=draft.step==='idea'?draft.idea.trim().length>=15:draft.step==='questions'?!question.options||!!draft.answers[question.id]:draft.step==='design'?!!style:!!draft.title.trim()&&!!style;
   return <dialog ref={dialog} className="pp-dialog pp-root" aria-labelledby="project-flow-title" onCancel={event=>{event.preventDefault();onClose();}}>
     <header className="pp-dialog-header"><span>PROJE ATÖLYESİ</span><button type="button" className="pp-icon-button" aria-label="Taslağı sakla ve kapat" onClick={onClose}><X size={20}/></button></header>
