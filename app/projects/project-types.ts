@@ -11,6 +11,7 @@ export type ProjectWorkspaceData = {
   notes: ProjectNote[];
   links: { id: string; title: string; url: string }[];
   planning?: ProjectPlanning;
+  mentor?: { source: 'mentor'; importedAt: string; suggestedDesignLanguage?: string };
 };
 export const emptyWorkspace: ProjectWorkspaceData = { description: '', diagrams: [], notes: [], links: [] };
 export const emptyTask: ProjectTaskDetails = { note: '', photos: [] };
@@ -97,7 +98,8 @@ export function normalizeWorkspace(value:unknown):ProjectWorkspaceData{
     const images=(Array.isArray(note.images)?note.images:[]).filter(image=>image&&typeof image.id==='string'&&typeof image.url==='string').map(image=>({...image,name:typeof image.name==='string'?image.name:'Görsel',createdAt:typeof image.createdAt==='string'?image.createdAt:'',caption:typeof image.caption==='string'?image.caption:''}));
     return[{id:note.id,title:typeof note.title==='string'?note.title:'Yeni not',body:typeof note.body==='string'?note.body:'',kind,context:typeof note.context==='string'?note.context:'',outcome:typeof note.outcome==='string'?note.outcome:'',nextStep:typeof note.nextStep==='string'?note.nextStep:'',links,images}];
   });
-  return {...emptyWorkspace,...raw,description:typeof raw.description==='string'?raw.description:'',diagrams:Array.isArray(raw.diagrams)?raw.diagrams:[],notes,links:Array.isArray(raw.links)?raw.links:[]};
+  const mentor=raw.mentor&&raw.mentor.source==='mentor'&&typeof raw.mentor.importedAt==='string'?{source:'mentor' as const,importedAt:raw.mentor.importedAt,...(typeof raw.mentor.suggestedDesignLanguage==='string'?{suggestedDesignLanguage:raw.mentor.suggestedDesignLanguage}:{})}:undefined;
+  return {...emptyWorkspace,...raw,description:typeof raw.description==='string'?raw.description:'',diagrams:Array.isArray(raw.diagrams)?raw.diagrams:[],notes,links:Array.isArray(raw.links)?raw.links:[],...(mentor?{mentor}:{})};
 }
 export function moveDiagramNode(diagram: Diagram, id: string, x: number, y: number): Diagram {
   return { ...diagram, nodes: diagram.nodes.map(node => node.id === id ? { ...node, x: Math.max(0, Math.min(820, x)), y: Math.max(0, Math.min(520, y)) } : node) };

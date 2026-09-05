@@ -6,7 +6,7 @@ export type ResearchImage = { id: string; url: string; name: string; caption: st
 export type ResearchQuizQuestion = { id: string; prompt: string; angle: 'why'|'how'|'compare'|'apply'|'explain'|'challenge'; hint: string; keyPoints: string[]; answer: string; rating?: 'again'|'partial'|'known' };
 export type ResearchQuiz = { id: string; generatedAt: string; questions: ResearchQuizQuestion[] };
 export type ResearchTopic = {
-  id: string; ideaId: string; title: string; question: string; startedAt: string; source?: 'project-planning'; projectId?: string;
+  id: string; ideaId: string; title: string; question: string; startedAt: string; source?: 'project-planning'|'mentor'; projectId?: string; optionalOutput?: string;
   questions: { id: string; text: string; explored: boolean; note: string; evidence: string; implication: string; unknown: string }[];
   synthesis: { explanation: string; keyPoints: string; openQuestions: string };
   sources: ResearchSource[]; images: ResearchImage[]; quiz: ResearchQuiz | null;
@@ -36,7 +36,8 @@ export function normalizePractice(value: unknown): Practice {
     const quizRaw=obj(item.quiz);
     const quizQuestions:ResearchQuizQuestion[]=(Array.isArray(quizRaw.questions)?quizRaw.questions:[]).flatMap(raw=>{const q=obj(raw),angle=str(q.angle);return str(q.id)&&str(q.prompt)&&['why','how','compare','apply','explain','challenge'].includes(angle)?[{id:str(q.id,100),prompt:str(q.prompt,500),angle:angle as ResearchQuizQuestion['angle'],hint:str(q.hint,300),keyPoints:(Array.isArray(q.keyPoints)?q.keyPoints:[]).filter((point):point is string=>typeof point==='string').map(point=>point.slice(0,300)).slice(0,5),answer:str(q.answer,4000),...(['again','partial','known'].includes(str(q.rating))?{rating:str(q.rating) as ResearchQuizQuestion['rating']}:{})}]:[];});
     const quiz=str(quizRaw.id)&&quizQuestions.length?{id:str(quizRaw.id,100),generatedAt:str(quizRaw.generatedAt,40),questions:quizQuestions}:null;
-    return [{id:str(item.id,100),ideaId:str(item.ideaId,100),title:str(item.title,120),question:str(item.question,600),startedAt:str(item.startedAt,40),questions,synthesis:{explanation:str(synthesisRaw.explanation,8000),keyPoints:str(synthesisRaw.keyPoints,5000),openQuestions:str(synthesisRaw.openQuestions,5000)},sources,images,quiz,...(item.source==='project-planning'?{source:'project-planning' as const,projectId:str(item.projectId,100)}:{})}];
+    const source=item.source==='project-planning'||item.source==='mentor'?item.source:undefined;
+    return [{id:str(item.id,100),ideaId:str(item.ideaId,100),title:str(item.title,120),question:str(item.question,600),startedAt:str(item.startedAt,40),questions,synthesis:{explanation:str(synthesisRaw.explanation,8000),keyPoints:str(synthesisRaw.keyPoints,5000),openQuestions:str(synthesisRaw.openQuestions,5000)},sources,images,quiz,...(source?{source}:{}) ,...(source==='project-planning'?{projectId:str(item.projectId,100)}:{}),...(typeof item.optionalOutput==='string'?{optionalOutput:str(item.optionalOutput,2000)}:{})}];
   });
   const sessions:SpeakingSession[]=(Array.isArray(source.sessions)?source.sessions:[]).flatMap(raw=>{const item=obj(raw);return str(item.id)&&validTime(item.at)?[{id:str(item.id,100),at:item.at,seconds:Math.max(0,Number(item.seconds)||0),prompt:str(item.prompt,600),words:(Array.isArray(item.words)?item.words:[]).filter((word):word is string=>typeof word==='string').slice(0,20)}]:[];});
   const prompt=obj(source.speakingPrompt);

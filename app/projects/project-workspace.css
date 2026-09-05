@@ -15,6 +15,7 @@
 .project-workspace h3{font-size:var(--workspace-text,13px);line-height:1.5;font-weight:650}
 .pw-topbar{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
 .pw-topbar .pw-sync{margin-left:auto;font-size:var(--workspace-description,11px);color:var(--muted)}
+.pw-topbar .pw-context-copy{display:flex;align-items:center;gap:6px}@media(max-width:640px){.pw-topbar .pw-context-copy{font-size:0}.pw-topbar .pw-context-copy svg{width:17px;height:17px}}
 .pw-header{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:40px;padding:var(--workspace-panel,27px)}
 .pw-header-main{min-width:0}.pw-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}.pw-meta span{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--accent-soft);border-radius:7px;font-size:var(--workspace-description,11px)}
 .pw-header-aside{display:flex;flex-direction:column;gap:20px;justify-content:center}.pw-header-aside>button{font-size:var(--workspace-description,11px)}

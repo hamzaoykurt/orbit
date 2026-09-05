@@ -22,7 +22,7 @@ type Props = {
   practice:Practice;linkedProject:{id:string;title:string;progress:number}|null;
   onUpdateDeck:(update:(current:WeeklyDeck)=>WeeklyDeck)=>void;onStartChange:(date:string)=>void;
   onUpdatePractice:(update:(current:Practice)=>Practice)=>void;
-  onCreateProject:(idea:GeneratedIdea)=>Promise<void>;onOpenProject:(id:string)=>void;
+  onCreateProject:(idea:GeneratedIdea)=>Promise<void>;onOpenProject:(id:string)=>void;onCopyResearch:(topic:ResearchTopic)=>void;
 };
 const shortDate=(date:string)=>new Intl.DateTimeFormat('tr-TR',{day:'numeric',month:'short'}).format(new Date(`${date}T12:00:00`));
 type OverlayKind='idea'|'settings'|'context'|'history';
@@ -50,7 +50,7 @@ function ResearchQuestions({topic,onChange}:{topic:ResearchTopic;onChange:(id:st
 }
 function Dots({count,target}:{count:number;target:number}){return <span className="rd-dots" aria-hidden="true">{Array.from({length:Math.min(target,10)},(_,index)=><i key={index} className={index<count?'filled':''}/>)}</span>;}
 
-export function RebuildJourney({journey,deck,activities,selections,syncStatus,practice,linkedProject,onUpdateDeck,onStartChange,onUpdatePractice,onCreateProject,onOpenProject}:Props) {
+export function RebuildJourney({journey,deck,activities,selections,syncStatus,practice,linkedProject,onUpdateDeck,onStartChange,onUpdatePractice,onCreateProject,onOpenProject,onCopyResearch}:Props) {
   const [today,setToday]=useState(localDay),[now,setNow]=useState(Date.now);
   const weekKey=calendarWeek(today),seed={activities,selections,curiosity:journey.focus[weekKey]?.curiosity,creation:journey.focus[weekKey]?.create};
   const week=weekView(deck,weekKey,seed),start=journey.startDate||deck.startedOn||weekKey,position=journeyPosition(start,today);
@@ -107,7 +107,7 @@ export function RebuildJourney({journey,deck,activities,selections,syncStatus,pr
         <section className={`rd-domain rd-research-row ${expanded==='research'?'is-open':''}`}>
           <div className="rd-domain-line">{rowHeading('research','Research',<span>{topic?`${topic.questions.filter(question=>question.explored).length} / ${topic.questions.length}`:'Yeni bir meraka yer aç.'}</span>)}</div>{topic&&<p className="rd-current-title">{topic.question}</p>}
           <div className="rd-row-action">{topic?<button className="rd-text-button" onClick={()=>toggle('research')}>Devam et <ArrowRight size={15}/></button>:<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Bana bir konu ver <Sparkle size={15}/></button>}</div>
-          {expansion('research',<>{topic&&<ResearchNotebook key={topic.id} topic={topic} onChange={change=>onUpdatePractice(current=>({...current,research:current.research.map(item=>item.id===topic.id?change(item):item)}))}/>}<div className="rd-detail-actions">{topic&&<button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Yeni konu <Sparkle size={15}/></button>}<button className="rd-text-button" onClick={()=>setOverlay('history')}><History size={15}/> Araştırma geçmişi</button></div></>)}
+          {expansion('research',<>{topic&&<ResearchNotebook key={topic.id} topic={topic} onChange={change=>onUpdatePractice(current=>({...current,research:current.research.map(item=>item.id===topic.id?change(item):item)}))}/>}<div className="rd-detail-actions">{topic&&<><button className="rd-text-button" onClick={()=>onCopyResearch(topic)}>Araştırma bağlamını kopyala</button><button className="rd-text-button" onClick={()=>openIdea({type:'research',goal:'research'})}>Yeni konu <Sparkle size={15}/></button></>}<button className="rd-text-button" onClick={()=>setOverlay('history')}><History size={15}/> Araştırma geçmişi</button></div></>)}
         </section>
         <section className={`rd-domain rd-create-row ${expanded==='make'?'is-open':''}`}>
           <div className="rd-domain-line">{rowHeading('make','Create',<span>{linkedProject?`${linkedProject.progress}%`:'Yeni bir fikre açık.'}</span>)}</div>{linkedProject&&<p className="rd-current-title">{linkedProject.title}</p>}
