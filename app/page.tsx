@@ -24,10 +24,11 @@ import { parseProgramDateRange } from './program-date';
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
-import { emptyDeck, normalizeDeck } from './rebuild/weekly-deck-model';
+import { emptyDeck, normalizeDeck, weekView } from './rebuild/weekly-deck-model';
 import type { WeeklyDeck } from './rebuild/weekly-deck-model';
-import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
+import { emptyPractice, normalizePractice, acceptIntoPractice, dueWords, speakingCount } from './rebuild/practice-model';
 import type { Practice } from './rebuild/practice-model';
+import type { FitnessSummary } from '../integrations/profitness/protocol';
 import {
   Archive, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight,
@@ -81,6 +82,13 @@ type RebuildReview = { weekKey: string; win: string; friction: string; nextFocus
 type RebuildBodyPlan = { name: string; workouts: string[]; nutrition: string[] };
 type ResearchIdea = { id: string; title: string; kind: 'curiosity' | 'creative' | 'solo'; status: 'spark' | 'exploring' | 'making'; createdAt: string };
 type OrbitNotification = { id: string; title: string; description: string; date: string; eventTime: string; tone: string };
+type FitnessIntegrationState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  connected: boolean;
+  entitled: boolean;
+  summary: FitnessSummary | null;
+  receivedAt: string | null;
+};
 type PersistedState = {
   completed: Record<string, boolean>;
   customPersonal: Record<string, string[]>;
@@ -380,6 +388,7 @@ export default function PersonalOS() {
   const [toast, setToast] = useState('');
   const [projectCreatorOpen, setProjectCreatorOpen] = useNavigationState<boolean>('overlay:creator', false, true);
   const [syncStatus, setSyncStatus] = useState('loading');
+  const [fitnessIntegration, setFitnessIntegration] = useState<FitnessIntegrationState>({ status: 'loading', connected: false, entitled: false, summary: null, receivedAt: null });
   const [loggingOut, setLoggingOut] = useState(false);
   const [syncRetry, setSyncRetry] = useState(0);
   const syncQueue = useRef<Promise<void>>(Promise.resolve());
@@ -530,6 +539,26 @@ export default function PersonalOS() {
         if (!cancelled) setGoogleConfig((current) => ({ ...current, loaded: true }));
       });
     return () => { cancelled = true; if (!finished) googleConfigRequestedRef.current = false; };
+  }, [active, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || (active !== 'rebuild' && active !== 'settings')) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/integrations/profitness/status', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error('Fitness status unavailable');
+        const payload = await response.json() as { connected?: boolean; entitled?: boolean; summary?: FitnessSummary | null; receivedAt?: string | null };
+        if (!cancelled) setFitnessIntegration({ status: 'ready', connected: payload.connected === true, entitled: payload.entitled === true, summary: payload.summary ?? null, receivedAt: payload.receivedAt ?? null });
+      } catch {
+        if (!cancelled) setFitnessIntegration(current => ({ ...current, status: 'error' }));
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30000);
+    const focus = () => void refresh();
+    window.addEventListener('focus', focus);
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('focus', focus); };
   }, [active, hydrated]);
 
   useEffect(() => {
@@ -1743,7 +1772,11 @@ export default function PersonalOS() {
     const target=(kind:string)=>mentorWeek?.goals.filter(goal=>goal.kind===kind).reduce((sum,goal)=>sum+goal.target,0)||0;
     const activeResearch=state.rebuildPractice.research.find(item=>item.id===state.rebuildPractice.currentResearchId);
     const linked=views.find(project=>project.id===state.rebuildPractice.activeProjectId);
-    return mentorContext({generatedAt:new Date(),week:mentorWeekStart,rebuild:{sport:`${count('body')}/${target('body')||3} weekly completion`,english:`${state.rebuildPractice.words.length} words · ${state.rebuildPractice.sessions.filter(s=>s.at.slice(0,10)>=mentorWeekStart).length} speaking`,research:activeResearch?`${activeResearch.title} · ${activeResearch.questions.filter(q=>q.explored).length}/${activeResearch.questions.length}`:'no active research',create:linked?`${linked.name} · ${linked.progress}%`:`${views.filter(p=>!['Tamamlandı','Arşiv'].includes(p.stage)).length} open projects`,digital:views.filter(p=>/web|mobile|digital|app|game|uygulama|oyun/i.test(`${p.type} ${p.name}`)).slice(0,3).map(p=>`${p.name} ${p.progress}%`).join(' · ')||'—',visual:state.rebuildDeck.seenIdeas.length?`${state.rebuildDeck.seenIdeas.length} saved/recent generations`:'—',social:`${count('social')}/${target('social')||1} weekly completion`},projects:views,research:state.rebuildPractice.research,practice:state.rebuildPractice,recentlyCompleted:views.flatMap(p=>p.completed.map(task=>`${p.name}: ${task}`)).slice(-8),counts:{active:views.filter(p=>['Aktif','MVP','Araştırma'].includes(p.stage)).length,paused:views.filter(p=>p.stage==='Beklemede').length,idea:views.filter(p=>p.stage==='Fikir').length}});
+    const syncedFitness=fitnessIntegration.connected&&fitnessIntegration.entitled&&fitnessIntegration.summary?.weekStartsOn===mentorWeekStart?fitnessIntegration.summary:null;
+    const sport=syncedFitness
+      ?`${syncedFitness.completedThisWeek}/${syncedFitness.weeklyTarget} weekly completion · source: Fitness read-only · today: ${syncedFitness.today.status} · synced: ${fitnessIntegration.receivedAt||'unknown'}`
+      :fitnessIntegration.connected?'Fitness connected · first read-only summary pending':'Fitness not connected · read-only source';
+    return mentorContext({generatedAt:new Date(),week:mentorWeekStart,rebuild:{sport,english:`${state.rebuildPractice.words.length} words · ${state.rebuildPractice.sessions.filter(s=>s.at.slice(0,10)>=mentorWeekStart).length} speaking`,research:activeResearch?`${activeResearch.title} · ${activeResearch.questions.filter(q=>q.explored).length}/${activeResearch.questions.length}`:'no active research',create:linked?`${linked.name} · ${linked.progress}%`:`${views.filter(p=>!['Tamamlandı','Arşiv'].includes(p.stage)).length} open projects`,digital:views.filter(p=>/web|mobile|digital|app|game|uygulama|oyun/i.test(`${p.type} ${p.name}`)).slice(0,3).map(p=>`${p.name} ${p.progress}%`).join(' · ')||'—',visual:state.rebuildDeck.seenIdeas.length?`${state.rebuildDeck.seenIdeas.length} saved/recent generations`:'—',social:`${count('social')}/${target('social')||1} weekly completion`},projects:views,research:state.rebuildPractice.research,practice:state.rebuildPractice,recentlyCompleted:views.flatMap(p=>p.completed.map(task=>`${p.name}: ${task}`)).slice(-8),counts:{active:views.filter(p=>['Aktif','MVP','Araştırma'].includes(p.stage)).length,paused:views.filter(p=>p.stage==='Beklemede').length,idea:views.filter(p=>p.stage==='Fikir').length}});
   };
   const previewMentorImport=()=>{
     const parsed=parseMentorOutput(mentorInput);setMentorParsed(parsed);setMentorError('');setMentorDuplicate(null);
@@ -1862,6 +1895,7 @@ export default function PersonalOS() {
     journey={state.rebuildJourney} deck={state.rebuildDeck} activities={state.rebuildActivities}
     selections={state.rebuildSelections} syncStatus={syncStatus}
     practice={state.rebuildPractice}
+    fitness={fitnessIntegration}
     linkedProject={projectMetrics.filter(item => item.project.id === state.rebuildPractice.activeProjectId).map(({ project, progress }) => ({ id: project.id, title: project.title, progress }))[0] ?? null}
     onUpdatePractice={update => setState(current => ({ ...current, rebuildPractice: update(current.rebuildPractice) }))}
     onCopyResearch={topic=>void copyText(researchContext(topic),'Araştırma bağlamı kopyalandı.')}
@@ -2017,6 +2051,8 @@ export default function PersonalOS() {
     setModal(null); notify('Profil bilgileri kaydedildi.');
   };
 
+  const copyMentorContext = () => copyText(buildMentorContext(), 'Mentor bağlamı kopyalandı.');
+
   const renderSettings = () => (
     <>
       <PageTitle eyebrow="AYARLAR" title="Orbit sana uyum sağlasın." description="Görünümü, bildirimleri ve çalışma biçimini kişiselleştir."/>
@@ -2025,7 +2061,7 @@ export default function PersonalOS() {
         {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Altı renk seçeneğinden birini kullan</small></span><div className="color-options">{['violet','blue','mint','sand','rose','slate'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><div className="setting-row density-setting"><span className="setting-icon"><PanelsTopLeft size={17}/></span><span><strong>Bilgi yoğunluğu</strong><small>Ekranda daha ferah veya daha sıkı bir düzen seç</small></span><div className="theme-options" role="group" aria-label="Bilgi yoğunluğu">{([{id:'comfortable',label:'Ferah'},{id:'compact',label:'Kompakt'}] as const).map(({id,label})=><button key={id} className={state.settings.density===id?'selected':''} aria-pressed={state.settings.density===id} onClick={()=>updateSetting('density',id)}><span>{label}</span></button>)}</div></div><div className="setting-row nav-setting"><span className="setting-icon"><Menu size={17}/></span><span><strong>Alt menü</strong><small>Mobil çubuktaki dört sayfayı değiştir</small></span><button className="settings-edit-button" onClick={()=>setModal('navCustomize')}>Düzenle</button></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Buton ve işlem anlarında yumuşak geri bildirim" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/><SettingToggle icon={Smartphone} title="Dokunsal geri bildirim" description="Mobil işlemlerde hafif titreşim kullan" value={state.settings.haptics} onChange={(value)=>updateSetting('haptics',value)}/><button data-feedback-test className="feedback-test-button" onClick={()=>{playFeedback('confirm',true,true,true);notify('Ses ve titreşim denemesi çalıştırıldı.');}}><Volume2 size={16}/><span><strong>Geri bildirimi dene</strong><small>Ses ve titreşim bu cihazda birlikte çalışır</small></span><Zap size={15}/></button></section>}
         {settingsTab==='appearance'&&<section className="surface settings-section sound-settings-section"><header><h3>Ses seviyesi</h3><p>Arayüz efektlerini cihazına göre ayarla.</p></header><div className="sound-level-control"><div className="sound-level-copy"><span className="setting-icon"><Volume1 size={17}/></span><span><strong>Efekt yüksekliği</strong><small>Düşükten ekstra güçlü seviyeye</small></span><em>%{state.settings.soundVolume}</em></div><div className="sound-volume-control"><Volume1 size={14}/><input aria-label="Arayüz ses seviyesi" type="range" min="10" max="150" step="5" value={state.settings.soundVolume} style={{'--sound-fill':`${Math.round(state.settings.soundVolume/1.5)}%`} as CSSProperties} onChange={(event)=>updateSetting('soundVolume',Number(event.target.value))} onPointerUp={()=>playFeedback('confirm',false,true)} onKeyUp={()=>playFeedback('confirm',false,true)}/><Volume2 size={16}/></div></div></section>}
         {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>Yalnızca gerçekten yaklaşan kayıtlar için haber al.</p></header><div className="setting-row"><span className="setting-icon"><CalendarDays size={17}/></span><span><strong>Orbit bildirim merkezi</strong><small>Bugün ve yarının takvim kayıtlarını gösterir · {unreadNotificationCount ? `${unreadNotificationCount} okunmamış` : 'şu an yeni bildirim yok'}</small></span><button className="settings-edit-button" onClick={()=>setModal('notifications')}>Merkezi aç</button></div><SettingToggle icon={Bell} title="Sistem hatırlatmaları" description="İzin açıksa cihaz bildirimlerine de izin ver" value={state.settings.notifications} onChange={(value)=>void updateNotifications(value)}/><SettingToggle icon={Eye} title="Tamamlananları göster" description="Personal listelerinde biten işleri görünür tut" value={state.settings.showCompleted} onChange={(value)=>updateSetting('showCompleted',value)}/></section>}
-        {settingsTab==='data'&&<><section className="surface settings-section"><header><h3>Uygulama olarak kullan</h3><p>Orbit’i ana ekranına ekleyip tarayıcı çubuğu olmadan aç.</p></header><InstallOrbit/></section><section className="surface settings-section"><header><h3>Verini dışa aktar</h3><p>Orbit’teki yerel demo verisinin taşınabilir bir kopyasını al.</p></header><button className="data-export" onClick={exportDemoData}><Download size={16}/><span><strong>JSON yedeğini indir</strong><small>Görevler, notlar, proje aşamaları ve tercihler</small></span><ArrowRight size={15}/></button></section><section className="surface settings-section danger-section"><header><h3>Demo verisi</h3><p>Yerel değişiklikleri silip başlangıç verisine dön.</p></header><button onClick={()=>{if(window.confirm('Tüm yerel demo değişiklikleri sıfırlansın mı?')){setState(defaultState);notify('Demo verisi sıfırlandı.')}}}><RotateCcw size={15}/> Demo verisini sıfırla</button></section></>}
+        {settingsTab==='data'&&<><section className="surface settings-section"><header><h3>Uygulama olarak kullan</h3><p>Orbit’i ana ekranına ekleyip tarayıcı çubuğu olmadan aç.</p></header><InstallOrbit/></section><section className="surface settings-section"><header><h3>Mentor bağlamı</h3><p>Şu anki odağını, sonraki adımlarını ve haftalık durumunu kısa bir özet olarak kopyala.</p></header><button className="data-export" onClick={()=>void copyMentorContext()}><ClipboardCopy size={16}/><span><strong>Mentor bağlamını kopyala</strong><small>Aktif projeler, öğrenme, son gelişmeler ve açık taahhütler</small></span><ArrowRight size={15}/></button></section><section className="surface settings-section"><header><h3>Verini dışa aktar</h3><p>Orbit’teki yerel demo verisinin taşınabilir bir kopyasını al.</p></header><button className="data-export" onClick={exportDemoData}><Download size={16}/><span><strong>JSON yedeğini indir</strong><small>Görevler, notlar, proje aşamaları ve tercihler</small></span><ArrowRight size={15}/></button></section><section className="surface settings-section danger-section"><header><h3>Demo verisi</h3><p>Yerel değişiklikleri silip başlangıç verisine dön.</p></header><button onClick={()=>{if(window.confirm('Tüm yerel demo değişiklikleri sıfırlansın mı?')){setState(defaultState);notify('Demo verisi sıfırlandı.')}}}><RotateCcw size={15}/> Demo verisini sıfırla</button></section></>}
       </div></div>
     </>
   );
