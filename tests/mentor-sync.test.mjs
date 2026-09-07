@@ -34,6 +34,15 @@ test('project and research context stay compact and separate completed from rema
   assert.match(research,/completed_questions:\n- Q1/);assert.match(research,/remaining_questions:\n- Q2/);
 });
 
+test('mentor JSON document round-trips a validated project or research response',()=>{
+  const generatedAt=new Date('2026-09-07T10:00:00.000Z'),document=JSON.parse(mentor.serializeMentorDocument('MENTOR CONTEXT\nweek_start: 2026-09-07',generatedAt));
+  assert.equal(document.schema,'orbit.mentor.v1');assert.equal(document.document_type,'mentor_context');assert.match(document.context,/MENTOR CONTEXT/);assert.equal(document.mentor_response,null);
+  document.mentor_response={kind:'project',name:'Orbital Radio',stage:'EXPLORE',next_action:'Akışı çiz',tasks:['Akışı çiz'],tags:['audio']};
+  const project=mentor.parseMentorJson(JSON.stringify(document));assert.equal(project.kind,'project');assert.equal(project.nextAction,'Akışı çiz');assert.deepEqual(project.tasks,['Akışı çiz']);
+  const research=mentor.parseMentorJson(JSON.stringify({schema:'orbit.mentor.v1',mentor_response:{kind:'research',title:'Ses',main_question:'Ses nasıl yönlenir?',subquestions:['Yüzey neyi değiştirir?']}}));assert.equal(research.kind,'research');assert.equal(research.mainQuestion,'Ses nasıl yönlenir?');
+  assert.equal(mentor.parseMentorJson(JSON.stringify({...document,schema:'unknown'})),null);assert.equal(mentor.parseMentorJson('{bad'),null);
+});
+
 test('mentor context groups projects, normalizes fields and keeps summaries compact',()=>{
   const project=(change)=>({id:'p',name:'Project',stage:'Aktif',type:'App',scope:'',nextAction:'Build it',progress:20,tasks:['One','Two','Three','Four','Five'],completed:[],designLanguage:'',notes:[],lastActivity:'',...change});
   const practice={version:1,words:[{word:'orbit',dueAt:'2026-09-01T00:00:00.000Z',addedAt:'2026-09-01T00:00:00.000Z',lastReviewedAt:'2026-09-08T10:00:00.000Z',successes:1,reviews:1}],sessions:[{at:'2026-09-09T10:00:00.000Z'}],research:[],currentResearchId:null,activeProjectId:null,speakingPrompt:null,lastMeal:null};

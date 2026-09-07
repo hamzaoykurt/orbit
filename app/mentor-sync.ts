@@ -5,6 +5,7 @@ export type MentorProject = { kind:'project'; name:string; description?:string; 
 export type MentorResearch = { kind:'research'; title:string; mainQuestion:string; subquestions:string[]; optionalOutput?:string };
 export type MentorImport = MentorProject | MentorResearch;
 export type MentorProjectView = { id:string; name:string; goal?:string; stage:string; type:string; scope:string; nextAction:string; progress:number; tasks:string[]; completed:string[]; designLanguage:string; notes:string[]; lastActivity:string };
+export const MENTOR_DOCUMENT_SCHEMA='orbit.mentor.v1';
 
 const keys:Record<string,string>={name:'name',title:'title',description:'description',goal:'goal',scope:'scope',type:'type',stage:'stage',next_action:'nextAction',nextaction:'nextAction',tasks:'tasks',tags:'tags',design_language:'designLanguage',designlanguage:'designLanguage',main_question:'mainQuestion',mainquestion:'mainQuestion',subquestions:'subquestions',optional_output:'optionalOutput',optionaloutput:'optionalOutput'};
 const clean=(value:string)=>value.trim().replace(/^```(?:text)?\s*/i,'').replace(/```\s*$/,'').trim();
@@ -77,5 +78,35 @@ export function mentorContext(s:MentorSnapshot){
   const recent=[...completedProjects,...taskCompletions].map(item=>oneLine(item,110)).filter((item,index,all)=>item&&all.indexOf(item)===index).slice(0,5);
   return ['MENTOR CONTEXT','',field('generated_at',s.generatedAt.toLocaleString('tr-TR')),field('week_start',s.weekStart),field('week_end',end.toISOString().slice(0,10)),'','REBUILD',field('english',`${due} due · ${speaking} speaking`),field('research',s.rebuild.research),field('create',s.rebuild.create),field('digital',s.rebuild.digital),field('visual_lab',s.rebuild.visual),field('social',s.rebuild.social),'','FOCUS / ACTIVE PROJECTS',...(active.length?active.flatMap(item=>projectBlock(item.project)):['none']),'','IDEAS / BACKLOG',...(ideas.length?[...ideas.slice(0,3).map(project=>`- ${oneLine(project.name,100)}`),...(ideas.length>3?[`+ ${ideas.length-3} more ideas`]:[])]:['none']),'','PAUSED',...(paused.length?paused.slice(0,5).map(project=>`- ${oneLine(project.name,100)}`):['none']),'','CURRENT RESEARCH',...(research?['',oneLine(research.title,120),field('main_question',oneLine(research.question,180)),field('progress',`${research.questions.filter(question=>question.explored).length}/${research.questions.length}`),'remaining_questions:',...research.questions.filter(question=>!question.explored).slice(0,3).map(question=>`- ${oneLine(question.text,150)}`)]:['none']),'','ENGLISH',field('words_due',due),field('words_learned_this_week',learned),field('speaking_sessions_this_week',speaking),'','RECENTLY COMPLETED',...(recent.length?recent.map(item=>`- ${item}`):['none']),'','BACKLOG',field('idea_count',ideas.length),field('paused_count',paused.length),'recent_ideas:',...(ideas.length?ideas.slice(0,3).map(project=>`- ${oneLine(project.name,100)}`):['- none'])].join('\n');
 }
+
+const jsonRecord=(value:unknown):Record<string,unknown>|null=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
+const jsonString=(value:unknown,max:number)=>typeof value==='string'&&value.trim()?value.trim().slice(0,max):undefined;
+const jsonList=(value:unknown,maxItems:number,maxLength:number)=>Array.isArray(value)?value.filter((item):item is string=>typeof item==='string'&&Boolean(item.trim())).map(item=>item.trim().slice(0,maxLength)).slice(0,maxItems):[];
+export function parseMentorJson(input:string):MentorImport|null{
+  let root:unknown;try{root=JSON.parse(input);}catch{return null;}
+  const document=jsonRecord(root);if(!document)return null;
+  if(document.schema!==undefined&&document.schema!==MENTOR_DOCUMENT_SCHEMA)return null;
+  const source=jsonRecord(document.mentor_response)||jsonRecord(document.record)||document;
+  const kind=String(source.kind||'').toLocaleLowerCase('en-US');
+  if(kind==='project'){
+    const name=jsonString(source.name,100);if(!name)return null;
+    return {kind,name,description:jsonString(source.description,1200),goal:jsonString(source.goal,600),scope:jsonString(source.scope,500),type:jsonString(source.type,120),stage:jsonString(source.stage,40),nextAction:jsonString(source.next_action??source.nextAction,300),tasks:jsonList(source.tasks,40,300),tags:jsonList(source.tags,8,60),designLanguage:jsonString(source.design_language??source.designLanguage,160)};
+  }
+  if(kind==='research'){
+    const title=jsonString(source.title,120),mainQuestion=jsonString(source.main_question??source.mainQuestion,600);if(!title||!mainQuestion)return null;
+    return {kind,title,mainQuestion,subquestions:jsonList(source.subquestions,30,300),optionalOutput:jsonString(source.optional_output??source.optionalOutput,500)};
+  }
+  return null;
+}
+
+export function mentorJsonDocument(context:string,generatedAt:Date){return {
+  schema:MENTOR_DOCUMENT_SCHEMA,version:1,document_type:'mentor_context',generated_at:generatedAt.toISOString(),context,
+  mentor_response:null,
+  response_format:{
+    project:{kind:'project',name:'',description:'',goal:'',scope:'',type:'',stage:'IDEA | EXPLORE | BUILD | PAUSED | COMPLETE',next_action:'',tasks:[],tags:[],design_language:''},
+    research:{kind:'research',title:'',main_question:'',subquestions:[],optional_output:''},
+  },
+};}
+export function serializeMentorDocument(context:string,generatedAt:Date){return JSON.stringify(mentorJsonDocument(context,generatedAt),null,2);}
 
 export function mentorMetadata(workspace:ProjectWorkspaceData):ProjectWorkspaceData{return {...workspace,mentor:{source:'mentor',importedAt:new Date().toISOString()}};}
