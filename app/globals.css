@@ -767,3 +767,24 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
 
 /* Keep tour preparation categories in the same single-column flow on every screen size. */
 .page-programs .category-grid{grid-template-columns:minmax(0,1fr)}
+
+/* Keep modal field captions on one line so paired controls share a baseline. */
+.modal-layer .modal-card:not(.search)>label,
+.modal-layer .modal-card:not(.search) .form-row>label,
+.modal-layer .modal-card:not(.search) .nav-customizer>label {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 8px;
+}
+.modal-layer .modal-card:not(.search) label :is(input,select,textarea) {
+  grid-column: 1/-1;
+}
+
+/* Scheduling buttons need a legible symbol at every density. */
+.schedule-action svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2;
+}
