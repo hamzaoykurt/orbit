@@ -33,3 +33,15 @@ test('project and research context stay compact and separate completed from rema
   const research=mentor.researchContext({title:'Points',question:'Why?',questions:[{text:'Q1',explored:true,note:'N',evidence:'',implication:'',unknown:''},{text:'Q2',explored:false,note:'',evidence:'',implication:'',unknown:''}],synthesis:{explanation:'',keyPoints:'',openQuestions:''}});
   assert.match(research,/completed_questions:\n- Q1/);assert.match(research,/remaining_questions:\n- Q2/);
 });
+
+test('mentor context groups projects, normalizes fields and keeps summaries compact',()=>{
+  const project=(change)=>({id:'p',name:'Project',stage:'Aktif',type:'App',scope:'',nextAction:'Build it',progress:20,tasks:['One','Two','Three','Four','Five'],completed:[],designLanguage:'',notes:[],lastActivity:'',...change});
+  const practice={version:1,words:[{word:'orbit',dueAt:'2026-09-01T00:00:00.000Z',addedAt:'2026-09-01T00:00:00.000Z',lastReviewedAt:'2026-09-08T10:00:00.000Z',successes:1,reviews:1}],sessions:[{at:'2026-09-09T10:00:00.000Z'}],research:[],currentResearchId:null,activeProjectId:null,speakingPrompt:null,lastMeal:null};
+  const output=mentor.mentorContext({generatedAt:new Date('2026-09-10T10:00:00.000Z'),weekStart:'2026-09-07',rebuild:{research:'none',create:'none',digital:'Project 20%',visual:'2 saved',social:'0/1'},fitness:{connected:false,manualFallback:'0/3'},projects:[project({name:'Build',stage:'Aktif'}),project({name:'Explore',stage:'Aktif',nextAction:'Araştırma'}),project({name:'Idea',stage:'Fikir'}),project({name:'Paused',stage:'Beklemede'}),project({name:'Done',progress:100,tasks:[]})],research:[],practice,recentlyCompleted:['Done: '+('x'.repeat(200))]});
+  assert.match(output,/week_start: 2026-09-07\nweek_end: 2026-09-13/);
+  assert.match(output,/Build\nstage: BUILD/);assert.match(output,/Explore\nstage: EXPLORE/);
+  assert.doesNotMatch(output,/Idea\nstage:/);assert.match(output,/IDEAS \/ BACKLOG\n- Idea/);
+  assert.match(output,/speaking_sessions_this_week: 1/);assert.doesNotMatch(output,/speaking_sessions_this_week: .*speaking/);
+  assert.match(output,/sync_status: disconnected/);assert.match(output,/sport_manual_fallback: 0\/3/);
+  assert.match(output,/\+ 1 more/);assert.ok(output.split('\n').every(line=>line.length<=180));
+});
