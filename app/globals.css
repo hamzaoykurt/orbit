@@ -788,3 +788,6 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
   height: 17px;
   stroke-width: 2;
 }
+.schedule-action {
+  grid-template-columns: 1fr !important;
+}
