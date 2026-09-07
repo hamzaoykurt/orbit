@@ -176,6 +176,17 @@ test('speaking uses recent vocabulary and meal rerolls persist distinct generate
   assert.equal((await store.all()).length,3);
 });
 
+test('category and platform filters reach generation and enforce the selected direction',async()=>{
+  const {store}=await repo(),requests=[];
+  const filteredDigital={...digital,platform:'automation',title:'Sessiz dosya düzenleyici',text:'Bilgisayarda seçilen klasörü kurallarla düzenleyen küçük bir otomasyon geliştir.'};
+  const service=new GenerationService(store,async request=>{requests.push(request);return request.name==='orbit_novelty'?{duplicate:false,digitalOnly:true}:filteredDigital;},'test',()=>.8);
+  const result=await service.generate({type:'digital_project',platform:'automation'});
+  assert.equal(result.platform,'automation');assert.equal(requests[0].input.preferredPlatform,'automation');assert.match(requests[0].instructions,/selected platform "automation"/);
+  const researchStore=(await repo('research-filter')).store,researchRequests=[];
+  await new GenerationService(researchStore,async request=>{researchRequests.push(request);return topic;},'test',()=>.8).generate({type:'research',category:'science'});
+  assert.equal(researchRequests[0].input.category,'science');assert.match(researchRequests[0].instructions,/Ancient history.*never the default/);
+});
+
 test('an interrupted plan does not accept or partially save the project',async()=>{
   const {store}=await repo();const controller=new AbortController();
   const service=new GenerationService(store,async request=>{
@@ -201,6 +212,8 @@ test('API denies anonymous and cross-origin requests, validates inputs and expos
   await authenticatedRequest.run({username:'owner'},async()=>{
     assert.equal((await api.POST(request({action:'generate'},'https://evil.test'))).status,403);
     assert.equal((await api.POST(request({action:'generate',type:'bad'}))).status,400);
+    assert.equal((await api.POST(request({action:'generate',type:'research',category:'outdoor'}))).status,400);
+    assert.equal((await api.POST(request({action:'generate',type:'digital_project',platform:'spaceship'}))).status,400);
     assert.equal((await api.POST(request({action:'generate',words:['x'.repeat(5000)]}))).status,413);
     const missing=await api.POST(request({action:'generate',type:'project'}));assert.equal(missing.status,503);assert.equal((await missing.json()).code,'not_configured');
     assert.equal((await api.GET(new Request('https://orbit.test/api/ideas?before=bad'))).status,400);

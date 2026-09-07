@@ -38,23 +38,25 @@ export function researchContext(topic:ResearchTopic){const completed=topic.quest
 export type MentorSnapshot={
   generatedAt:Date;weekStart:string;
   rebuild:{research:string;create:string;digital:string;visual:string;social:string};
-  fitness:{connected:boolean;weeklyTarget?:number;completedThisWeek?:number;todayWorkout?:string|null;todayCompleted?:boolean;manualFallback?:string};
   projects:MentorProjectView[];research:ResearchTopic[];practice:Practice;recentlyCompleted:string[];
 };
 
 const oneLine=(value:string,max=120)=>{const clean=value.replace(/\s+/g,' ').trim();return clean.length<=max?clean:`${clean.slice(0,max-1).trimEnd()}…`;};
+const compactTask=(value:string)=>{const clean=value.replace(/\s+/g,' ').trim();const core=clean.split(/\s+(?:—|–|\||•)\s+|(?<=[.!?])\s+/)[0]||clean;return oneLine(core,84);};
 const researchOnly=(value:string)=>/araştır|research|explor|incele|keşfet/i.test(value)&&!/uygula|geliştir|build|tasarla|kodla|prototip/i.test(value);
 const mentorStage=(project:MentorProjectView)=>{
   const stage=normalized(project.stage);
   if(/tamam|complete|done|arsiv|archive/.test(stage)||(project.progress>=100&&project.tasks.length===0))return 'COMPLETE';
   if(/bekle|pause|hold/.test(stage))return 'PAUSED';
   if(/fikir|idea|backlog/.test(stage))return 'IDEA';
-  if(/arastir|research|explore|incele/.test(stage)||researchOnly(project.nextAction))return 'EXPLORE';
+  const experimental=/r&d|research|experiment|deney|laboratuvar|lab\b/i.test(`${project.name} ${project.type}`);
+  const implementation=/\b(build|implement|develop|code|ship|launch)\b|kodla|geliştir|uygula|yayınla|inşa et|entegrasyon|prototip(?:i)?\s+(?:hazırla|oluştur|üret)/i.test([project.nextAction,...project.tasks].join(' '));
+  if(/arastir|research|explore|incele/.test(stage)||researchOnly(project.nextAction)||(experimental&&!implementation))return 'EXPLORE';
   return 'BUILD';
 };
 const projectBlock=(project:MentorProjectView)=>{
   const tasks=project.tasks.filter(Boolean),shown=tasks.slice(0,4);
-  return ['',oneLine(project.name,100),field('stage',mentorStage(project)),field('progress',`${Math.min(100,Math.max(0,project.progress))}%`),field('next_action',oneLine(project.nextAction||shown[0]||'none',120)),...(shown.length?['open_tasks:',...shown.map(task=>`- ${oneLine(task,120)}`),...(tasks.length>shown.length?[`+ ${tasks.length-shown.length} more`]:[])]:[])];
+  return ['',oneLine(project.name,100),field('stage',mentorStage(project)),field('progress',`${Math.min(100,Math.max(0,project.progress))}%`),field('next_action',compactTask(project.nextAction||shown[0]||'none')),...(shown.length?['open_tasks:',...shown.map(task=>`- ${compactTask(task)}`),...(tasks.length>shown.length?[`+ ${tasks.length-shown.length} more`]:[])]:[])];
 };
 
 export function mentorContext(s:MentorSnapshot){
@@ -64,17 +66,16 @@ export function mentorContext(s:MentorSnapshot){
   const active=stages.filter(item=>item.stage==='BUILD'||item.stage==='EXPLORE').sort((a,b)=>b.project.progress-a.project.progress).slice(0,6);
   const ideas=stages.filter(item=>item.stage==='IDEA').map(item=>item.project);
   const paused=stages.filter(item=>item.stage==='PAUSED').map(item=>item.project);
-  const completedProjects=stages.filter(item=>item.stage==='COMPLETE').map(item=>`${item.project.name} completed`);
-  const due=s.practice.words.filter(word=>Date.parse(word.dueAt)<=s.generatedAt.getTime()).length;
+  const completedProjects=stages.filter(item=>item.stage==='COMPLETE').map(item=>item.project.name);
+  const completedNames=new Set(stages.filter(item=>item.stage==='COMPLETE').map(item=>normalized(item.project.name)));
+  const due=s.practice.words.filter(word=>word.successes<3&&Date.parse(word.dueAt)<=s.generatedAt.getTime()).length;
   const learned=s.practice.words.filter(word=>word.successes>0&&word.lastReviewedAt&&Date.parse(word.lastReviewedAt)>=weekBoundary.getTime()&&Date.parse(word.lastReviewedAt)<endBoundary.getTime()).length;
   const speaking=s.practice.sessions.filter(session=>Date.parse(session.at)>=weekBoundary.getTime()&&Date.parse(session.at)<endBoundary.getTime()).length;
   const currentResearch=s.practice.currentResearchId?s.research.find(item=>item.id===s.practice.currentResearchId):undefined;
   const research=currentResearch&&currentResearch.questions.some(question=>!question.explored)?currentResearch:null;
-  const fitness=s.fitness.connected
-    ?['FITNESS',field('sync_status','connected'),field('source','Fitness App'),field('weekly_target',s.fitness.weeklyTarget??'unavailable'),field('completed_this_week',s.fitness.completedThisWeek??'unavailable'),field('today_workout',s.fitness.todayWorkout||'unavailable'),field('today_completed',s.fitness.todayCompleted??false)]
-    :['FITNESS',field('sync_status','disconnected'),field('source','Fitness App'),field('weekly_target','unavailable'),field('completed_this_week','unavailable')];
-  const recent=[...completedProjects,...s.recentlyCompleted].map(item=>oneLine(item,120)).filter((item,index,all)=>item&&all.indexOf(item)===index).slice(0,6);
-  return ['MENTOR CONTEXT','',field('generated_at',s.generatedAt.toLocaleString('tr-TR')),field('week_start',s.weekStart),field('week_end',end.toISOString().slice(0,10)),'','REBUILD',field('fitness_sync',s.fitness.connected?'connected':'disconnected'),field('english',`${due} due · ${speaking} speaking`),field('research',s.rebuild.research),field('create',s.rebuild.create),field('digital',s.rebuild.digital),field('visual_lab',s.rebuild.visual),field('social',s.rebuild.social),...(s.fitness.manualFallback?[field('sport_manual_fallback',s.fitness.manualFallback)]:[]),'','FOCUS / ACTIVE PROJECTS',...(active.length?active.flatMap(item=>projectBlock(item.project)):['none']),'','IDEAS / BACKLOG',...(ideas.length?[...ideas.slice(0,3).map(project=>`- ${oneLine(project.name,100)}`),...(ideas.length>3?[`+ ${ideas.length-3} more ideas`]:[])]:['none']),'','PAUSED',...(paused.length?paused.slice(0,5).map(project=>`- ${oneLine(project.name,100)}`):['none']),'',...fitness,'','CURRENT RESEARCH',...(research?['',oneLine(research.title,120),field('main_question',oneLine(research.question,180)),field('progress',`${research.questions.filter(question=>question.explored).length}/${research.questions.length}`),'remaining_questions:',...research.questions.filter(question=>!question.explored).slice(0,3).map(question=>`- ${oneLine(question.text,160)}`)]:['none']),'','ENGLISH',field('words_due',due),field('words_learned_this_week',learned),field('speaking_sessions_this_week',speaking),'','RECENTLY COMPLETED',...(recent.length?recent.map(item=>`- ${item}`):['none']),'','BACKLOG',field('idea_count',ideas.length),field('paused_count',paused.length),'recent_ideas:',...(ideas.length?ideas.slice(0,3).map(project=>`- ${oneLine(project.name,100)}`):['- none'])].join('\n');
+  const taskCompletions=s.recentlyCompleted.filter(item=>!completedNames.has(normalized(item.split(':')[0]||'')));
+  const recent=[...completedProjects,...taskCompletions].map(item=>oneLine(item,110)).filter((item,index,all)=>item&&all.indexOf(item)===index).slice(0,5);
+  return ['MENTOR CONTEXT','',field('generated_at',s.generatedAt.toLocaleString('tr-TR')),field('week_start',s.weekStart),field('week_end',end.toISOString().slice(0,10)),'','REBUILD',field('english',`${due} due · ${speaking} speaking`),field('research',s.rebuild.research),field('create',s.rebuild.create),field('digital',s.rebuild.digital),field('visual_lab',s.rebuild.visual),field('social',s.rebuild.social),'','FOCUS / ACTIVE PROJECTS',...(active.length?active.flatMap(item=>projectBlock(item.project)):['none']),'','IDEAS / BACKLOG',...(ideas.length?[...ideas.slice(0,3).map(project=>`- ${oneLine(project.name,100)}`),...(ideas.length>3?[`+ ${ideas.length-3} more ideas`]:[])]:['none']),'','PAUSED',...(paused.length?paused.slice(0,5).map(project=>`- ${oneLine(project.name,100)}`):['none']),'','CURRENT RESEARCH',...(research?['',oneLine(research.title,120),field('main_question',oneLine(research.question,180)),field('progress',`${research.questions.filter(question=>question.explored).length}/${research.questions.length}`),'remaining_questions:',...research.questions.filter(question=>!question.explored).slice(0,3).map(question=>`- ${oneLine(question.text,150)}`)]:['none']),'','ENGLISH',field('words_due',due),field('words_learned_this_week',learned),field('speaking_sessions_this_week',speaking),'','RECENTLY COMPLETED',...(recent.length?recent.map(item=>`- ${item}`):['none']),'','BACKLOG',field('idea_count',ideas.length),field('paused_count',paused.length),'recent_ideas:',...(ideas.length?ideas.slice(0,3).map(project=>`- ${oneLine(project.name,100)}`):['- none'])].join('\n');
 }
 
 export function mentorMetadata(workspace:ProjectWorkspaceData):ProjectWorkspaceData{return {...workspace,mentor:{source:'mentor',importedAt:new Date().toISOString()}};}

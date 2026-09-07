@@ -1,6 +1,14 @@
 export type GoalKind = 'body' | 'english' | 'make' | 'research' | 'social' | 'any';
 export type SuggestionType = 'project' | 'digital_project' | 'image_prompt' | 'research' | 'activity' | 'meal' | 'vocabulary' | 'speaking';
 export type DigitalPlatform = 'mobile_app' | 'web_app' | 'desktop_app' | 'game' | 'browser_extension' | 'plugin' | 'automation' | 'interactive_experience';
+export const RESEARCH_CATEGORIES = [{value:'surprise',label:'Karışık'},{value:'science',label:'Bilim'},{value:'technology',label:'Teknoloji'},{value:'society',label:'Toplum'},{value:'psychology',label:'Zihin'},{value:'nature',label:'Doğa'},{value:'arts',label:'Sanat'},{value:'future',label:'Gelecek'},{value:'everyday',label:'Gündelik hayat'}] as const;
+export const SOCIAL_CATEGORIES = [{value:'surprise',label:'Karışık'},{value:'outdoor',label:'Açık hava'},{value:'indoor',label:'Kapalı alan'},{value:'digital',label:'Dijital'},{value:'culture',label:'Kültür'},{value:'community',label:'Topluluk'},{value:'creative',label:'Yaratıcı'},{value:'low_energy',label:'Düşük enerji'}] as const;
+export const CREATE_CATEGORIES = [{value:'surprise',label:'Karışık'},{value:'physical',label:'Fiziksel'},{value:'electronics',label:'Elektronik'},{value:'visual',label:'Görsel'},{value:'craft',label:'El işi'},{value:'spatial',label:'Mekânsal'},{value:'experimental',label:'Deneysel'},{value:'software',label:'Yazılım'}] as const;
+export const DIGITAL_PLATFORMS = [{value:'surprise',label:'Karışık'},{value:'mobile_app',label:'Mobil uygulama'},{value:'web_app',label:'Web uygulaması'},{value:'desktop_app',label:'Masaüstü'},{value:'game',label:'Oyun'},{value:'browser_extension',label:'Tarayıcı eklentisi'},{value:'plugin',label:'Eklenti'},{value:'automation',label:'Otomasyon'},{value:'interactive_experience',label:'İnteraktif deneyim'}] as const;
+export type ResearchCategory = typeof RESEARCH_CATEGORIES[number]['value'];
+export type SocialCategory = typeof SOCIAL_CATEGORIES[number]['value'];
+export type CreateCategory = typeof CREATE_CATEGORIES[number]['value'];
+export type IdeaCategory = ResearchCategory|SocialCategory|CreateCategory;
 export type WordSuggestion = { word: string; meaning: string; example: string };
 export type ProjectPlan = { description: string; goal: string; scope: string; tasks: string[]; approach: string };
 export type ResearchPlan = { subquestions: string[] };
@@ -18,7 +26,7 @@ export type GeneratedIdea = Idea & {
   title: string; type: SuggestionType; domain: string; generatedAt: string; model: string;
   status: 'generated' | 'skipped' | 'rejected' | 'accepted';
 };
-export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; words?: string[]; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; signal?: AbortSignal };
+export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; category?:IdeaCategory; platform?:DigitalPlatform; words?: string[]; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; signal?: AbortSignal };
 export const GENERATION_UNAVAILABLE = 'AI üretimi şu anda kullanılamıyor. Lütfen daha sonra tekrar dene.';
 
 export function isIdea(value: unknown): value is Idea {

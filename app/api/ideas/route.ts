@@ -5,13 +5,15 @@ import { GenerationRepository } from '../../../generation/repository';
 import { createModelProvider, resolveModelConfig } from '../../../generation/provider';
 import type { ProviderBindings } from '../../../generation/provider';
 import { GenerationError, GenerationService } from '../../../generation/service';
-import { GENERATION_UNAVAILABLE } from '../../rebuild/idea-engine';
+import { CREATE_CATEGORIES, DIGITAL_PLATFORMS, GENERATION_UNAVAILABLE, RESEARCH_CATEGORIES, SOCIAL_CATEGORIES } from '../../rebuild/idea-engine';
 import type { IdeaRequest, SuggestionType } from '../../rebuild/idea-engine';
 
 export const dynamic = 'force-dynamic';
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers:{'Cache-Control':'private, no-store'} });
 const bindings = () => env as unknown as ProviderBindings;
 const suggestionTypes = ['project','digital_project','image_prompt','research','activity','meal','vocabulary','speaking'];
+const categoriesByType:Record<string,Set<string>>={project:new Set(CREATE_CATEGORIES.map(item=>item.value)),research:new Set(RESEARCH_CATEGORIES.map(item=>item.value)),activity:new Set(SOCIAL_CATEGORIES.map(item=>item.value))};
+const digitalPlatforms=new Set<string>(DIGITAL_PLATFORMS.filter(item=>item.value!=='surprise').map(item=>item.value));
 async function readBody(request: Request) {
   const reader=request.body?.getReader(); if(!reader)throw new GenerationError('invalid-request',400);
   let size=0;let result='';const decoder=new TextDecoder();
@@ -40,6 +42,8 @@ export async function POST(request: Request) {
     if(!['generate','accept','decision'].includes(body.action))throw new GenerationError('invalid-request',400);
     if(body.action!=='generate' && (typeof body.id!=='string'||!/^[-\w]{1,100}$/.test(body.id)))throw new GenerationError('invalid-request',400);
     if(body.action==='generate' && ((body.type && ![...suggestionTypes,'surprise'].includes(body.type))||(body.goal&&!['any','make','research','social','english','body'].includes(body.goal))))throw new GenerationError('invalid-request',400);
+    if(body.category&&(!categoriesByType[String(body.type)]?.has(String(body.category))))throw new GenerationError('invalid-request',400);
+    if(body.platform&&(body.type!=='digital_project'||!digitalPlatforms.has(String(body.platform))))throw new GenerationError('invalid-request',400);
     if(body.words && (!Array.isArray(body.words)||body.words.length>20||body.words.some((word:unknown)=>typeof word!=='string'||word.length>60)))throw new GenerationError('invalid-request',400);
     if(body.visualMode && (body.type!=='image_prompt'||!['concept','prompt','variation'].includes(body.visualMode)))throw new GenerationError('invalid-request',400);
     if(body.sourceId && (body.type!=='image_prompt'||typeof body.sourceId!=='string'||!/^[-\w]{1,100}$/.test(body.sourceId)))throw new GenerationError('invalid-request',400);
@@ -60,7 +64,7 @@ export async function POST(request: Request) {
     const token=crypto.randomUUID();if(!await store.acquire(token))throw new GenerationError('generation-in-progress',409);lock=token;
     const service=new GenerationService(store,createModelProvider(config),`${config.provider}/${config.model}`);
     const signal=AbortSignal.any([request.signal,AbortSignal.timeout(95_000)]);
-    const idea=body.action==='generate'?await service.generate({type:body.type,goal:body.goal,words:body.words,visualMode:body.visualMode,sourceId:body.sourceId} as IdeaRequest,signal):existing?.type==='digital_project'?await service.generateDigitalProjectPlan(body.id,signal):existing?.type==='research'?await service.generateResearchPlan(body.id,signal):await service.accept(body.id,signal);
+    const idea=body.action==='generate'?await service.generate({type:body.type,goal:body.goal,category:body.category,platform:body.platform,words:body.words,visualMode:body.visualMode,sourceId:body.sourceId} as IdeaRequest,signal):existing?.type==='digital_project'?await service.generateDigitalProjectPlan(body.id,signal):existing?.type==='research'?await service.generateResearchPlan(body.id,signal):await service.accept(body.id,signal);
     return json({idea});
   }catch(error){
     const providerCode=error instanceof Error?({'provider-http-429':'provider-quota','provider-http-401':'provider-key','provider-http-403':'provider-key','provider-http-404':'provider-model'} as Record<string,string>)[error.message]:undefined;

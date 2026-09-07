@@ -24,9 +24,9 @@ import { parseProgramDateRange } from './program-date';
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
-import { emptyDeck, normalizeDeck, weekView } from './rebuild/weekly-deck-model';
+import { emptyDeck, normalizeDeck } from './rebuild/weekly-deck-model';
 import type { WeeklyDeck } from './rebuild/weekly-deck-model';
-import { emptyPractice, normalizePractice, acceptIntoPractice, dueWords, speakingCount } from './rebuild/practice-model';
+import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
 import type { Practice } from './rebuild/practice-model';
 import type { FitnessSummary } from '../integrations/profitness/protocol';
 import {
@@ -1774,9 +1774,8 @@ export default function PersonalOS() {
     const target=(kind:string)=>mentorWeek?.goals.filter(goal=>goal.kind===kind).reduce((sum,goal)=>sum+goal.target,0)||0;
     const activeResearch=state.rebuildPractice.research.find(item=>item.id===state.rebuildPractice.currentResearchId);
     const linked=views.find(project=>project.id===state.rebuildPractice.activeProjectId);
-    const syncedFitness=fitnessIntegration.connected&&fitnessIntegration.entitled&&fitnessIntegration.summary?.weekStartsOn===mentorWeekStart?fitnessIntegration.summary:null;
-    const bodyFallback=`${count('body')}/${target('body')||3}`;
-    return mentorContext({generatedAt:new Date(),weekStart:mentorWeekStart,rebuild:{research:activeResearch?`${activeResearch.title} · ${activeResearch.questions.filter(q=>q.explored).length}/${activeResearch.questions.length}`:'none',create:linked?`${linked.name} · ${linked.progress}%`:'none',digital:views.filter(p=>/web|mobile|digital|app|game|uygulama|oyun/i.test(`${p.type} ${p.name}`)&&!['Fikir','Beklemede','Tamamlandı','Arşiv'].includes(p.stage)).slice(0,3).map(p=>`${p.name} ${p.progress}%`).join(' · ')||'none',visual:`${state.rebuildDeck.seenIdeas.length} saved`,social:`${count('social')}/${target('social')||1}`},fitness:{connected:fitnessIntegration.connected&&fitnessIntegration.entitled,...(syncedFitness?{weeklyTarget:syncedFitness.weeklyTarget,completedThisWeek:syncedFitness.completedThisWeek,todayWorkout:syncedFitness.today.name,todayCompleted:syncedFitness.today.status==='completed'}:{}),manualFallback:bodyFallback},projects:views,research:state.rebuildPractice.research,practice:state.rebuildPractice,recentlyCompleted:views.flatMap(p=>p.completed.map(task=>`${p.name}: ${task}`)).slice(-8)});
+    const digitalProjects=views.filter(p=>p.id!==linked?.id&&/web|mobile|digital|app|game|uygulama|oyun/i.test(`${p.type} ${p.name}`)&&!['Fikir','Beklemede','Tamamlandı','Arşiv'].includes(p.stage));
+    return mentorContext({generatedAt:new Date(),weekStart:mentorWeekStart,rebuild:{research:activeResearch?`${activeResearch.title} · ${activeResearch.questions.filter(q=>q.explored).length}/${activeResearch.questions.length}`:'none',create:linked?`${linked.name} · ${linked.progress}%`:'none',digital:digitalProjects.slice(0,3).map(p=>`${p.name} ${p.progress}%`).join(' · ')||'none',visual:`${state.rebuildDeck.seenIdeas.length} saved`,social:`${count('social')}/${target('social')||1}`},projects:views,research:state.rebuildPractice.research,practice:state.rebuildPractice,recentlyCompleted:views.flatMap(p=>p.completed.map(task=>`${p.name}: ${task}`)).slice(-8)});
   };
   const previewMentorImport=()=>{
     const parsed=parseMentorOutput(mentorInput);setMentorParsed(parsed);setMentorError('');setMentorDuplicate(null);
