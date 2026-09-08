@@ -792,3 +792,43 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
 .schedule-action {
   grid-template-columns: 1fr !important;
 }
+
+/* Copy controls stay beside task actions without changing the task's primary click target. */
+.copy-action {
+  width: 32px !important;
+  height: 32px !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  place-items: center !important;
+}
+.copy-action:hover { background: var(--accent-soft) !important; color: var(--accent) !important; }
+.department-task-row { grid-template-columns: minmax(0,1fr) 38px 38px; }
+.program-task-row { grid-template-columns: minmax(0,1fr) 28px 28px 34px; }
+.page-kibleteyn .department-task-row { grid-template-columns: minmax(0,1fr) 42px 42px; }
+.page-kibleteyn .department-task-row :is(.copy-action,.schedule-action) { width: 40px !important; height: 40px !important; }
+.page-programs .program-task-row { grid-template-columns: minmax(0,1fr) 36px 36px 36px; }
+.page-programs .copy-action { width: 36px !important; height: 36px !important; }
+.personal-subtask { grid-template-columns: 24px minmax(0,1fr) 30px 30px; }
+.personal-subtask-copy {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #aaa4b0;
+  display: grid;
+  place-items: center;
+}
+.personal-subtask-copy:hover { background: var(--accent-soft); color: var(--accent); }
+@media(max-width:560px) {
+  .department-task-row { grid-template-columns: minmax(0,1fr) 42px 42px; }
+  .program-task-row { grid-template-columns: minmax(0,1fr) 38px 38px 38px; }
+  .personal-subtask { grid-template-columns: 28px minmax(0,1fr) 34px 34px; }
+  .personal-subtask-copy { width: 34px; height: 34px; }
+}

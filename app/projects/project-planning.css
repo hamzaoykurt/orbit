@@ -11,3 +11,4 @@
 @media(prefers-reduced-motion:reduce){.pp-root *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .pp-root .pp-preview-button{display:block;width:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 .pp-root .pp-project-open{display:block;width:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.pp-project-card{position:relative}.pp-project-card-copy{position:absolute;z-index:3;right:51px;top:12px;display:grid;place-items:center;width:31px;height:31px;padding:0;border:1px solid var(--pp-line);border-radius:50%;background:var(--pp-bg);color:var(--pp-ink)}.pp-project-card-copy:hover{color:var(--accent);background:var(--pp-wash)}
