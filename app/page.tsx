@@ -1690,6 +1690,11 @@ export default function PersonalOS() {
     notify('Not arşive taşındı.');
   };
 
+  const deleteNote = (note: Note) => {
+    setState((current) => ({ ...current, notes: current.notes.filter((item) => item.id !== note.id) }));
+    notify('Not silindi.');
+  };
+
   const restoreArchiveItem = (item: ArchiveItem) => {
     setState((current) => {
       const next = { ...current, archive: current.archive.filter((entry) => entry.id !== item.id), restoredArchiveIds: [...new Set([...current.restoredArchiveIds, item.id])] };
@@ -2000,7 +2005,7 @@ export default function PersonalOS() {
   const renderNotes = () => {
     return <>
       <PageTitle eyebrow="NOTLAR" title="Düşünceyi doğru biçimde yakala." description="Hızlı not, fikir, günlük ve referanslar için birbirinden farklı başlangıçlar."/>
-      <NotesWorkspace notes={state.notes} onChange={notes=>setState(current=>({...current,notes}))} onArchive={archiveNote}/>
+      <NotesWorkspace notes={state.notes} onChange={notes=>setState(current=>({...current,notes}))} onArchive={archiveNote} onDelete={deleteNote}/>
     </>;
   };
 

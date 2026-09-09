@@ -832,3 +832,8 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
   .personal-subtask { grid-template-columns: 28px minmax(0,1fr) 34px 34px; }
   .personal-subtask-copy { width: 34px; height: 34px; }
 }
+
+.nh-editor-actions,.note-card-actions{display:flex;align-items:center;gap:5px}
+.note-card-actions button{border:0;background:transparent;color:var(--muted);padding:5px;z-index:1}
+.nh-editor>footer button.danger,.note-card-actions button.danger{color:#b34e4e}
+.note-card footer button{display:flex;align-items:center;gap:4px;color:var(--muted)}
