@@ -48,6 +48,7 @@ const RebuildJourney = lazy(() => import('./rebuild/rebuild-journey').then(modul
 type PersonalListKey = 'todo' | 'buy' | 'visit';
 type PersonalItemDetails = { title?: string; note?: string; price?: string; link?: string; locationUrl?: string; priority?: 'normal' | 'important' };
 type PersonalSubtask = { id: string; title: string };
+type TaskDialogState = { mode: 'edit' | 'delete'; title: string; description: string; action: (title: string) => void };
 type PersonalDragState = { kind: 'item' | 'subtask'; list: PersonalListKey; itemId: string; subtaskId?: string; overId: string; title: string; x: number; y: number; pointerId: number };
 type ProjectCover = 'orbit' | 'aurora' | 'grid' | 'minimal';
 type Project = { id: string; title: string; stage: number; progress: number; color: string; due: string; tags: string[]; tasks: string[]; cover?: ProjectCover };
@@ -401,7 +402,9 @@ export default function PersonalOS() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastFeedbackAtRef = useRef(0);
   const [mobileMenu, setMobileMenu] = useNavigationState<boolean>('overlay:mobile-menu', false, true);
-  const [modal, setModal] = useNavigationState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'event' | 'profile' | 'navCustomize' | 'capture' | 'mentor' | null>('overlay:modal', null, true);
+  const [modal, setModal] = useNavigationState<'quick' | 'personalItem' | 'search' | 'notifications' | 'note' | 'project' | 'program' | 'programTask' | 'departmentTask' | 'taskAction' | 'event' | 'profile' | 'navCustomize' | 'capture' | 'mentor' | null>('overlay:modal', null, true);
+  const [taskDialog, setTaskDialog] = useState<TaskDialogState | null>(null);
+  const [taskDialogTitle, setTaskDialogTitle] = useState('');
   const [toast, setToast] = useState('');
   const [projectCreatorOpen, setProjectCreatorOpen] = useNavigationState<boolean>('overlay:creator', false, true);
   const [syncStatus, setSyncStatus] = useState('loading');
@@ -697,6 +700,27 @@ export default function PersonalOS() {
     window.setTimeout(() => setToast(''), 2400);
   }, []);
 
+  const openTaskEditor = (title: string, description: string, action: (title: string) => void) => {
+    setTaskDialogTitle(title);
+    setTaskDialog({ mode: 'edit', title, description, action });
+    setModal('taskAction');
+  };
+  const openTaskDelete = (title: string, description: string, action: () => void) => {
+    setTaskDialogTitle(title);
+    setTaskDialog({ mode: 'delete', title, description, action });
+    setModal('taskAction');
+  };
+  const completeTaskDialog = () => {
+    if (!taskDialog) return;
+    if (taskDialog.mode === 'edit') {
+      const title = taskDialogTitle.trim();
+      if (!title) return;
+      taskDialog.action(title.slice(0, 240));
+    } else taskDialog.action('');
+    setTaskDialog(null);
+    setModal(null);
+  };
+
   const markAllNotificationsRead = () => {
     setState((current) => ({ ...current, notificationReadIds: Array.from(new Set([...current.notificationReadIds, ...notifications.map((item) => item.id)])) }));
   };
@@ -963,20 +987,22 @@ export default function PersonalOS() {
   };
 
   const removePersonalSubtask = (itemId: string, subtask: PersonalSubtask) => {
-    if (!window.confirm(`“${subtask.title}” alt görevi kaldırılsın mı?`)) return;
-    setState((current) => ({
-      ...current,
-      personalSubtasks: { ...current.personalSubtasks, [itemId]: (current.personalSubtasks[itemId] ?? []).filter((entry) => entry.id !== subtask.id) },
-      completed: Object.fromEntries(Object.entries(current.completed).filter(([id]) => id !== subtask.id)),
-    }));
-    notify('Alt görev kaldırıldı.');
+    openTaskDelete(subtask.title, 'Bu alt görev listeden ve tamamlanma geçmişinden kaldırılacak.', () => {
+      setState((current) => ({
+        ...current,
+        personalSubtasks: { ...current.personalSubtasks, [itemId]: (current.personalSubtasks[itemId] ?? []).filter((entry) => entry.id !== subtask.id) },
+        completed: Object.fromEntries(Object.entries(current.completed).filter(([id]) => id !== subtask.id)),
+      }));
+      notify('Alt görev kaldırıldı.');
+    });
   };
 
   const editPersonalSubtask = (itemId: string, subtask: PersonalSubtask) => {
-    const title = window.prompt('Alt görevi düzenle', subtask.title)?.trim();
-    if (!title || title === subtask.title) return;
-    setState((current) => ({ ...current, personalSubtasks: { ...current.personalSubtasks, [itemId]: (current.personalSubtasks[itemId] ?? []).map((entry) => entry.id === subtask.id ? { ...entry, title: title.slice(0, 240) } : entry) } }));
-    notify('Alt görev güncellendi.');
+    openTaskEditor(subtask.title, 'Alt görevin adını daha net ve uygulanabilir hale getir.', (title) => {
+      if (title === subtask.title) return;
+      setState((current) => ({ ...current, personalSubtasks: { ...current.personalSubtasks, [itemId]: (current.personalSubtasks[itemId] ?? []).map((entry) => entry.id === subtask.id ? { ...entry, title } : entry) } }));
+      notify('Alt görev güncellendi.');
+    });
   };
 
   const updatePersonalDrag = (clientX: number, clientY: number) => {
@@ -1100,8 +1126,8 @@ export default function PersonalOS() {
     setPersonalTab(personalItemDraft.list); setModal(null); notify('Yeni kayıt eklendi.');
   };
 
-  const removePersonalItem = () => {
-    if (!editingPersonalItemId || !window.confirm('Bu kayıt listeden kaldırılsın mı?')) return;
+  const deletePersonalItem = () => {
+    if (!editingPersonalItemId) return;
     const removedId = editingPersonalItemId;
     setState((current) => ({
       ...current,
@@ -1111,6 +1137,11 @@ export default function PersonalOS() {
       completed: Object.fromEntries(Object.entries(current.completed).filter(([id]) => id !== removedId && !(current.personalSubtasks[removedId] ?? []).some((subtask) => subtask.id === id))),
     }));
     setModal(null); setEditingPersonalItemId(null); notify('Kayıt kaldırıldı.');
+  };
+
+  const removePersonalItem = () => {
+    if (!editingPersonalItemId) return;
+    openTaskDelete(personalItemDraft.title || 'Personal görevi', 'Bu görev, bağlı alt görevleri ve tamamlanma bilgisiyle birlikte kaldırılacak.', deletePersonalItem);
   };
 
   const addQuick = () => {
@@ -1271,14 +1302,15 @@ export default function PersonalOS() {
   };
 
   const editProgramTask = (programId: string, category: string, currentTitle: string) => {
-    const title = window.prompt('Görevi düzenle', currentTitle)?.trim();
-    if (!title || title === currentTitle) return;
-    setState((current) => {
-      const sources = [...programCategories.find((item) => item.name === category)!.tasks, ...(current.programExtraTasks[programId]?.[category] ?? [])];
-      const source = sources.find((item) => (current.programTaskEdits[programId]?.[`${category}\n${item}`] ?? item) === currentTitle) ?? currentTitle;
-      return { ...current, programTaskEdits: { ...current.programTaskEdits, [programId]: { ...(current.programTaskEdits[programId] ?? {}), [`${category}\n${source}`]: title.slice(0, 240) } } };
+    openTaskEditor(currentTitle, `${category} kategorisindeki hazırlık görevini güncelle.`, (title) => {
+      if (title === currentTitle) return;
+      setState((current) => {
+        const sources = [...programCategories.find((item) => item.name === category)!.tasks, ...(current.programExtraTasks[programId]?.[category] ?? [])];
+        const source = sources.find((item) => (current.programTaskEdits[programId]?.[`${category}\n${item}`] ?? item) === currentTitle) ?? currentTitle;
+        return { ...current, programTaskEdits: { ...current.programTaskEdits, [programId]: { ...(current.programTaskEdits[programId] ?? {}), [`${category}\n${source}`]: title } } };
+      });
+      notify('Hazırlık görevi güncellendi.');
     });
-    notify('Hazırlık görevi güncellendi.');
   };
 
   const openDepartmentTask = () => {
@@ -1300,41 +1332,46 @@ export default function PersonalOS() {
   };
 
   const editDepartmentTask = (departmentId: string, source: string, currentTitle: string) => {
-    const title = window.prompt('Görevi düzenle', currentTitle)?.trim();
-    if (!title || title === currentTitle) return;
-    setState((current) => ({ ...current, departmentTaskEdits: { ...current.departmentTaskEdits, [departmentId]: { ...(current.departmentTaskEdits[departmentId] ?? {}), [source]: title.slice(0, 240) } } }));
-    notify('Operasyon görevi güncellendi.');
+    const department = departments.find((item) => item.id === departmentId);
+    openTaskEditor(currentTitle, `${department?.title ?? 'Operasyon'} alanındaki görevi güncelle.`, (title) => {
+      if (title === currentTitle) return;
+      setState((current) => ({ ...current, departmentTaskEdits: { ...current.departmentTaskEdits, [departmentId]: { ...(current.departmentTaskEdits[departmentId] ?? {}), [source]: title } } }));
+      notify('Operasyon görevi güncellendi.');
+    });
   };
 
   const removeDepartmentTask = (departmentId: string, source: string, taskIndex: number) => {
-    if (!window.confirm('“Bu operasyon görevi silinsin mi?')) return;
-    setState((current) => ({
-      ...current,
-      customDepartmentTasks: { ...current.customDepartmentTasks, [departmentId]: (current.customDepartmentTasks[departmentId] ?? []).filter((item) => item !== source) },
-      departmentRemovedTasks: { ...current.departmentRemovedTasks, [departmentId]: [...new Set([...(current.departmentRemovedTasks[departmentId] ?? []), source])] },
-      departmentTaskEdits: { ...current.departmentTaskEdits, [departmentId]: Object.fromEntries(Object.entries(current.departmentTaskEdits[departmentId] ?? {}).filter(([key]) => key !== source)) },
-      completed: removeIndexedCompletion(current.completed, `dept-${departmentId}-`, taskIndex),
-    }));
-    notify('Operasyon görevi silindi.');
+    const currentTitle = state.departmentTaskEdits[departmentId]?.[source] ?? source;
+    openTaskDelete(currentTitle, 'Bu operasyon görevi ve tamamlanma bilgisi kalıcı olarak kaldırılacak.', () => {
+      setState((current) => ({
+        ...current,
+        customDepartmentTasks: { ...current.customDepartmentTasks, [departmentId]: (current.customDepartmentTasks[departmentId] ?? []).filter((item) => item !== source) },
+        departmentRemovedTasks: { ...current.departmentRemovedTasks, [departmentId]: [...new Set([...(current.departmentRemovedTasks[departmentId] ?? []), source])] },
+        departmentTaskEdits: { ...current.departmentTaskEdits, [departmentId]: Object.fromEntries(Object.entries(current.departmentTaskEdits[departmentId] ?? {}).filter(([key]) => key !== source)) },
+        completed: removeIndexedCompletion(current.completed, `dept-${departmentId}-`, taskIndex),
+      }));
+      notify('Operasyon görevi silindi.');
+    });
   };
 
   const visibleProjectTasks = (project: Project) => visibleProjectTaskTitles(project.tasks, state.projectExtraTasks[project.id] ?? [], state.projectRemovedTasks[project.id] ?? []);
 
   const editProjectTask = (project: Project, taskIndex: number, currentTitle: string) => {
-    const title = window.prompt('Görevi düzenle', currentTitle)?.trim();
-    if (!title || title === currentTitle) return;
-    setState((current) => {
-      const extras = current.projectExtraTasks[project.id] ?? [];
-      const entry = visibleProjectTaskEntries(project.tasks, extras, current.projectRemovedTasks[project.id] ?? [])[taskIndex];
-      if (!entry) return current;
-      if (entry.sourceIndex < project.tasks.length) {
-        const tasks = project.tasks.map((task, index) => index === entry.sourceIndex ? `${task.startsWith('>') ? '> ' : ''}${title.slice(0, 240)}` : task);
-        return { ...current, projectEdits: { ...current.projectEdits, [project.id]: { ...current.projectEdits[project.id], tasks } } };
-      }
-      const extraIndex = entry.sourceIndex - project.tasks.length;
-      return { ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: extras.map((task, index) => index === extraIndex ? `${task.startsWith('>') ? '> ' : ''}${title.slice(0, 240)}` : task) } };
+    openTaskEditor(currentTitle, `${project.title} projesindeki bu görevin başlığını güncelle.`, (title) => {
+      if (title === currentTitle) return;
+      setState((current) => {
+        const extras = current.projectExtraTasks[project.id] ?? [];
+        const entry = visibleProjectTaskEntries(project.tasks, extras, current.projectRemovedTasks[project.id] ?? [])[taskIndex];
+        if (!entry) return current;
+        if (entry.sourceIndex < project.tasks.length) {
+          const tasks = project.tasks.map((task, index) => index === entry.sourceIndex ? `${task.startsWith('>') ? '> ' : ''}${title}` : task);
+          return { ...current, projectEdits: { ...current.projectEdits, [project.id]: { ...current.projectEdits[project.id], tasks } } };
+        }
+        const extraIndex = entry.sourceIndex - project.tasks.length;
+        return { ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: extras.map((task, index) => index === extraIndex ? `${task.startsWith('>') ? '> ' : ''}${title}` : task) } };
+      });
+      notify('Proje görevi güncellendi.');
     });
-    notify('Proje görevi güncellendi.');
   };
 
   const removeProjectTask = (project: Project, taskIndex: number) => {
@@ -1355,10 +1392,11 @@ export default function PersonalOS() {
   };
 
   const editProjectSubtask = (key: string, subtask: PersonalSubtask) => {
-    const title = window.prompt('Alt görevi düzenle', subtask.title)?.trim();
-    if (!title || title === subtask.title) return;
-    setState((current) => ({ ...current, projectSubtasks: { ...current.projectSubtasks, [key]: (current.projectSubtasks[key] ?? []).map((item) => item.id === subtask.id ? { ...item, title: title.slice(0, 240) } : item) } }));
-    notify('Proje alt görevi güncellendi.');
+    openTaskEditor(subtask.title, 'Proje alt görevinin başlığını güncelle.', (title) => {
+      if (title === subtask.title) return;
+      setState((current) => ({ ...current, projectSubtasks: { ...current.projectSubtasks, [key]: (current.projectSubtasks[key] ?? []).map((item) => item.id === subtask.id ? { ...item, title } : item) } }));
+      notify('Proje alt görevi güncellendi.');
+    });
   };
 
   const openProjectEdit = (project: Project) => {
@@ -1560,19 +1598,21 @@ export default function PersonalOS() {
   };
 
   const removeProgramTask = (programId: string, category: string, currentTitle: string, taskIndex: number) => {
-    if (!window.confirm('“Bu hazırlık görevi silinsin mi?')) return;
     const categoryIndex = programCategories.findIndex((item) => item.name === category);
-    setState((current) => {
-      const sources = [...programCategories.find((item) => item.name === category)!.tasks, ...(current.programExtraTasks[programId]?.[category] ?? [])];
-      const source = sources.find((item) => (current.programTaskEdits[programId]?.[`${category}\n${item}`] ?? item) === currentTitle) ?? currentTitle;
-      return ({
-      ...current,
-      programExtraTasks: { ...current.programExtraTasks, [programId]: { ...(current.programExtraTasks[programId] ?? {}), [category]: (current.programExtraTasks[programId]?.[category] ?? []).filter((item) => item !== source) } },
-      programRemovedTasks: { ...current.programRemovedTasks, [programId]: [...new Set([...(current.programRemovedTasks[programId] ?? []), source])] },
-      programTaskEdits: { ...current.programTaskEdits, [programId]: Object.fromEntries(Object.entries(current.programTaskEdits[programId] ?? {}).filter(([key]) => key !== `${category}\n${source}`)) },
-      completed: removeIndexedCompletion(current.completed, `program-${programId}-${categoryIndex}-`, taskIndex),
-    }); });
-    notify('Hazırlık görevi kaldırıldı.');
+    openTaskDelete(currentTitle, `${category} kategorisindeki bu görev ve tamamlanma bilgisi silinecek.`, () => {
+      setState((current) => {
+        const sources = [...programCategories.find((item) => item.name === category)!.tasks, ...(current.programExtraTasks[programId]?.[category] ?? [])];
+        const source = sources.find((item) => (current.programTaskEdits[programId]?.[`${category}\n${item}`] ?? item) === currentTitle) ?? currentTitle;
+        return ({
+          ...current,
+          programExtraTasks: { ...current.programExtraTasks, [programId]: { ...(current.programExtraTasks[programId] ?? {}), [category]: (current.programExtraTasks[programId]?.[category] ?? []).filter((item) => item !== source) } },
+          programRemovedTasks: { ...current.programRemovedTasks, [programId]: [...new Set([...(current.programRemovedTasks[programId] ?? []), source])] },
+          programTaskEdits: { ...current.programTaskEdits, [programId]: Object.fromEntries(Object.entries(current.programTaskEdits[programId] ?? {}).filter(([key]) => key !== `${category}\n${source}`)) },
+          completed: removeIndexedCompletion(current.completed, `program-${programId}-${categoryIndex}-`, taskIndex),
+        });
+      });
+      notify('Hazırlık görevi kaldırıldı.');
+    });
   };
 
   const removeProgram = (program: Program) => {
@@ -2026,10 +2066,10 @@ export default function PersonalOS() {
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
         onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
         onEditTask={(index, title) => editProjectTask(project, index, title)}
-        onRemoveTask={index => removeProjectTask(project, index)}
+        onRemoveTask={index => openTaskDelete(visibleProjectTasks(project)[index] ?? 'Proje görevi', 'Bu görev, bağlı alt görevleri, notları ve tamamlanma bilgisiyle birlikte silinecek.', () => removeProjectTask(project, index))}
         onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}
         onEditSubtask={(index, task) => editProjectSubtask(`${project.id}:${index}`, task)}
-        onRemoveSubtask={(index, task) => removeProjectSubtask(`${project.id}:${index}`, task)}
+        onRemoveSubtask={(index, task) => openTaskDelete(task.title, 'Bu alt görev ve tamamlanma bilgisi projeden kaldırılacak.', () => removeProjectSubtask(`${project.id}:${index}`, task))}
         onDetails={(id, update) => setState(current => ({ ...current, projectTaskDetails: { ...current.projectTaskDetails, [id]: update(current.projectTaskDetails[id] ?? emptyTask) } }))}
         onWorkspace={update => setState(current => { const workspace = update(current.projectWorkspaces[project.id] ?? emptyWorkspace); return { ...current,
           projectWorkspaces: { ...current.projectWorkspaces, [project.id]: workspace },
@@ -2218,6 +2258,7 @@ export default function PersonalOS() {
     {projectCreatorOpen && state.projectCreationDraft && <Suspense fallback={<p role="status">Proje atölyesi açılıyor…</p>}><ProjectCreator draft={state.projectCreationDraft} onChange={draft => setState(current => ({ ...current, projectCreationDraft: draft }))} onClose={() => setProjectCreatorOpen(false)} onDiscard={() => { setState(current => ({ ...current, projectCreationDraft: null })); setProjectCreatorOpen(false); }} onSave={saveProjectPlan}/></Suspense>}
     {modal&&<div className="modal-layer" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget){playFeedback('tap',true);setModal(null);}}}><section className={`modal-card ${modal}`} role="dialog" aria-modal="true" aria-label="Orbit penceresi" onKeyDownCapture={handleModalKeyDown} onChangeCapture={handleModalChange} onFocusCapture={handleModalFocus}><IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>
       {modal==='mentor'&&<><span className="modal-icon"><FileInput size={20}/></span><span className="eyebrow">MENTOR SYNC</span><h2>Mentor köprüsü</h2><p>Orbit bağlamını JSON belgesi olarak indir; mentorunun aynı belgeye eklediği proje veya araştırma yanıtını dosyadan içe aktar.</p><div className="mentor-tabs" role="tablist"><button className={mentorTab==='context'?'selected':''} onClick={()=>setMentorTab('context')}><Download size={14}/> JSON indir</button><button className={mentorTab==='import'?'selected':''} onClick={()=>setMentorTab('import')}><FileInput size={14}/> JSON yükle</button></div>{mentorTab==='context'?<div className="mentor-context"><small>Son indirme: {mentorGeneratedAt?mentorGeneratedAt.toLocaleString('tr-TR'):'Henüz indirilmedi'}</small><button className="primary-button full" onClick={downloadMentorDocument}><Download size={15}/> Güncel Mentor JSON belgesini indir</button><button className="mentor-preview-toggle" onClick={()=>{setMentorPreview(value=>!value);if(!mentorGeneratedAt)setMentorGeneratedAt(new Date());}}>{mentorPreview?'Önizlemeyi kapat':'Bağlamı önizle'}</button>{mentorPreview&&<pre className="mentor-preview">{buildMentorContext(mentorGeneratedAt||new Date())}</pre>}</div>:<div className="mentor-import">{!mentorParsed?<><label className="mentor-file-picker"><FileInput size={22}/><span><strong>Mentor JSON belgesini seç</strong><small>{mentorFileName||'.json · en fazla 256 KB'}</small></span><input type="file" accept="application/json,.json" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void readMentorDocument(file);}}/></label><p className="mentor-file-help">İndirdiğin belgede <code>mentor_response</code> alanını mentorun doldurmalı. Orbit yalnızca doğrulanmış proje veya araştırma kaydını içe aktarır.</p>{mentorError&&<div className="mentor-error" role="alert"><strong>{mentorError}</strong><small>Dosyanın Orbit Mentor JSON şemasını ve mentor_response alanını içerdiğini kontrol et.</small></div>}</>:<><div className="mentor-import-preview"><span>{mentorParsed.kind==='project'?'PROJE EKLE':'ARAŞTIRMA EKLE'}</span><h3>{mentorParsed.kind==='project'?mentorParsed.name:mentorParsed.title}</h3>{mentorParsed.kind==='project'?<><p>{mentorParsed.type||'Proje'} · {mentorParsed.stage||'Fikir'}</p><strong>{mentorParsed.tasks.length} görev</strong>{mentorParsed.designLanguage&&<small>Tasarım dili: {mentorParsed.designLanguage}</small>}</>:<><p>{mentorParsed.mainQuestion}</p><strong>{mentorParsed.subquestions.length} soru</strong></>}</div>{mentorDuplicate?<div className="mentor-duplicate"><strong>Benzer bir {mentorDuplicate.kind==='project'?'proje':'araştırma'} zaten var:</strong><p>{mentorDuplicate.title}</p><div><button onClick={()=>{setModal(null);if(mentorDuplicate.kind==='project')openProjectDetail(mentorDuplicate.id);else{setState(current=>({...current,rebuildPractice:{...current.rebuildPractice,currentResearchId:mentorDuplicate.id}}));go('rebuild');}}}>Mevcut kaydı aç</button><button onClick={()=>setMentorDuplicate(null)}>Yine de içe aktar</button><button onClick={()=>{setMentorParsed(null);setMentorDuplicate(null);setMentorFileName('');}}>İptal</button></div></div>:<div className="mentor-confirm"><button onClick={()=>{setMentorParsed(null);setMentorFileName('');}}>Başka dosya seç</button><button className="primary-button" onClick={importFromMentor}>{mentorParsed.kind==='project'?'Projelere ekle':'Research’e ekle'} <Check size={15}/></button></div>}</>}</div>}</>}
+      {modal==='taskAction'&&taskDialog&&<><div className={`task-action-icon ${taskDialog.mode}`}>{taskDialog.mode==='edit'?<Pencil size={22}/>:<Trash2 size={22}/>}</div><span className="eyebrow">{taskDialog.mode==='edit'?'GÖREVİ DÜZENLE':'GÖREVİ SİL'}</span><h2>{taskDialog.mode==='edit'?'Başlığı netleştir.':'Bu görev silinsin mi?'}</h2><p>{taskDialog.description}</p>{taskDialog.mode==='edit'?<label className="task-action-field">Görev adı<input required autoFocus maxLength={240} value={taskDialogTitle} onChange={event=>setTaskDialogTitle(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();completeTaskDialog();}}}/><small>{taskDialogTitle.trim().length}/240 karakter</small></label>:<div className="task-delete-preview"><span><Trash2 size={16}/></span><div><small>SİLİNECEK GÖREV</small><strong>{taskDialog.title}</strong></div></div>}<div className="task-action-buttons"><button type="button" onClick={()=>{setTaskDialog(null);setModal(null);}}>Vazgeç</button><button type="button" className={taskDialog.mode==='delete'?'danger':'primary-button'} disabled={taskDialog.mode==='edit'&&!taskDialogTitle.trim()} onClick={completeTaskDialog}>{taskDialog.mode==='edit'?<><Check size={16}/> Değişiklikleri kaydet</>:<><Trash2 size={16}/> Görevi sil</>}</button></div></>}
       {modal==='quick'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">HIZLI EKLE</span><h2>Yeni bir görev</h2><p>Aklındaki işi seçtiğin Personal listesine ekle.</p><label>Görev adı<input required autoFocus value={quickText} onChange={(event)=>setQuickText(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addQuick()} placeholder="Örn. Tur sunumunu kontrol et"/></label><div className="modal-options" role="group" aria-label="Görev listesi">{(Object.keys(personalLists) as (keyof typeof personalLists)[]).map((key)=>{const ItemIcon=personalLists[key].icon;return <button type="button" key={key} aria-pressed={quickTarget===key} className={quickTarget===key?'selected':''} onClick={()=>setQuickTarget(key)}><ItemIcon size={14}/>{personalLists[key].title}</button>})}</div><button className="primary-button full" disabled={!quickText.trim()} onClick={addQuick}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='notifications'&&<><div className="notification-center-head"><span className="modal-icon"><Bell size={20}/></span><div><span className="eyebrow">BİLDİRİM MERKEZİ</span><h2>Yaklaşan akışın.</h2></div>{unreadNotificationCount>0&&<button onClick={markAllNotificationsRead}><CheckCheck size={15}/> Tümünü okundu say</button>}</div><p className="notification-center-copy">Yalnızca bugün ve yarın için takviminde gerçekten bulunan kayıtlar burada görünür.</p><div className="notification-list">{notifications.length?notifications.map((item)=>{const isUnread=!state.notificationReadIds.includes(item.id);return <article key={item.id} className={isUnread?'unread':''}><button className="notification-main" onClick={()=>openNotification(item)}><span className={`notification-tone ${item.tone}`}><CalendarDays size={16}/></span><span><strong>{item.title}</strong><small>{item.description}</small></span><ChevronRight size={15}/></button><button className="notification-dismiss" aria-label={`${item.title} bildirimini kaldır`} onClick={()=>dismissNotification(item.id)}><X size={14}/></button></article>}):<div className="notification-empty"><span><Bell size={22}/><Check size={12}/></span><strong>Yeni bildirimin yok.</strong><p>Takvimine bugün veya yarın için bir kayıt eklendiğinde burada görünecek.</p></div>}</div><div className="notification-center-footer"><span><i className={state.settings.notifications?'active':''}/>{state.settings.notifications?'Sistem hatırlatmaları açık':'Sistem hatırlatmaları kapalı'}</span><button onClick={()=>{setModal(null);setSettingsTab('notifications');go('settings')}}>Bildirim ayarları <ArrowRight size={13}/></button></div></>}
       {modal==='personalItem'&&<><span className="modal-icon">{personalItemDraft.list==='visit'?<MapPin size={20}/>:personalItemDraft.list==='buy'?<ShoppingBag size={20}/>:<ListTodo size={20}/>}</span><span className="eyebrow">{editingPersonalItemId?'KAYDI DÜZENLE':'YENİ KAYIT'}</span><h2>{personalLists[personalItemDraft.list].title}</h2><p>{editingPersonalItemId?'Kaydın ayrıntılarını güncelle.':'Yeni kayıt bu Personal listesine eklenecek.'}</p><label>Başlık<input required autoFocus value={personalItemDraft.title} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,title:event.target.value})} placeholder={personalItemDraft.list==='visit'?'Örn. Efes Antik Kenti':personalItemDraft.list==='buy'?'Örn. Monitör kolu':'Yapılacak iş'}/></label>{personalItemDraft.list==='buy'&&<><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={personalItemDraft.price} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,price:event.target.value})} placeholder="1250"/></label><label>Ürün bağlantısı <small>İsteğe bağlı</small><input type="url" value={personalItemDraft.link} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,link:event.target.value})} placeholder="https://..."/></label></>}{personalItemDraft.list==='visit'&&<label>Google Haritalar konum bağlantısı <small>İsteğe bağlı</small><input type="url" value={personalItemDraft.locationUrl} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,locationUrl:event.target.value})} placeholder="https://maps.google.com/..."/></label>}<label>Kısa not <small>İsteğe bağlı</small><textarea value={personalItemDraft.note} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,note:event.target.value})} placeholder="Kısa bir ayrıntı ekle..."/></label><label>Öncelik<select value={personalItemDraft.priority} onChange={(event)=>setPersonalItemDraft({...personalItemDraft,priority:event.target.value as 'normal'|'important'})}><option value="normal">Normal</option><option value="important">Önemli</option></select></label>{editingPersonalItemId&&<button className="personal-delete-button" onClick={removePersonalItem}><Trash2 size={15}/> Kaydı kaldır</button>}<button className="primary-button full" disabled={!personalItemDraft.title.trim()} onClick={savePersonalItem}>{editingPersonalItemId?'Değişiklikleri kaydet':'Listeye ekle'} <ArrowRight size={15}/></button></>}
