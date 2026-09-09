@@ -794,7 +794,7 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
 }
 
 /* Copy controls stay beside task actions without changing the task's primary click target. */
-.copy-action {
+.copy-action,.task-edit-button {
   width: 32px !important;
   height: 32px !important;
   min-height: 0 !important;
@@ -807,15 +807,15 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
   grid-template-columns: 1fr !important;
   place-items: center !important;
 }
-.copy-action:hover { background: var(--accent-soft) !important; color: var(--accent) !important; }
-.department-task-row { grid-template-columns: minmax(0,1fr) 38px 38px; }
-.program-task-row { grid-template-columns: minmax(0,1fr) 28px 28px 34px; }
-.page-kibleteyn .department-task-row { grid-template-columns: minmax(0,1fr) 42px 42px; }
-.page-kibleteyn .department-task-row :is(.copy-action,.schedule-action) { width: 40px !important; height: 40px !important; }
-.page-programs .program-task-row { grid-template-columns: minmax(0,1fr) 36px 36px 36px; }
-.page-programs .copy-action { width: 36px !important; height: 36px !important; }
-.personal-subtask { grid-template-columns: 24px minmax(0,1fr) 30px 30px; }
-.personal-subtask-copy {
+.copy-action:hover,.task-edit-button:hover { background: var(--accent-soft) !important; color: var(--accent) !important; }
+.department-task-row { grid-template-columns: minmax(0,1fr) 38px 38px 38px 34px; }
+.program-task-row { grid-template-columns: minmax(0,1fr) 28px 28px 28px 34px; }
+.page-kibleteyn .department-task-row { grid-template-columns: minmax(0,1fr) 42px 42px 42px 38px; }
+.page-kibleteyn .department-task-row :is(.copy-action,.schedule-action,.task-edit-button) { width: 40px !important; height: 40px !important; }
+.page-programs .program-task-row { grid-template-columns: minmax(0,1fr) 36px 36px 36px 36px; }
+.page-programs :is(.copy-action,.task-edit-button) { width: 36px !important; height: 36px !important; }
+.personal-subtask { grid-template-columns: 24px minmax(0,1fr) 30px 30px 30px; }
+.personal-subtask-copy,.personal-subtask-edit {
   width: 30px;
   height: 30px;
   border: 0;
@@ -825,15 +825,10 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
   display: grid;
   place-items: center;
 }
-.personal-subtask-copy:hover { background: var(--accent-soft); color: var(--accent); }
+.personal-subtask-copy:hover,.personal-subtask-edit:hover { background: var(--accent-soft); color: var(--accent); }
 @media(max-width:560px) {
-  .department-task-row { grid-template-columns: minmax(0,1fr) 42px 42px; }
-  .program-task-row { grid-template-columns: minmax(0,1fr) 38px 38px 38px; }
-  .personal-subtask { grid-template-columns: 28px minmax(0,1fr) 34px 34px; }
-  .personal-subtask-copy { width: 34px; height: 34px; }
+  .department-task-row { grid-template-columns: minmax(0,1fr) 42px 42px 42px 38px; }
+  .program-task-row { grid-template-columns: minmax(0,1fr) 38px 38px 38px 38px; }
+  .personal-subtask { grid-template-columns: 28px minmax(0,1fr) 34px 34px 34px; }
+  .personal-subtask-copy,.personal-subtask-edit { width: 34px; height: 34px; }
 }
-
-.nh-editor-actions,.note-card-actions{display:flex;align-items:center;gap:5px}
-.note-card-actions button{border:0;background:transparent;color:var(--muted);padding:5px;z-index:1}
-.nh-editor>footer button.danger,.note-card-actions button.danger{color:#b34e4e}
-.note-card footer button{display:flex;align-items:center;gap:4px;color:var(--muted)}

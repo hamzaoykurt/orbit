@@ -16,6 +16,7 @@ export type ProjectWorkspaceData = {
 export const emptyWorkspace: ProjectWorkspaceData = { description: '', diagrams: [], notes: [], links: [] };
 export const emptyTask: ProjectTaskDetails = { note: '', photos: [] };
 export type WorkspaceTask = { id: string; index: number; title: string; children: { id: string; title: string; legacy?: boolean }[] };
+export type ProjectTaskEntry = { title: string; sourceIndex: number };
 
 type ProjectTaskState = {
   removedTasks: string[];
@@ -27,7 +28,11 @@ type ProjectTaskState = {
 const removalKey = (index: number, title: string) => `orbit-task:${index}:${title}`;
 
 export function visibleProjectTaskTitles(tasks: string[], extraTasks: string[], removedTasks: string[]): string[] {
-  return [...tasks, ...extraTasks].filter((title, index) => !removedTasks.includes(title) && !removedTasks.includes(removalKey(index, title)));
+  return visibleProjectTaskEntries(tasks, extraTasks, removedTasks).map((entry) => entry.title);
+}
+
+export function visibleProjectTaskEntries(tasks: string[], extraTasks: string[], removedTasks: string[]): ProjectTaskEntry[] {
+  return [...tasks, ...extraTasks].map((title, sourceIndex) => ({ title, sourceIndex })).filter(({ title, sourceIndex }) => !removedTasks.includes(title) && !removedTasks.includes(removalKey(sourceIndex, title)));
 }
 
 // Task identities are index based in the persisted model. Compact every related

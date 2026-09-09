@@ -8,7 +8,7 @@ import { readStartupState } from './startup';
 import { useNavigation, useNavigationState } from './use-navigation';
 import type { PageKey } from './navigation';
 import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
-import { emptyTask, emptyWorkspace, normalizeWorkspace, removeProjectTaskState, visibleProjectTaskTitles } from './projects/project-types';
+import { emptyTask, emptyWorkspace, normalizeWorkspace, removeProjectTaskState, visibleProjectTaskEntries, visibleProjectTaskTitles } from './projects/project-types';
 import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
 import { NotesWorkspace } from './notes/notes-workspace';
 import { newNote, normalizeNotes } from './notes/note-model';
@@ -36,7 +36,7 @@ import {
   Circle, CircleDot, Clock3, Command, Compass, Download, Dumbbell, Eye, Globe2,
   ExternalLink, Flag, Home as HomeIcon, Languages, LayoutGrid, Link2, ListTodo, Map, MapPin,
   LogOut, Menu, Mic, Monitor, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
-  Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
+  Pencil, Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
   Smartphone, Sparkles, Square, StickyNote, Sun, Trash2, Undo2, UserRound, Users,
   Volume1, Volume2, X, Zap, GripVertical, RefreshCw, ClipboardCopy, FileInput,
 } from 'lucide-react';
@@ -111,7 +111,10 @@ type PersistedState = {
   programEdits: Record<string, Partial<Program>>;
   programExtraTasks: Record<string, Record<string, string[]>>;
   programRemovedTasks: Record<string, string[]>;
+  programTaskEdits: Record<string, Record<string, string>>;
   customDepartmentTasks: Record<string, string[]>;
+  departmentRemovedTasks: Record<string, string[]>;
+  departmentTaskEdits: Record<string, Record<string, string>>;
   customRebuildTasks: Record<string, string[]>;
   rebuildJourney: Journey;
   rebuildDeck: WeeklyDeck;
@@ -174,7 +177,10 @@ const defaultState: PersistedState = {
   programEdits: {},
   programExtraTasks: {},
   programRemovedTasks: {},
+  programTaskEdits: {},
   customDepartmentTasks: {},
+  departmentRemovedTasks: {},
+  departmentTaskEdits: {},
   customRebuildTasks: {},
   rebuildJourney: emptyJourney(),
   rebuildDeck: emptyDeck(),
@@ -233,7 +239,10 @@ function mergePersistedState(value: unknown): PersistedState {
     programEdits: saved.programEdits && typeof saved.programEdits === 'object' && !Array.isArray(saved.programEdits) ? saved.programEdits : defaultState.programEdits,
     programExtraTasks: saved.programExtraTasks && typeof saved.programExtraTasks === 'object' && !Array.isArray(saved.programExtraTasks) ? saved.programExtraTasks : defaultState.programExtraTasks,
     programRemovedTasks: saved.programRemovedTasks && typeof saved.programRemovedTasks === 'object' && !Array.isArray(saved.programRemovedTasks) ? saved.programRemovedTasks : defaultState.programRemovedTasks,
+    programTaskEdits: saved.programTaskEdits && typeof saved.programTaskEdits === 'object' && !Array.isArray(saved.programTaskEdits) ? saved.programTaskEdits : defaultState.programTaskEdits,
     customDepartmentTasks: saved.customDepartmentTasks && typeof saved.customDepartmentTasks === 'object' && !Array.isArray(saved.customDepartmentTasks) ? saved.customDepartmentTasks : defaultState.customDepartmentTasks,
+    departmentRemovedTasks: saved.departmentRemovedTasks && typeof saved.departmentRemovedTasks === 'object' && !Array.isArray(saved.departmentRemovedTasks) ? saved.departmentRemovedTasks : defaultState.departmentRemovedTasks,
+    departmentTaskEdits: saved.departmentTaskEdits && typeof saved.departmentTaskEdits === 'object' && !Array.isArray(saved.departmentTaskEdits) ? saved.departmentTaskEdits : defaultState.departmentTaskEdits,
     customRebuildTasks: saved.customRebuildTasks && typeof saved.customRebuildTasks === 'object' && !Array.isArray(saved.customRebuildTasks) ? saved.customRebuildTasks : defaultState.customRebuildTasks,
     rebuildJourney: normalizeJourney(saved.rebuildJourney),
     rebuildDeck: normalizeDeck(saved.rebuildDeck),
@@ -283,6 +292,13 @@ const weekStartKey = (date = new Date()) => {
   return localDateKey(start);
 };
 const completionRate = (done: number, total: number) => total ? Math.round(done / total * 100) : 0;
+const removeIndexedCompletion = (completed: Record<string, boolean>, prefix: string, removedIndex: number) => Object.fromEntries(Object.entries(completed).flatMap(([id, value]) => {
+  if (!id.startsWith(prefix)) return [[id, value]];
+  const index = Number(id.slice(prefix.length));
+  if (!Number.isInteger(index)) return [[id, value]];
+  if (index === removedIndex) return [];
+  return [[index > removedIndex ? `${prefix}${index - 1}` : id, value]];
+}));
 const durationInMinutes = (duration: string) => Math.max(15, Number(duration.match(/\d+/)?.[0] ?? 60));
 const compactGoogleDate = (date: Date) => date.toISOString().replace(/[-:]|\.\d{3}/g, '');
 
@@ -956,6 +972,13 @@ export default function PersonalOS() {
     notify('Alt görev kaldırıldı.');
   };
 
+  const editPersonalSubtask = (itemId: string, subtask: PersonalSubtask) => {
+    const title = window.prompt('Alt görevi düzenle', subtask.title)?.trim();
+    if (!title || title === subtask.title) return;
+    setState((current) => ({ ...current, personalSubtasks: { ...current.personalSubtasks, [itemId]: (current.personalSubtasks[itemId] ?? []).map((entry) => entry.id === subtask.id ? { ...entry, title: title.slice(0, 240) } : entry) } }));
+    notify('Alt görev güncellendi.');
+  };
+
   const updatePersonalDrag = (clientX: number, clientY: number) => {
     const current = personalDragRef.current;
     if (!current) return;
@@ -1220,10 +1243,11 @@ export default function PersonalOS() {
     setExpandedProgram(program.id); setModal(null); notify('Yeni tur programı eklendi.');
   };
 
-  const visibleProgramTasks = (programId: string, category: string) => [
+  const programTaskEntries = (programId: string, category: string) => [
     ...programCategories.find((item) => item.name === category)!.tasks,
     ...(state.programExtraTasks[programId]?.[category] ?? []),
-  ].filter((task) => !(state.programRemovedTasks[programId] ?? []).includes(task));
+  ].filter((source) => !(state.programRemovedTasks[programId] ?? []).includes(source)).map(source => ({ source, title: state.programTaskEdits[programId]?.[`${category}\n${source}`] ?? source }));
+  const visibleProgramTasks = (programId: string, category: string) => programTaskEntries(programId, category).map(task => task.title);
 
   const openProgramTask = (programId: string, category = programCategories[0].name) => {
     setProgramTaskDraft({ programId, category, title: '' });
@@ -1241,8 +1265,20 @@ export default function PersonalOS() {
           [programTaskDraft.category]: [...(current.programExtraTasks[programTaskDraft.programId]?.[programTaskDraft.category] ?? []), programTaskDraft.title.trim()],
         },
       },
+      programRemovedTasks: { ...current.programRemovedTasks, [programTaskDraft.programId]: (current.programRemovedTasks[programTaskDraft.programId] ?? []).filter((task) => task !== programTaskDraft.title.trim()) },
     }));
     setModal(null); notify('Hazırlık görevi eklendi.');
+  };
+
+  const editProgramTask = (programId: string, category: string, currentTitle: string) => {
+    const title = window.prompt('Görevi düzenle', currentTitle)?.trim();
+    if (!title || title === currentTitle) return;
+    setState((current) => {
+      const sources = [...programCategories.find((item) => item.name === category)!.tasks, ...(current.programExtraTasks[programId]?.[category] ?? [])];
+      const source = sources.find((item) => (current.programTaskEdits[programId]?.[`${category}\n${item}`] ?? item) === currentTitle) ?? currentTitle;
+      return { ...current, programTaskEdits: { ...current.programTaskEdits, [programId]: { ...(current.programTaskEdits[programId] ?? {}), [`${category}\n${source}`]: title.slice(0, 240) } } };
+    });
+    notify('Hazırlık görevi güncellendi.');
   };
 
   const openDepartmentTask = () => {
@@ -1258,11 +1294,48 @@ export default function PersonalOS() {
         ...current.customDepartmentTasks,
         [expandedDepartment]: [...(current.customDepartmentTasks[expandedDepartment] ?? []), departmentTaskDraft.trim()],
       },
+      departmentRemovedTasks: { ...current.departmentRemovedTasks, [expandedDepartment]: (current.departmentRemovedTasks[expandedDepartment] ?? []).filter((task) => task !== departmentTaskDraft.trim()) },
     }));
     setModal(null); notify('Operasyon görevi eklendi.');
   };
 
+  const editDepartmentTask = (departmentId: string, source: string, currentTitle: string) => {
+    const title = window.prompt('Görevi düzenle', currentTitle)?.trim();
+    if (!title || title === currentTitle) return;
+    setState((current) => ({ ...current, departmentTaskEdits: { ...current.departmentTaskEdits, [departmentId]: { ...(current.departmentTaskEdits[departmentId] ?? {}), [source]: title.slice(0, 240) } } }));
+    notify('Operasyon görevi güncellendi.');
+  };
+
+  const removeDepartmentTask = (departmentId: string, source: string, taskIndex: number) => {
+    if (!window.confirm('“Bu operasyon görevi silinsin mi?')) return;
+    setState((current) => ({
+      ...current,
+      customDepartmentTasks: { ...current.customDepartmentTasks, [departmentId]: (current.customDepartmentTasks[departmentId] ?? []).filter((item) => item !== source) },
+      departmentRemovedTasks: { ...current.departmentRemovedTasks, [departmentId]: [...new Set([...(current.departmentRemovedTasks[departmentId] ?? []), source])] },
+      departmentTaskEdits: { ...current.departmentTaskEdits, [departmentId]: Object.fromEntries(Object.entries(current.departmentTaskEdits[departmentId] ?? {}).filter(([key]) => key !== source)) },
+      completed: removeIndexedCompletion(current.completed, `dept-${departmentId}-`, taskIndex),
+    }));
+    notify('Operasyon görevi silindi.');
+  };
+
   const visibleProjectTasks = (project: Project) => visibleProjectTaskTitles(project.tasks, state.projectExtraTasks[project.id] ?? [], state.projectRemovedTasks[project.id] ?? []);
+
+  const editProjectTask = (project: Project, taskIndex: number, currentTitle: string) => {
+    const title = window.prompt('Görevi düzenle', currentTitle)?.trim();
+    if (!title || title === currentTitle) return;
+    setState((current) => {
+      const extras = current.projectExtraTasks[project.id] ?? [];
+      const entry = visibleProjectTaskEntries(project.tasks, extras, current.projectRemovedTasks[project.id] ?? [])[taskIndex];
+      if (!entry) return current;
+      if (entry.sourceIndex < project.tasks.length) {
+        const tasks = project.tasks.map((task, index) => index === entry.sourceIndex ? `${task.startsWith('>') ? '> ' : ''}${title.slice(0, 240)}` : task);
+        return { ...current, projectEdits: { ...current.projectEdits, [project.id]: { ...current.projectEdits[project.id], tasks } } };
+      }
+      const extraIndex = entry.sourceIndex - project.tasks.length;
+      return { ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: extras.map((task, index) => index === extraIndex ? `${task.startsWith('>') ? '> ' : ''}${title.slice(0, 240)}` : task) } };
+    });
+    notify('Proje görevi güncellendi.');
+  };
 
   const removeProjectTask = (project: Project, taskIndex: number) => {
     setState(current => {
@@ -1279,6 +1352,13 @@ export default function PersonalOS() {
   const removeProjectSubtask = (key: string, subtask: PersonalSubtask) => {
     setState((current)=>({...current,projectSubtasks:{...current.projectSubtasks,[key]:(current.projectSubtasks[key]??[]).filter((item)=>item.id!==subtask.id)},completed:Object.fromEntries(Object.entries(current.completed).filter(([id])=>id!==subtask.id))}));
     notify('Alt görev kaldırıldı.');
+  };
+
+  const editProjectSubtask = (key: string, subtask: PersonalSubtask) => {
+    const title = window.prompt('Alt görevi düzenle', subtask.title)?.trim();
+    if (!title || title === subtask.title) return;
+    setState((current) => ({ ...current, projectSubtasks: { ...current.projectSubtasks, [key]: (current.projectSubtasks[key] ?? []).map((item) => item.id === subtask.id ? { ...item, title: title.slice(0, 240) } : item) } }));
+    notify('Proje alt görevi güncellendi.');
   };
 
   const openProjectEdit = (project: Project) => {
@@ -1479,12 +1559,19 @@ export default function PersonalOS() {
     setModal(null); if (capturePage === 'projects') openProjectDetail(captureArea); else go(capturePage); notify('Kayıt seçtiğin alana eklendi.');
   };
 
-  const removeProgramTask = (programId: string, task: string) => {
-    setState((current) => ({
+  const removeProgramTask = (programId: string, category: string, currentTitle: string, taskIndex: number) => {
+    if (!window.confirm('“Bu hazırlık görevi silinsin mi?')) return;
+    const categoryIndex = programCategories.findIndex((item) => item.name === category);
+    setState((current) => {
+      const sources = [...programCategories.find((item) => item.name === category)!.tasks, ...(current.programExtraTasks[programId]?.[category] ?? [])];
+      const source = sources.find((item) => (current.programTaskEdits[programId]?.[`${category}\n${item}`] ?? item) === currentTitle) ?? currentTitle;
+      return ({
       ...current,
-      programExtraTasks: Object.fromEntries(Object.entries(current.programExtraTasks).map(([id, categories]) => [id, Object.fromEntries(Object.entries(categories).map(([category, tasks]) => [category, id === programId ? tasks.filter((item) => item !== task) : tasks]))])),
-      programRemovedTasks: { ...current.programRemovedTasks, [programId]: [...new Set([...(current.programRemovedTasks[programId] ?? []), task])] },
-    }));
+      programExtraTasks: { ...current.programExtraTasks, [programId]: { ...(current.programExtraTasks[programId] ?? {}), [category]: (current.programExtraTasks[programId]?.[category] ?? []).filter((item) => item !== source) } },
+      programRemovedTasks: { ...current.programRemovedTasks, [programId]: [...new Set([...(current.programRemovedTasks[programId] ?? []), source])] },
+      programTaskEdits: { ...current.programTaskEdits, [programId]: Object.fromEntries(Object.entries(current.programTaskEdits[programId] ?? {}).filter(([key]) => key !== `${category}\n${source}`)) },
+      completed: removeIndexedCompletion(current.completed, `program-${programId}-${categoryIndex}-`, taskIndex),
+    }); });
     notify('Hazırlık görevi kaldırıldı.');
   };
 
@@ -1497,6 +1584,7 @@ export default function PersonalOS() {
       programEdits: Object.fromEntries(Object.entries(current.programEdits).filter(([id]) => id !== program.id)),
       programExtraTasks: Object.fromEntries(Object.entries(current.programExtraTasks).filter(([id]) => id !== program.id)),
       programRemovedTasks: Object.fromEntries(Object.entries(current.programRemovedTasks).filter(([id]) => id !== program.id)),
+      programTaskEdits: Object.fromEntries(Object.entries(current.programTaskEdits).filter(([id]) => id !== program.id)),
       completed: Object.fromEntries(Object.entries(current.completed).filter(([id]) => !id.startsWith(`program-${program.id}-`))),
     }));
     if (expandedProgram === program.id) setExpandedProgram(null);
@@ -1690,11 +1778,6 @@ export default function PersonalOS() {
     notify('Not arşive taşındı.');
   };
 
-  const deleteNote = (note: Note) => {
-    setState((current) => ({ ...current, notes: current.notes.filter((item) => item.id !== note.id) }));
-    notify('Not silindi.');
-  };
-
   const restoreArchiveItem = (item: ArchiveItem) => {
     setState((current) => {
       const next = { ...current, archive: current.archive.filter((entry) => entry.id !== item.id), restoredArchiveIds: [...new Set([...current.restoredArchiveIds, item.id])] };
@@ -1746,9 +1829,12 @@ export default function PersonalOS() {
   const rebuildDone = rebuildMetrics.reduce((sum, area) => sum + area.done, 0);
   const rebuildTotal = rebuildMetrics.reduce((sum, area) => sum + area.target, 0);
   const departmentMetrics = departments.map((department) => {
-    const tasks = [...department.tasks, ...(state.customDepartmentTasks[department.id] ?? [])];
+    const taskEntries = [...department.tasks, ...(state.customDepartmentTasks[department.id] ?? [])]
+      .filter((source) => !(state.departmentRemovedTasks[department.id] ?? []).includes(source))
+      .map((source) => ({ source, title: state.departmentTaskEdits[department.id]?.[source] ?? source }));
+    const tasks = taskEntries.map((task) => task.title);
     const done = tasks.filter((_, index) => state.completed[`dept-${department.id}-${index}`]).length;
-    return { ...department, tasks, done, progress: completionRate(done, tasks.length) };
+    return { ...department, tasks, taskEntries, done, progress: completionRate(done, tasks.length) };
   });
   const departmentDone = departmentMetrics.reduce((sum, department) => sum + department.done, 0);
   const departmentTotal = departmentMetrics.reduce((sum, department) => sum + department.tasks.length, 0);
@@ -1893,7 +1979,7 @@ export default function PersonalOS() {
                 </button>
                 <span className="personal-item-actions">{externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label={personalTab === 'visit' ? `${item.title} konumunu Google Haritalar'da aç` : `${item.title} ürün bağlantısını aç`}>{personalTab === 'visit' ? <MapPin size={15}/> : <ExternalLink size={15}/>}</a>}<button title="Kopyala" aria-label={`${item.title} kaydını kopyala`} onClick={()=>copyTask({title:item.title,context:`Personal · ${current.title}`,status:state.completed[item.id]?'Tamamlandı':'Açık',note:item.details.note,link:externalUrl??undefined,subtasks:subtasks.map(subtask=>({title:subtask.title,completed:!!state.completed[subtask.id]}))})}><ClipboardCopy size={15}/></button><button aria-label={`${item.title} kaydını takvime ekle`} onClick={() => scheduleItem(item.title, current.title, item.details.note)}><CalendarDays size={15}/></button><button aria-label={`${item.title} kaydını düzenle`} onClick={() => openPersonalItem(personalTab, item.id)}><MoreHorizontal size={17}/></button></span>
               </div>
-              {(subtasks.length>0||personalSubtaskParent===item.id)&&<div className="personal-subtask-list">{subtasks.map((subtask)=>{const subtaskDragging=personalDrag?.kind==='subtask'&&personalDrag.subtaskId===subtask.id;const subtaskOver=personalDrag?.kind==='subtask'&&personalDrag.itemId===item.id&&personalDrag.overId===subtask.id&&!subtaskDragging;return <div data-personal-subtask={subtask.id} data-personal-parent={item.id} key={subtask.id} className={`personal-subtask ${state.completed[subtask.id]?'completed':''} ${subtaskDragging?'dragging':''} ${subtaskOver?'drag-over':''}`}><button className="personal-subtask-drag" aria-label={`${subtask.title} alt görevini sürükleyerek sırala`} title="Sürükle veya ok tuşlarıyla sırala" onPointerDown={(event)=>beginPersonalDrag(event,{kind:'subtask',list:personalTab,itemId:item.id,subtaskId:subtask.id,title:subtask.title})} onKeyDown={(event)=>{if(event.key==='ArrowUp'){event.preventDefault();movePersonalSubtask(item.id,subtask.id,-1)}if(event.key==='ArrowDown'){event.preventDefault();movePersonalSubtask(item.id,subtask.id,1)}}}><GripVertical size={14}/></button><button className="personal-subtask-toggle" onClick={()=>toggle(subtask.id)}><span>{state.completed[subtask.id]?<Check size={11}/>:<Circle size={11}/>}</span><strong>{subtask.title}</strong></button><button className="personal-subtask-copy" title="Kopyala" aria-label={`${subtask.title} alt görevini kopyala`} onClick={()=>copyTask({title:subtask.title,context:`Personal · ${current.title} · ${item.title}`,status:state.completed[subtask.id]?'Tamamlandı':'Açık'})}><ClipboardCopy size={13}/></button><button className="personal-subtask-remove" aria-label={`${subtask.title} alt görevini kaldır`} onClick={()=>removePersonalSubtask(item.id,subtask)}><Trash2 size={13}/></button></div>})}{personalSubtaskParent===item.id&&<div className="personal-subtask-composer"><input autoFocus aria-label={`${item.title} için yeni alt görev`} value={personalSubtaskDraft} onChange={(event)=>setPersonalSubtaskDraft(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter')addPersonalSubtask(item.id);if(event.key==='Escape'){setPersonalSubtaskParent(null);setPersonalSubtaskDraft('')}}} placeholder="Alt görevi yaz..."/><button disabled={!personalSubtaskDraft.trim()} onClick={()=>addPersonalSubtask(item.id)}><Check size={14}/> Ekle</button><button aria-label="Alt görev eklemeyi kapat" onClick={()=>{setPersonalSubtaskParent(null);setPersonalSubtaskDraft('')}}><X size={14}/></button></div>}</div>}
+              {(subtasks.length>0||personalSubtaskParent===item.id)&&<div className="personal-subtask-list">{subtasks.map((subtask)=>{const subtaskDragging=personalDrag?.kind==='subtask'&&personalDrag.subtaskId===subtask.id;const subtaskOver=personalDrag?.kind==='subtask'&&personalDrag.itemId===item.id&&personalDrag.overId===subtask.id&&!subtaskDragging;return <div data-personal-subtask={subtask.id} data-personal-parent={item.id} key={subtask.id} className={`personal-subtask ${state.completed[subtask.id]?'completed':''} ${subtaskDragging?'dragging':''} ${subtaskOver?'drag-over':''}`}><button className="personal-subtask-drag" aria-label={`${subtask.title} alt görevini sürükleyerek sırala`} title="Sürükle veya ok tuşlarıyla sırala" onPointerDown={(event)=>beginPersonalDrag(event,{kind:'subtask',list:personalTab,itemId:item.id,subtaskId:subtask.id,title:subtask.title})} onKeyDown={(event)=>{if(event.key==='ArrowUp'){event.preventDefault();movePersonalSubtask(item.id,subtask.id,-1)}if(event.key==='ArrowDown'){event.preventDefault();movePersonalSubtask(item.id,subtask.id,1)}}}><GripVertical size={14}/></button><button className="personal-subtask-toggle" onClick={()=>toggle(subtask.id)}><span>{state.completed[subtask.id]?<Check size={11}/>:<Circle size={11}/>}</span><strong>{subtask.title}</strong></button><button className="personal-subtask-copy" title="Kopyala" aria-label={`${subtask.title} alt görevini kopyala`} onClick={()=>copyTask({title:subtask.title,context:`Personal · ${current.title} · ${item.title}`,status:state.completed[subtask.id]?'Tamamlandı':'Açık'})}><ClipboardCopy size={13}/></button><button className="personal-subtask-edit" title="Düzenle" aria-label={`${subtask.title} alt görevini düzenle`} onClick={()=>editPersonalSubtask(item.id,subtask)}><Pencil size={13}/></button><button className="personal-subtask-remove" title="Sil" aria-label={`${subtask.title} alt görevini kaldır`} onClick={()=>removePersonalSubtask(item.id,subtask)}><Trash2 size={13}/></button></div>})}{personalSubtaskParent===item.id&&<div className="personal-subtask-composer"><input autoFocus aria-label={`${item.title} için yeni alt görev`} value={personalSubtaskDraft} onChange={(event)=>setPersonalSubtaskDraft(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter')addPersonalSubtask(item.id);if(event.key==='Escape'){setPersonalSubtaskParent(null);setPersonalSubtaskDraft('')}}} placeholder="Alt görevi yaz..."/><button disabled={!personalSubtaskDraft.trim()} onClick={()=>addPersonalSubtask(item.id)}><Check size={14}/> Ekle</button><button aria-label="Alt görev eklemeyi kapat" onClick={()=>{setPersonalSubtaskParent(null);setPersonalSubtaskDraft('')}}><X size={14}/></button></div>}</div>}
               {personalSubtaskParent!==item.id&&<button className="personal-subtask-add" onClick={()=>{setPersonalSubtaskParent(item.id);setPersonalSubtaskDraft('')}}><Plus size={13}/> Alt görev ekle</button>}
             </article>;
           })}</div>
@@ -1939,8 +2025,10 @@ export default function PersonalOS() {
       return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => backTo('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onCopyContext={()=>void copyText(projectContext(mentorProjectView(project)),'Proje bağlamı kopyalandı.')} onCopyTask={text=>void copyText(text,'Görev Codex’e yapıştırmak için kopyalandı.')} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
         onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
+        onEditTask={(index, title) => editProjectTask(project, index, title)}
         onRemoveTask={index => removeProjectTask(project, index)}
         onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}
+        onEditSubtask={(index, task) => editProjectSubtask(`${project.id}:${index}`, task)}
         onRemoveSubtask={(index, task) => removeProjectSubtask(`${project.id}:${index}`, task)}
         onDetails={(id, update) => setState(current => ({ ...current, projectTaskDetails: { ...current.projectTaskDetails, [id]: update(current.projectTaskDetails[id] ?? emptyTask) } }))}
         onWorkspace={update => setState(current => { const workspace = update(current.projectWorkspaces[project.id] ?? emptyWorkspace); return { ...current,
@@ -1964,7 +2052,7 @@ export default function PersonalOS() {
     const CurrentIcon = current.icon;
     return <>
       {renderKibleteynNav('operations',<button className="ghost-button" onClick={()=>setTeamView(!teamView)}><Users size={15}/>{teamView?'Odak görünümü':'Ekip görünümü'}</button>)}
-      {teamView?<section className="team-overview">{departmentMetrics.map((department)=>{const DepartmentIcon=department.icon;return <button className="surface" key={department.id} onClick={()=>{setExpandedDepartment(department.id);setTeamView(false);}}><span><DepartmentIcon size={19}/></span><div><strong>{department.title}</strong><small>{department.done}/{department.tasks.length} görev tamamlandı</small></div><b>{department.progress}%</b><ChevronRight size={16}/></button>})}</section>:<><div className="department-tabs">{departmentMetrics.map((department)=>{const DepartmentIcon=department.icon;return <button key={department.id} onClick={()=>setExpandedDepartment(department.id)} className={expandedDepartment===department.id?'active':''}><span><DepartmentIcon size={18}/></span><strong>{department.title}</strong><small>{department.progress}%</small></button>})}</div><section className="surface department-detail"><div className="department-lead"><span className="department-big-icon"><CurrentIcon size={24}/></span><div><span className="eyebrow">AKTİF ÇALIŞMA ALANI</span><h2>{current.title}</h2><p>{current.summary}</p></div><ProgressRing value={current.progress} size="small"/></div><div className="department-task-grid">{currentTasks.map((task,index)=>{const id=`dept-${current.id}-${index}`;return <div className={`department-task-row ${state.completed[id]?'completed':''}`} key={`${task}-${index}`}><button onClick={()=>toggle(id)}><span>{state.completed[id]?<Check size={13}/>:<Circle size={13}/>}</span><span><strong>{task}</strong><small>{index < 2 ? 'Bu hafta' : 'Sırada'}</small></span><ChevronRight size={14}/></button><button className="copy-action" title="Kopyala" aria-label={`${task} görevini kopyala`} onClick={()=>copyTask({title:task,context:`Kıbleteyn · ${current.title}`,status:state.completed[id]?'Tamamlandı':'Açık'})}><ClipboardCopy size={14}/></button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={()=>scheduleItem(task, `Kıbleteyn · ${current.title}`)}><CalendarDays size={14}/></button></div>})}</div><button className="add-department-task" onClick={openDepartmentTask}><Plus size={15}/> {current.title} alanına görev ekle</button></section></>}
+      {teamView?<section className="team-overview">{departmentMetrics.map((department)=>{const DepartmentIcon=department.icon;return <button className="surface" key={department.id} onClick={()=>{setExpandedDepartment(department.id);setTeamView(false);}}><span><DepartmentIcon size={19}/></span><div><strong>{department.title}</strong><small>{department.done}/{department.tasks.length} görev tamamlandı</small></div><b>{department.progress}%</b><ChevronRight size={16}/></button>})}</section>:<><div className="department-tabs">{departmentMetrics.map((department)=>{const DepartmentIcon=department.icon;return <button key={department.id} onClick={()=>setExpandedDepartment(department.id)} className={expandedDepartment===department.id?'active':''}><span><DepartmentIcon size={18}/></span><strong>{department.title}</strong><small>{department.progress}%</small></button>})}</div><section className="surface department-detail"><div className="department-lead"><span className="department-big-icon"><CurrentIcon size={24}/></span><div><span className="eyebrow">AKTİF ÇALIŞMA ALANI</span><h2>{current.title}</h2><p>{current.summary}</p></div><ProgressRing value={current.progress} size="small"/></div><div className="department-task-grid">{currentTasks.map((task,index)=>{const id=`dept-${current.id}-${index}`,source=current.taskEntries[index].source;return <div className={`department-task-row ${state.completed[id]?'completed':''}`} key={`${source}-${index}`}><button onClick={()=>toggle(id)}><span>{state.completed[id]?<Check size={13}/>:<Circle size={13}/>}</span><span><strong>{task}</strong><small>{index < 2 ? 'Bu hafta' : 'Sırada'}</small></span><ChevronRight size={14}/></button><button className="copy-action" title="Kopyala" aria-label={`${task} görevini kopyala`} onClick={()=>copyTask({title:task,context:`Kıbleteyn · ${current.title}`,status:state.completed[id]?'Tamamlandı':'Açık'})}><ClipboardCopy size={14}/></button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={()=>scheduleItem(task, `Kıbleteyn · ${current.title}`)}><CalendarDays size={14}/></button><button className="task-edit-button" title="Düzenle" aria-label={`${task} görevini düzenle`} onClick={()=>editDepartmentTask(current.id,source,task)}><Pencil size={14}/></button><button className="task-remove-button" title="Sil" aria-label={`${task} görevini sil`} onClick={()=>removeDepartmentTask(current.id,source,index)}><Trash2 size={14}/></button></div>})}</div><button className="add-department-task" onClick={openDepartmentTask}><Plus size={15}/> {current.title} alanına görev ekle</button></section></>}
       <section className="surface operation-hero analytics-bottom"><div><span className="status-chip"><i/> Gerçek zamanlı veri</span><h2>{departmentDone ? 'Operasyon ilerliyor.' : 'İlk görevi tamamla.'}</h2><p>{departmentMetrics.length} çalışma alanında {departmentTotal - departmentDone} açık görev bulunuyor.</p><div className="operation-stats"><span><strong>{departmentTotal - departmentDone}</strong><small>Açık görev</small></span><span><strong>{departmentDone}</strong><small>Tamamlanan</small></span><span><strong>{departmentMetrics.length}</strong><small>Çalışma alanı</small></span></div></div><div className="operation-visual"><span className="orbit o1"/><span className="orbit o2"/><span className="core"><Building2 size={28}/></span><i className="node n1"/><i className="node n2"/><i className="node n3"/></div></section>
     </>;
   };
@@ -1977,7 +2065,7 @@ export default function PersonalOS() {
     return <>
       {renderKibleteynNav('tours',<button className="primary-button compact" onClick={openProgram}><Plus size={15}/> Yeni tur</button>)}
       <div className="program-list-intro"><div><span className="eyebrow">TUR TAKVİMİ</span><h1>Yaklaşan turlar</h1></div><p>{openPreparations ? `${openPreparations} hazırlık adımı tamamlanmayı bekliyor.` : 'Tüm hazırlıklar tamamlandı.'}</p></div>
-      <div className="program-stack">{allPrograms.map((program)=>{const open=expandedProgram===program.id;const done=programCategories.reduce((sum,cat,catIndex)=>sum+visibleProgramTasks(program.id,cat.name).filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length,0);const total=programCategories.reduce((sum,cat)=>sum+visibleProgramTasks(program.id,cat.name).length,0);const progress=completionRate(done,total);const dates=parseProgramDateRange(program.range,program.title);const statusClass=program.status==='Planlandı'?'planned':program.status==='Hazırlanıyor'?'preparing':'draft';const contentId=`program-content-${program.id}`;return <article key={program.id} className={`surface program-card ${program.accent} ${open?'open':''}`}><button className="program-head" aria-expanded={open} aria-controls={contentId} onClick={()=>setExpandedProgram(open?null:program.id)}><span className={`program-date ${program.accent}`} aria-label={dates.label}>{dates.start?<><span className="program-date-point"><i>GİDİŞ</i><strong>{dates.start.day}</strong><small>{dates.start.month}</small></span>{dates.end&&<><span className="program-date-divider"><ArrowRight size={14}/></span><span className="program-date-point"><i>DÖNÜŞ</i><strong>{dates.end.day}</strong><small>{dates.end.month}</small></span></>}{dates.year&&<b>{dates.year}</b>}</>:<span className="program-date-fallback"><CalendarDays size={17}/><small>{dates.label}</small></span>}</span><span className="program-name"><span className="program-status-row"><em className={statusClass}>{program.status}</em>{program.people>0&&<small><Users size={12}/>{program.people} kişi</small>}</span><h2>{program.title}</h2></span><span className="program-progress"><strong>{progress}%</strong><i><b style={{width:`${progress}%`}}/></i><small>{done}/{total} hazır</small></span><span className="program-chevron"><ChevronDown size={19}/></span></button><div className="program-content" id={contentId}><div className="category-grid"><div className="program-actions"><button onClick={()=>openProgramEdit(program)}><Settings size={13}/> Turu düzenle</button><button onClick={()=>openProgramTask(program.id)}><Plus size={13}/> Görev ekle</button><button className="program-delete-action" onClick={()=>removeProgram(program)}><Trash2 size={13}/> Turu sil</button></div>{programCategories.map((category,catIndex)=>{const CategoryIcon=category.icon;const tasks=visibleProgramTasks(program.id,category.name);const catDone=tasks.filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length;return <details key={category.name} open={catIndex===0&&open}><summary><span className={`category-icon c${catIndex}`}><CategoryIcon size={17}/></span><span><strong>{category.name}</strong><small>{catDone}/{tasks.length} tamamlandı</small></span><b>{completionRate(catDone,tasks.length)}%</b><ChevronDown size={14}/></summary><div className="category-tasks">{tasks.map((task,taskIndex)=>{const id=`program-${program.id}-${catIndex}-${taskIndex}`;return <div className={`program-task-row ${state.completed[id]?'completed':''}`} key={`${task}-${taskIndex}`}><button onClick={()=>toggle(id)}><span>{state.completed[id]&&<Check size={10}/>}</span>{task}<small>{taskIndex<2?'Bugün':'Bu hafta'}</small></button><button className="copy-action" title="Kopyala" aria-label={`${task} görevini kopyala`} onClick={()=>copyTask({title:task,context:`Program · ${program.title} · ${category.name}`,status:state.completed[id]?'Tamamlandı':'Açık'})}><ClipboardCopy size={13}/></button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={()=>scheduleItem(task, `Program · ${program.title} · ${category.name}`)}><CalendarDays size={13}/></button><button className="task-remove-button" aria-label={`${task} görevini kaldır`} onClick={()=>removeProgramTask(program.id,task)}><Trash2 size={13}/></button></div>})}<button className="add-program-task" onClick={()=>openProgramTask(program.id,category.name)}><Plus size={12}/> Bu kategoriye görev ekle</button></div></details>})}</div></div></article>})}</div>
+      <div className="program-stack">{allPrograms.map((program)=>{const open=expandedProgram===program.id;const done=programCategories.reduce((sum,cat,catIndex)=>sum+visibleProgramTasks(program.id,cat.name).filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length,0);const total=programCategories.reduce((sum,cat)=>sum+visibleProgramTasks(program.id,cat.name).length,0);const progress=completionRate(done,total);const dates=parseProgramDateRange(program.range,program.title);const statusClass=program.status==='Planlandı'?'planned':program.status==='Hazırlanıyor'?'preparing':'draft';const contentId=`program-content-${program.id}`;return <article key={program.id} className={`surface program-card ${program.accent} ${open?'open':''}`}><button className="program-head" aria-expanded={open} aria-controls={contentId} onClick={()=>setExpandedProgram(open?null:program.id)}><span className={`program-date ${program.accent}`} aria-label={dates.label}>{dates.start?<><span className="program-date-point"><i>GİDİŞ</i><strong>{dates.start.day}</strong><small>{dates.start.month}</small></span>{dates.end&&<><span className="program-date-divider"><ArrowRight size={14}/></span><span className="program-date-point"><i>DÖNÜŞ</i><strong>{dates.end.day}</strong><small>{dates.end.month}</small></span></>}{dates.year&&<b>{dates.year}</b>}</>:<span className="program-date-fallback"><CalendarDays size={17}/><small>{dates.label}</small></span>}</span><span className="program-name"><span className="program-status-row"><em className={statusClass}>{program.status}</em>{program.people>0&&<small><Users size={12}/>{program.people} kişi</small>}</span><h2>{program.title}</h2></span><span className="program-progress"><strong>{progress}%</strong><i><b style={{width:`${progress}%`}}/></i><small>{done}/{total} hazır</small></span><span className="program-chevron"><ChevronDown size={19}/></span></button><div className="program-content" id={contentId}><div className="category-grid"><div className="program-actions"><button onClick={()=>openProgramEdit(program)}><Settings size={13}/> Turu düzenle</button><button onClick={()=>openProgramTask(program.id)}><Plus size={13}/> Görev ekle</button><button className="program-delete-action" onClick={()=>removeProgram(program)}><Trash2 size={13}/> Turu sil</button></div>{programCategories.map((category,catIndex)=>{const CategoryIcon=category.icon;const tasks=visibleProgramTasks(program.id,category.name);const catDone=tasks.filter((_,taskIndex)=>state.completed[`program-${program.id}-${catIndex}-${taskIndex}`]).length;return <details key={category.name} open={catIndex===0&&open}><summary><span className={`category-icon c${catIndex}`}><CategoryIcon size={17}/></span><span><strong>{category.name}</strong><small>{catDone}/{tasks.length} tamamlandı</small></span><b>{completionRate(catDone,tasks.length)}%</b><ChevronDown size={14}/></summary><div className="category-tasks">{tasks.map((task,taskIndex)=>{const id=`program-${program.id}-${catIndex}-${taskIndex}`;return <div className={`program-task-row ${state.completed[id]?'completed':''}`} key={`${task}-${taskIndex}`}><button onClick={()=>toggle(id)}><span>{state.completed[id]&&<Check size={10}/>}</span>{task}<small>{taskIndex<2?'Bugün':'Bu hafta'}</small></button><button className="copy-action" title="Kopyala" aria-label={`${task} görevini kopyala`} onClick={()=>copyTask({title:task,context:`Program · ${program.title} · ${category.name}`,status:state.completed[id]?'Tamamlandı':'Açık'})}><ClipboardCopy size={13}/></button><button className="schedule-action" aria-label={`${task} görevini takvime ekle`} onClick={()=>scheduleItem(task, `Program · ${program.title} · ${category.name}`)}><CalendarDays size={13}/></button><button className="task-edit-button" title="Düzenle" aria-label={`${task} görevini düzenle`} onClick={()=>editProgramTask(program.id,category.name,task)}><Pencil size={13}/></button><button className="task-remove-button" title="Sil" aria-label={`${task} görevini sil`} onClick={()=>removeProgramTask(program.id,category.name,task,taskIndex)}><Trash2 size={13}/></button></div>})}<button className="add-program-task" onClick={()=>openProgramTask(program.id,category.name)}><Plus size={12}/> Bu kategoriye görev ekle</button></div></details>})}</div></div></article>})}</div>
       <div className="program-overview analytics-bottom"><div><Plane size={20}/><span><strong>{allPrograms.length}</strong><small>Yaklaşan tur</small></span></div><div><ListTodo size={20}/><span><strong>{openPreparations}</strong><small>Açık hazırlık</small></span></div><div><CheckCircle2 size={20}/><span><strong>{completedPreparations}</strong><small>Tamamlanan hazırlık</small></span></div></div>
     </>;
   };
@@ -2005,7 +2093,7 @@ export default function PersonalOS() {
   const renderNotes = () => {
     return <>
       <PageTitle eyebrow="NOTLAR" title="Düşünceyi doğru biçimde yakala." description="Hızlı not, fikir, günlük ve referanslar için birbirinden farklı başlangıçlar."/>
-      <NotesWorkspace notes={state.notes} onChange={notes=>setState(current=>({...current,notes}))} onArchive={archiveNote} onDelete={deleteNote}/>
+      <NotesWorkspace notes={state.notes} onChange={notes=>setState(current=>({...current,notes}))} onArchive={archiveNote}/>
     </>;
   };
 
