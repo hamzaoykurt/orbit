@@ -11,6 +11,13 @@ test('legacy general notes migrate into guided notes without losing their writin
   assert.equal(note.kind,'idea');assert.equal(note.body,'Korunacak metin');assert.deepEqual(note.links,[]);assert.deepEqual(note.images,[]);
 });
 
+test('qiblatayn notes keep their category and receive the dedicated defaults',()=>{
+  const created=notes.newNote('qiblatayn');
+  assert.equal(created.kind,'qiblatayn');assert.equal(created.title,'Yeni Kıbleteyn notu');assert.equal(created.tone,'sage');
+  const [restored]=notes.normalizeNotes([{...created,id:'qiblatayn-1',body:'Ders notu'}]);
+  assert.equal(restored.kind,'qiblatayn');assert.equal(restored.body,'Ders notu');
+});
+
 test('legacy project notes receive a project-specific structure and unsafe links are dropped',()=>{
   const workspace=projects.normalizeWorkspace({description:'Amaç',notes:[{id:'old',title:'İlk not',body:'Eski içerik',links:[{id:'x',title:'Kötü',url:'javascript:alert(1)'}]}],links:[],diagrams:[]});
   assert.equal(workspace.notes[0].kind,'idea');assert.equal(workspace.notes[0].body,'Eski içerik');assert.deepEqual(workspace.notes[0].links,[]);
