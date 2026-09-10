@@ -853,3 +853,4 @@ html[data-theme=dark] .modal-layer .modal-card:not(.search) label :is(input,sele
 html[data-theme=dark] .modal-card.taskAction{background:linear-gradient(145deg,rgba(35,31,42,.98),rgba(27,24,33,.98))}html[data-theme=dark] .modal-card.taskAction .task-action-field input{background:rgba(255,255,255,.045)}
 @media(max-width:560px){.modal-card.taskAction{padding:26px 22px}.task-action-buttons{grid-template-columns:1fr}.task-action-buttons button{min-height:48px}.task-action-buttons button.danger,.task-action-buttons button.primary-button{order:-1}}
 .note-card.sage:after{background:radial-gradient(circle,rgba(67,130,110,.17),transparent 68%)}
+.nh-guided-single{grid-template-columns:1fr}
