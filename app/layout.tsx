@@ -39,11 +39,11 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(origin),
     title,
     description,
-    manifest: '/manifest.webmanifest?v=2',
+    manifest: '/manifest.webmanifest?v=3',
     icons: {
-      icon: [{ url: '/orbit-favicon-v2.png', sizes: '64x64', type: 'image/png' }, { url: '/orbit-icon-v2-192.png', sizes: '192x192', type: 'image/png' }],
-      shortcut: '/orbit-favicon-v2.png',
-      apple: [{ url: '/orbit-apple-touch-v2.png', sizes: '180x180', type: 'image/png' }],
+      icon: [{ url: '/orbit-favicon-v3.png', sizes: '64x64', type: 'image/png' }, { url: '/orbit-icon-v3-192.png', sizes: '192x192', type: 'image/png' }],
+      shortcut: '/orbit-favicon-v3.png',
+      apple: [{ url: '/orbit-apple-touch-v3.png', sizes: '180x180', type: 'image/png' }],
     },
     appleWebApp: { capable: true, title: 'Orbit', statusBarStyle: 'black-translucent' },
     openGraph: { title, description, type: 'website', locale: 'tr_TR', images: [{ url: image, width: 1672, height: 941, alt: 'Orbit Personal OS' }] },
@@ -58,7 +58,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest?v=2"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest?v=3"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
         className={`${geistSans.variable} antialiased`}
       >

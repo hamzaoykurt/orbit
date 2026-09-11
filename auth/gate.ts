@@ -17,6 +17,10 @@ const PUBLIC_FILES = new Set([
   '/orbit-icon-v2-192.png',
   '/orbit-icon-v2-512.png',
   '/orbit-apple-touch-v2.png',
+  '/orbit-favicon-v3.png',
+  '/orbit-icon-v3-192.png',
+  '/orbit-icon-v3-512.png',
+  '/orbit-apple-touch-v3.png',
   '/manifest.webmanifest',
   '/sw.js',
 ]);
