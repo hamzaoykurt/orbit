@@ -3,6 +3,7 @@ import { Geist } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
 import './workspace-scale.css';
+import './brand-logo.css';
 import { PwaRegister } from './pwa-register';
 import { startupScript } from './startup';
 import { authClientScript } from './auth-client';
@@ -39,8 +40,8 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     manifest: '/manifest.webmanifest',
     icons: {
-      icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
-      shortcut: '/favicon.svg',
+      icon: [{ url: '/favicon.png', sizes: '64x64', type: 'image/png' }, { url: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+      shortcut: '/favicon.png',
       apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
     },
     appleWebApp: { capable: true, title: 'Orbit', statusBarStyle: 'black-translucent' },
