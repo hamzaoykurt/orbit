@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import './globals.css';
 import './workspace-scale.css';
 import './brand-logo.css';
+import './theme-accent.css';
 import { PwaRegister } from './pwa-register';
 import { startupScript } from './startup';
 import { authClientScript } from './auth-client';
