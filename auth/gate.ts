@@ -7,7 +7,19 @@ const DAY = 86_400;
 export const REMEMBER_SECONDS = 90 * DAY;
 const SESSION_SECONDS = DAY;
 const ATTEMPT_WINDOW = 15 * 60;
-const PUBLIC_FILES = new Set(['/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/manifest.webmanifest', '/sw.js']);
+const PUBLIC_FILES = new Set([
+  '/favicon.svg',
+  '/favicon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png',
+  '/orbit-favicon-v2.png',
+  '/orbit-icon-v2-192.png',
+  '/orbit-icon-v2-512.png',
+  '/orbit-apple-touch-v2.png',
+  '/manifest.webmanifest',
+  '/sw.js',
+]);
 type Session = { token_hash: string; remembered: number; expires_at: number; refreshed_at: number };
 type Next = () => Promise<Response>;
 const seconds = () => Math.floor(Date.now() / 1000);
