@@ -1,12 +1,42 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="background" x1="74" y1="52" x2="442" y2="470" gradientUnits="userSpaceOnUse"><stop stop-color="#A99AFF"/><stop offset=".48" stop-color="#7A67E4"/><stop offset="1" stop-color="#48389E"/></linearGradient>
-    <linearGradient id="orb" x1="196" y1="164" x2="338" y2="350" gradientUnits="userSpaceOnUse"><stop stop-color="white"/><stop offset="1" stop-color="#D9D2FF"/></linearGradient>
+    <linearGradient id="bg" x1="54" y1="28" x2="458" y2="492" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1C1B1A"/>
+      <stop offset=".52" stop-color="#070809"/>
+      <stop offset="1" stop-color="#160D0B"/>
+    </linearGradient>
+    <radialGradient id="ambient" cx="0" cy="0" r="1" gradientTransform="translate(116 83) rotate(47) scale(433)">
+      <stop stop-color="#FFF8F0" stop-opacity=".13"/>
+      <stop offset=".44" stop-color="#FFB17E" stop-opacity=".018"/>
+      <stop offset="1" stop-color="#D35F47" stop-opacity=".16"/>
+    </radialGradient>
+    <radialGradient id="glass" cx="0" cy="0" r="1" gradientTransform="translate(214 197) rotate(48) scale(191)">
+      <stop stop-color="#FFF9F1" stop-opacity=".44"/>
+      <stop offset=".42" stop-color="#F7B98B" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#C65E48" stop-opacity=".055"/>
+    </radialGradient>
+    <linearGradient id="glassEdge" x1="159" y1="150" x2="372" y2="382" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF8" stop-opacity=".92"/>
+      <stop offset=".43" stop-color="#FFD3B1" stop-opacity=".52"/>
+      <stop offset="1" stop-color="#DF795E" stop-opacity=".19"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="87" y1="348" x2="429" y2="168" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D86D55" stop-opacity=".1"/>
+      <stop offset=".49" stop-color="#FFC89E" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#FFFDF8" stop-opacity=".95"/>
+    </linearGradient>
+    <filter id="softGlow" x="37" y="73" width="438" height="366" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="13"/>
+    </filter>
   </defs>
-  <rect x="28" y="28" width="456" height="456" rx="132" fill="url(#background)"/>
-  <rect x="29" y="29" width="454" height="454" rx="131" stroke="white" stroke-opacity=".22" stroke-width="2"/>
-  <circle cx="256" cy="256" r="84" fill="url(#orb)"/>
-  <ellipse cx="256" cy="256" rx="158" ry="61" stroke="white" stroke-width="22"/>
-  <ellipse cx="256" cy="256" rx="158" ry="61" stroke="white" stroke-opacity=".5" stroke-width="4" transform="rotate(-48 256 256)"/>
-  <circle cx="387" cy="156" r="18" fill="white"/><circle cx="150" cy="361" r="12" fill="#B8F6DE"/>
+  <rect width="512" height="512" rx="122" fill="url(#bg)"/>
+  <rect x="1.5" y="1.5" width="509" height="509" rx="120.5" stroke="#FFF2E7" stroke-opacity=".15" stroke-width="3"/>
+  <rect x="12" y="12" width="488" height="488" rx="111" fill="url(#ambient)"/>
+  <ellipse cx="256" cy="256" rx="184" ry="64" transform="rotate(-28 256 256)" stroke="#EA8767" stroke-opacity=".2" stroke-width="31" filter="url(#softGlow)"/>
+  <circle cx="256" cy="256" r="102" fill="url(#glass)" stroke="url(#glassEdge)" stroke-width="13"/>
+  <ellipse cx="221" cy="207" rx="52" ry="25" transform="rotate(-24 221 207)" fill="#FFFDF8" fill-opacity=".105"/>
+  <path d="M190 190C218 165 261 158 296 171" stroke="#FFFDF8" stroke-opacity=".38" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="256" cy="256" rx="184" ry="64" transform="rotate(-28 256 256)" stroke="url(#orbit)" stroke-width="21"/>
+  <circle cx="406" cy="176" r="18" fill="#FFF7EB"/>
+  <circle cx="400" cy="170" r="5.5" fill="white" fill-opacity=".68"/>
 </svg>
