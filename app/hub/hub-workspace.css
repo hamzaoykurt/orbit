@@ -65,35 +65,39 @@ html[data-theme=dark] .hub-resource-panel a:hover{color:#d5ceff;background:rgba(
 @media(max-width:900px){.hub-page-title{align-items:flex-start;gap:14px}.hub-page-title h1{font-size:clamp(36px,7vw,50px)}.hub-workflow-grid{grid-template-columns:repeat(2,1fr)}.hub-workflow-grid.infrastructure{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.hub-page-title{display:block}.hub-page-title>button{width:100%;justify-content:center}.hub-library-toolbar{grid-template-columns:minmax(0,1fr) 42px}.hub-search{min-width:0}.hub-dialog-backdrop{align-items:end;padding:0}.hub-dialog,.hub-workflow-detail{width:100%;max-height:calc(100dvh - max(8px,env(safe-area-inset-top)));border-radius:24px 24px 0 0;padding-bottom:max(25px,env(safe-area-inset-bottom))}.hub-workflow-detail{padding-bottom:0}.hub-lightbox-close{top:max(14px,env(safe-area-inset-top));right:14px}}
 
-/* Readable Hub type scale. The first iteration compressed supporting copy down to
-   7–10px, which made cards and especially workflow details hard to scan. */
-.hub-tabs button{font-size:13px}.hub-tabs em{font-size:11px}
-.hub-search input{font-size:14px}
-.hub-owner-tabs button,.hub-filter-trigger{font-size:12px}
-.hub-filter-panel label{font-size:11px}.hub-filter-panel select{font-size:13px}.hub-filter-panel>button{font-size:12px}
-.hub-results-head{font-size:12px}.hub-results-head strong{font-size:14px}
-.hub-badges>span{font-size:11px}
-.hub-link-body h2{font-size:21px}.hub-link-body>p{font-size:14px;line-height:1.65}
-.hub-expand{font-size:12px}.hub-tags span{font-size:11px}
-.hub-link-body footer{font-size:11px}.hub-link-body footer strong{font-size:12px}.hub-owner{font-size:11px}
-.hub-embedded>span{font-size:11px}.hub-embedded strong{font-size:13px}.hub-embedded small{font-size:12px;line-height:1.5}
-.hub-empty p,.hub-section-heading p{font-size:14px}
-.hub-workflow-meta,.hub-workflow-meta b{font-size:11px}
-.hub-workflow-card>p{font-size:14px;line-height:1.6}.hub-workflow-open{font-size:12px}
-.hub-dialog>p{font-size:14px}.hub-dialog label{font-size:12px}.hub-dialog input{font-size:14px}.hub-dialog-error{font-size:12px}
-.hub-workflow-detail header small{font-size:11px}.hub-workflow-detail header p{font-size:15px;line-height:1.6}
-.hub-detail-sections h3{font-size:12px}.hub-detail-sections>section>p{font-size:14px;line-height:1.7}
-.hub-detail-sections strong{font-size:13px}.hub-detail-sections small{font-size:12px;line-height:1.55}
-.hub-prompt-grid header>span,.hub-prompt-grid header button{font-size:11px}
-.hub-prompt-grid h3{font-size:18px}.hub-prompt-grid p,.hub-prompt-grid summary,.hub-prompt-grid pre{font-size:13px}
-.hub-resource-panel h3{font-size:11px}.hub-resource-panel a{font-size:12px}
+/* Match the shared reading scale used by Personal. */
+.hub-tabs button{font-size:var(--workspace-description)}.hub-tabs em{font-size:var(--workspace-caption)}
+.hub-search input{font-size:var(--workspace-text)}
+.hub-owner-tabs button,.hub-filter-trigger{font-size:var(--workspace-description)}
+.hub-filter-panel label{font-size:var(--workspace-caption)}.hub-filter-panel select{font-size:var(--workspace-text)}.hub-filter-panel>button{font-size:var(--workspace-description)}
+.hub-results-head{font-size:var(--workspace-caption)}.hub-results-head strong{font-size:var(--workspace-text)}
+.hub-badges>span{font-size:var(--workspace-caption)}
+.hub-link-body h2{font-size:var(--workspace-heading)}.hub-link-body>p{font-size:var(--workspace-text);line-height:1.6}
+.hub-expand{font-size:var(--workspace-description)}.hub-tags span{font-size:var(--workspace-caption)}
+.hub-link-body footer,.hub-link-body footer strong,.hub-owner{font-size:var(--workspace-caption)}
+.hub-embedded>span,.hub-embedded small{font-size:var(--workspace-caption)}.hub-embedded strong{font-size:var(--workspace-text)}
+.hub-empty p,.hub-section-heading p{font-size:var(--workspace-description)}
+.hub-workflow-meta,.hub-workflow-meta b{font-size:var(--workspace-caption)}
+.hub-workflow-card>strong{font-size:var(--workspace-heading)}.hub-workflow-card>p{font-size:var(--workspace-text);line-height:1.6}.hub-workflow-open{font-size:var(--workspace-description)}
+.hub-dialog>p{font-size:var(--workspace-description)}.hub-dialog label{font-size:var(--workspace-label)}.hub-dialog input{font-size:var(--workspace-text)}.hub-dialog-error{font-size:var(--workspace-description)}
+.hub-workflow-detail header small{font-size:var(--workspace-caption)}.hub-workflow-detail header p{font-size:var(--workspace-text);line-height:1.6}
+.hub-detail-sections h3{font-size:var(--workspace-label)}.hub-detail-sections>section>p{font-size:var(--workspace-text);line-height:1.65}
+.hub-detail-sections strong{font-size:var(--workspace-text)}.hub-detail-sections small{font-size:var(--workspace-caption);line-height:1.5}
+.hub-prompt-grid header>span,.hub-prompt-grid header button{font-size:var(--workspace-caption)}
+.hub-prompt-grid h3{font-size:var(--workspace-heading)}.hub-prompt-grid p,.hub-prompt-grid pre{font-size:var(--workspace-text)}.hub-prompt-grid summary{font-size:var(--workspace-description)}
+.hub-resource-panel h3{font-size:var(--workspace-label)}.hub-resource-panel a{font-size:var(--workspace-description)}
+.hub-view-controls{margin:7px 0 17px}
+.hub-page-title h1{font-size:clamp(38px,4.2vw,60px)}
+.hub-resource-panel{margin-top:0}
 
 @media(max-width:620px){
   .hub-dialog-backdrop{align-items:center;padding:max(16px,env(safe-area-inset-top)) 12px max(16px,env(safe-area-inset-bottom))}
   .hub-dialog,.hub-workflow-detail{width:100%;max-height:calc(100dvh - 32px);border-radius:24px}
+  .hub-page-title h1{font-size:38px}
+  .hub-view-controls{grid-template-columns:repeat(2,1fr)}
   .hub-workflow-detail{padding-bottom:0}
   .hub-workflow-detail>header{padding:24px 18px 20px}
   .hub-detail-sections{padding:16px 18px 20px}
   .hub-detail-sections>section{padding:15px}
-  .hub-workflow-detail header p{font-size:14px}
+  .hub-dialog input{font-size:16px}
 }

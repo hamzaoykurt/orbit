@@ -136,7 +136,7 @@ function WorkflowView() {
   const [selected, setSelected] = useState<WorkflowCard | null>(null);
   const items = mode === 'phases' ? workflowPhases : workflowInfrastructure;
   return <>
-    <div className="hub-section-heading"><div><span className="eyebrow">VIBE CODING WORKFLOW</span><h2>{mode === 'phases' ? 'Fikirden yayına sekiz net faz.' : 'Her projeyi taşıyan altyapı.'}</h2><p>Avionix’teki geliştirme sistemi Orbit’in okunabilir, hızlı ve mobil uyumlu büyük kartlarına dönüştürüldü.</p></div><div className="segmented-control"><button className={mode === 'phases' ? 'active' : ''} onClick={() => setMode('phases')}><Workflow size={14}/> Fazlar</button><button className={mode === 'infrastructure' ? 'active' : ''} onClick={() => setMode('infrastructure')}><Layers3 size={14}/> Altyapı</button></div></div>
+    <div className="hub-view-controls segmented-control"><button className={mode === 'phases' ? 'active' : ''} onClick={() => setMode('phases')}><Workflow size={14}/> Fazlar</button><button className={mode === 'infrastructure' ? 'active' : ''} onClick={() => setMode('infrastructure')}><Layers3 size={14}/> Altyapı</button></div>
     <div className={`hub-workflow-grid ${mode}`}>{items.map(item => <button key={item.id} className={`hub-workflow-card tone-${item.tone}`} onClick={() => setSelected(item)}>
       <span className="hub-workflow-number">{item.index === undefined ? <Layers3 size={25}/> : String(item.index).padStart(2, '0')}</span>
       <span className="hub-workflow-meta">{item.timing}{item.role && <b>{item.role}</b>}</span><strong>{item.title}</strong><p>{item.description}</p><span className="hub-workflow-open">Detayları aç <ArrowRight size={14}/></span>
@@ -149,8 +149,8 @@ function KnowledgeView() {
   const [copied, setCopied] = useState('');
   const copy = async (title: string, prompt: string) => { await navigator.clipboard.writeText(prompt); setCopied(title); window.setTimeout(() => setCopied(''), 1600); };
   return <div className="hub-knowledge-layout">
-    <section><div className="hub-section-heading"><div><span className="eyebrow">PROMPT KÜTÜPHANESİ</span><h2>Karar odaklı çalışma reçeteleri.</h2><p>Kopyala, proje bağlamınla tamamla ve sonucu ölçülebilir kabul kriterlerine bağla.</p></div></div><div className="hub-prompt-grid">{hubPromptRecipes.map(recipe => <article key={recipe.title}><header><span>{recipe.phase}</span><button onClick={() => void copy(recipe.title, recipe.prompt)}>{copied === recipe.title ? <Check size={14}/> : <Copy size={14}/>} {copied === recipe.title ? 'Kopyalandı' : 'Kopyala'}</button></header><h3>{recipe.title}</h3><p>{recipe.description}</p><details><summary>Promptu göster <ChevronDown size={14}/></summary><pre>{recipe.prompt}</pre></details></article>)}</div></section>
-    <aside className="hub-resource-panel"><span className="eyebrow">KAYNAKLAR</span><h2>Tasarım ve üretim araçları.</h2>{hubResources.map(group => <section key={group.group}><h3>{group.group}</h3><div>{group.links.map(link => <a key={link} href={`https://${link}`} target="_blank" rel="noreferrer">{link}<ExternalLink size={11}/></a>)}</div></section>)}</aside>
+    <section><div className="hub-prompt-grid">{hubPromptRecipes.map(recipe => <article key={recipe.title}><header><span>{recipe.phase}</span><button onClick={() => void copy(recipe.title, recipe.prompt)}>{copied === recipe.title ? <Check size={14}/> : <Copy size={14}/>} {copied === recipe.title ? 'Kopyalandı' : 'Kopyala'}</button></header><h3>{recipe.title}</h3><p>{recipe.description}</p><details><summary>Promptu göster <ChevronDown size={14}/></summary><pre>{recipe.prompt}</pre></details></article>)}</div></section>
+    <aside className="hub-resource-panel"><h2>Kaynaklar</h2>{hubResources.map(group => <section key={group.group}><h3>{group.group}</h3><div>{group.links.map(link => <a key={link} href={`https://${link}`} target="_blank" rel="noreferrer">{link}<ExternalLink size={11}/></a>)}</div></section>)}</aside>
   </div>;
 }
 
@@ -174,7 +174,7 @@ export function HubWorkspace({ links, currentUser, onAdd, onDelete }: HubWorkspa
   }), [category, currentUser, links, owner, platform, search]);
 
   return <div className="hub-workspace">
-    <div className="page-title hub-page-title"><div><span className="eyebrow">ORBIT HUB</span><h1>Bilgi akışın, tek yörüngede.</h1><p>Bağlantıları yakala, geliştirme sistemini izle ve üretim kaynaklarına hızla ulaş.</p></div>{tab === 'library' && <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16}/> Bağlantı ekle</button>}</div>
+    <div className="page-title hub-page-title"><div><h1>Hub</h1></div>{tab === 'library' && <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16}/> Bağlantı ekle</button>}</div>
     <nav className="hub-tabs" aria-label="Hub sekmeleri">{([
       ['library', 'Kütüphane', Link2], ['workflow', 'Workflow', Workflow], ['knowledge', 'Rehber', BookOpen],
     ] as const).map(([id, label, Icon]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={16}/><span>{label}</span>{id === 'library' && <em>{links.length}</em>}</button>)}</nav>
