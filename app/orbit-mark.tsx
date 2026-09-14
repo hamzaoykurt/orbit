@@ -6,6 +6,6 @@ type OrbitMarkProps = {
 
 export function OrbitMark({ className }: OrbitMarkProps) {
   return (
-    <Image className={className} src="/orbit-icon-v4-192.png" alt="" width={38} height={38} priority aria-hidden="true" />
+    <Image className={className} src="/orbit-mark-v5-96.png" alt="" width={38} height={38} priority unoptimized aria-hidden="true" />
   );
 }
