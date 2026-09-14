@@ -31,6 +31,8 @@ import type { WeeklyDeck } from './rebuild/weekly-deck-model';
 import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
 import type { Practice } from './rebuild/practice-model';
 import type { FitnessSummary } from '../integrations/profitness/protocol';
+import { normalizeHubLinks } from './hub/hub-model';
+import type { HubLink } from './hub/hub-model';
 import {
   Archive, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness,
   Building2, CalendarDays, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight,
@@ -46,6 +48,7 @@ const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(
 const ProjectsHub = lazy(() => import('./projects/projects-hub').then(module => ({ default: module.ProjectsHub })));
 const ProjectCreator = lazy(() => import('./projects/project-creator').then(module => ({ default: module.ProjectCreator })));
 const RebuildJourney = lazy(() => import('./rebuild/rebuild-journey').then(module => ({ default: module.RebuildJourney })));
+const HubWorkspace = lazy(() => import('./hub/hub-workspace').then(module => ({ default: module.HubWorkspace })));
 type PersonalListKey = 'todo' | 'buy' | 'visit';
 type PersonalItemDetails = { title?: string; note?: string; price?: string; link?: string; locationUrl?: string; priority?: 'normal' | 'important' };
 type PersonalSubtask = { id: string; title: string };
@@ -134,6 +137,7 @@ type PersistedState = {
   archive: ArchiveItem[];
   restoredArchiveIds: string[];
   notes: Note[];
+  hubLinks: HubLink[];
   mobileNav: PageKey[];
   profile: { name: string; workspace: string };
   settings: { notifications: boolean; motion: boolean; sound: boolean; soundVolume: number; haptics: boolean; feedbackVersion: number; autoArchive: boolean; accent: string; theme: ThemePreference; density: 'comfortable' | 'compact'; showCompleted: boolean };
@@ -143,6 +147,7 @@ const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] 
   { id: 'personal', label: 'Personal', icon: UserRound },
   { id: 'rebuild', label: '6 Aylık Rebuild', icon: Route },
   { id: 'projects', label: 'Projeler', icon: PanelsTopLeft },
+  { id: 'hub', label: 'Hub', icon: Link2 },
   { id: 'kibleteyn', label: 'Kıbleteyn', icon: Building2 },
   { id: 'programs', label: 'Turlar', icon: Map, parent: 'kibleteyn' },
   { id: 'calendar', label: 'Takvim', icon: CalendarDays },
@@ -204,6 +209,7 @@ const defaultState: PersistedState = {
     { id: 'n2', title: 'Orbit Explorer fikri', body: 'Gezegenleri ölçekli yörüngelerde, dokunarak keşfedilen sakin bir deneyime dönüştür.', date: 'Dün · 22:18', tone: 'blue' },
     { id: 'n3', title: 'Eylül turu', body: 'Seminer içeriğinde ilk 15 dakikayı daha görsel ve daha kısa tut. Transfer detaylarını tekrar kontrol et.', date: '21 Ağu · 16:05', tone: 'sand' },
   ]),
+  hubLinks: [],
   mobileNav: ['personal', 'projects', 'kibleteyn', 'calendar'],
   profile: { name: 'Emir Güney', workspace: 'Kişisel çalışma alanı' },
   settings: { notifications: true, motion: true, sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
@@ -262,6 +268,7 @@ function mergePersistedState(value: unknown): PersistedState {
     archive: Array.isArray(saved.archive) ? saved.archive : defaultState.archive,
     restoredArchiveIds: Array.isArray(saved.restoredArchiveIds) ? saved.restoredArchiveIds : defaultState.restoredArchiveIds,
     notes: Array.isArray(saved.notes) ? normalizeNotes(saved.notes) : defaultState.notes,
+    hubLinks: normalizeHubLinks(saved.hubLinks),
     mobileNav: migratedMobileNav,
     profile: { ...defaultState.profile, ...(saved.profile ?? {}) },
     settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4 } : {}) },
@@ -2138,6 +2145,22 @@ export default function PersonalOS() {
     </>;
   };
 
+  const renderHub = () => <Suspense fallback={<p role="status">Hub açılıyor…</p>}><HubWorkspace
+    links={state.hubLinks}
+    currentUser={state.profile.name}
+    onAdd={link => {
+      setState(current => {
+        if (current.hubLinks.some(item => item.url === link.url)) return current;
+        return { ...current, hubLinks: [link, ...current.hubLinks].slice(0, 200) };
+      });
+      notify('Bağlantı Hub’a eklendi.');
+    }}
+    onDelete={id => {
+      setState(current => ({ ...current, hubLinks: current.hubLinks.filter(link => link.id !== id) }));
+      notify('Bağlantı Hub’dan kaldırıldı.');
+    }}
+  /></Suspense>;
+
   const renderArchive = () => {
     const archiveItems = [...state.archive, ...archiveSeed.filter((item) => !state.restoredArchiveIds.includes(item.id))];
     const visibleItems = archiveFilter === 'all' ? archiveItems : archiveItems.filter((item)=>item.type===archiveFilter);
@@ -2241,7 +2264,7 @@ export default function PersonalOS() {
   const renderPage = () => {
     switch (active) {
       case 'personal': return renderPersonal(); case 'rebuild': return renderRebuild(); case 'projects': return renderProjects();
-      case 'kibleteyn': return renderKibleteyn(); case 'programs': return renderPrograms(); case 'calendar': return renderCalendar();
+      case 'hub': return renderHub(); case 'kibleteyn': return renderKibleteyn(); case 'programs': return renderPrograms(); case 'calendar': return renderCalendar();
       case 'notes': return renderNotes(); case 'archive': return renderArchive(); case 'settings': return renderSettings(); default: return renderHome();
     }
   };

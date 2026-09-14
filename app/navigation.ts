@@ -1,4 +1,4 @@
-export const pages = ['home', 'personal', 'rebuild', 'projects', 'kibleteyn', 'programs', 'calendar', 'notes', 'archive', 'settings'] as const;
+export const pages = ['home', 'personal', 'rebuild', 'projects', 'hub', 'kibleteyn', 'programs', 'calendar', 'notes', 'archive', 'settings'] as const;
 export type PageKey = typeof pages[number];
 export type ViewValue = string | number | boolean | null;
 export type NavigationSnapshot = { page: PageKey; project: string | null; views: Record<string, ViewValue>; layers?: Record<string, string> };
