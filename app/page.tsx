@@ -1,6 +1,6 @@
 'use client';
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FocusEvent as ReactFocusEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { InstallOrbit } from './install-orbit';
@@ -80,9 +80,6 @@ type BrowserSpeechRecognition = {
   onend: () => void;
 };
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
-type GoogleTokenResponse = { access_token?: string; expires_in?: number; error?: string };
-type GoogleOAuthWindow = Window & { google?: { accounts: { oauth2: { initTokenClient: (config: { client_id: string; scope: string; callback: (response: GoogleTokenResponse) => void; error_callback?: (error: { type?: string }) => void }) => { requestAccessToken: (options: { prompt: string }) => void }; revoke: (token: string, callback: () => void) => void } } } };
-type StoredGoogleSession = { accessToken: string; expiresAt: number; reconnect: boolean };
 type RebuildActivity = { id: string; areaId: string; title: string; date: string; duration: number; note: string; rating: number; createdAt: string; details?: ActivityEntry['details'] };
 type RebuildReview = { weekKey: string; win: string; friction: string; nextFocus: string; energy: number; createdAt: string };
 type RebuildBodyPlan = { name: string; workouts: string[]; nutrition: string[] };
@@ -155,9 +152,6 @@ const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] 
   { id: 'archive', label: 'Arşiv', icon: Archive },
   { id: 'settings', label: 'Ayarlar', icon: Settings },
 ];
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? '';
-const GOOGLE_CALENDAR_ID = process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_ID?.trim() ?? '';
-const GOOGLE_SESSION_KEY = 'orbit-google-calendar-session';
 
 const defaultState: PersistedState = {
   completed: { 'routine-1': true, 'personal-1': true, 'program-14': true, 'project-pos-1': true, 'rebuild-2': true },
@@ -453,10 +447,7 @@ export default function PersonalOS() {
   const [eventDraft, setEventDraft] = useState({ title: '', date: todayKey(), time: '10:00', duration: '60 dk', tone: 'violet', description: '', source: '' });
   const [googleCalendarEvents, setGoogleCalendarEvents] = useState<Record<string, CalendarEvent[]>>({});
   const [googleCalendarStatus, setGoogleCalendarStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'>('disconnected');
-  const [googleConfig, setGoogleConfig] = useState({ clientId: GOOGLE_CLIENT_ID, calendarId: GOOGLE_CALENDAR_ID || 'primary', loaded: Boolean(GOOGLE_CLIENT_ID) });
-  const googleCalendarClientId = googleConfig.clientId || state.calendarIntegration.clientId.trim();
-  const googleCalendarId = googleConfig.calendarId || state.calendarIntegration.calendarId.trim() || 'primary';
-  const googleAccessTokenRef = useRef('');
+  const [googleConfig, setGoogleConfig] = useState({ configured: false, connected: false, calendarId: 'primary', loaded: false });
   const googleRestoreStartedRef = useRef(false);
   const googleConfigRequestedRef = useRef(false);
   const [profileDraft, setProfileDraft] = useState(defaultState.profile);
@@ -546,20 +537,19 @@ export default function PersonalOS() {
 
   useEffect(() => {
     if (!hydrated || googleConfigRequestedRef.current) return;
-    let hasConnection = false;
-    try { hasConnection = Boolean(localStorage.getItem(GOOGLE_SESSION_KEY)); } catch { /* Device storage may be unavailable. */ }
-    if (active !== 'calendar' && active !== 'settings' && !hasConnection) return;
+    if (active !== 'calendar' && active !== 'settings') return;
     let cancelled = false;
     let finished = false;
     googleConfigRequestedRef.current = true;
-    void fetch('/api/google-config', { cache: 'no-store' })
-      .then((response) => response.ok ? response.json() as Promise<{ clientId?: string; calendarId?: string }> : Promise.reject(new Error('Google yapılandırması alınamadı')))
-      .then((config: { clientId?: string; calendarId?: string }) => {
+    void fetch('/api/google-calendar/status', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() as Promise<{ configured?: boolean; connected?: boolean; calendarId?: string }> : Promise.reject(new Error('Google yapılandırması alınamadı')))
+      .then((config) => {
         if (cancelled) return;
         finished = true;
         setGoogleConfig({
-          clientId: config.clientId?.trim() || GOOGLE_CLIENT_ID,
-          calendarId: config.calendarId?.trim() || GOOGLE_CALENDAR_ID || 'primary',
+          configured: Boolean(config.configured),
+          connected: Boolean(config.connected),
+          calendarId: config.calendarId?.trim() || 'primary',
           loaded: true,
         });
       })
@@ -1599,7 +1589,7 @@ export default function PersonalOS() {
       const event: CalendarEvent = { id: `event-${Date.now()}`, title, tone: captureMethod === 'voice' ? 'blue' : 'violet', time: captureExtras.time || 'Tüm gün', duration: captureExtras.duration || '60 dk', description: captureDetails.trim(), source: captureMethod === 'voice' ? 'Sesli hızlı kayıt' : 'Yazılı hızlı kayıt' };
       const date = captureExtras.date || captureArea;
       setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: [...(current.calendarEvents[date] ?? []), event] } }));
-      if (googleAccessTokenRef.current) void createGoogleCalendarEvent(event, date).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
+      if (googleConfig.connected) void createGoogleCalendarEvent(event, date).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
     }
     if (capturePage === 'notes') setState((current) => ({ ...current, notes: [{ ...newNote('quick', title), body: captureDetails.trim() || 'Hızlı kayıt', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
     setModal(null); if (capturePage === 'projects') openProjectDetail(captureArea); else go(capturePage); notify('Kayıt seçtiğin alana eklendi.');
@@ -1639,71 +1629,24 @@ export default function PersonalOS() {
     notify('Program silindi.');
   };
 
-  const loadGoogleIdentity = () => new Promise<GoogleOAuthWindow>((resolve, reject) => {
-    const googleWindow = window as GoogleOAuthWindow;
-    if (googleWindow.google?.accounts.oauth2) { resolve(googleWindow); return; }
-    const existing = document.querySelector<HTMLScriptElement>('script[data-orbit-google-identity]');
-    const script = existing ?? document.createElement('script');
-    const finish = () => googleWindow.google?.accounts.oauth2 ? resolve(googleWindow) : reject(new Error('Google Identity yüklenemedi'));
-    script.addEventListener('load', finish, { once: true });
-    script.addEventListener('error', () => reject(new Error('Google Identity yüklenemedi')), { once: true });
-    if (!existing) {
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true; script.defer = true; script.dataset.orbitGoogleIdentity = 'true';
-      document.head.appendChild(script);
-    }
-  });
-
-  const rememberGoogleAccess = (token: string, expiresIn = 3600) => {
-    googleAccessTokenRef.current = token;
-    localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify({ accessToken: token, expiresAt: Date.now() + Math.max(60, expiresIn) * 1000, reconnect: true } satisfies StoredGoogleSession));
-  };
-
-  const requestGoogleAccess = async (prompt = 'select_account', silent = false) => {
-    let clientId = googleCalendarClientId;
-    if (!clientId) {
-      const response = await fetch('/api/google-config', { cache: 'no-store' }).catch(() => null);
-      const config = response?.ok ? await response.json() as { clientId?: string } : null;
-      clientId = config?.clientId?.trim() ?? '';
-    }
-    if (!clientId) {
-      setGoogleCalendarStatus('error');
-      notify('Google bağlantısı henüz uygulama ayarlarında yapılandırılmamış.');
-      return null;
-    }
-    setGoogleCalendarStatus('connecting');
-    try {
-      const googleWindow = await loadGoogleIdentity();
-      return await new Promise<string>((resolve, reject) => {
-        const client = googleWindow.google!.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: 'https://www.googleapis.com/auth/calendar.events',
-          callback: (response) => {
-            if (!response.access_token) { reject(new Error(response.error ?? 'Google bağlantısı reddedildi')); return; }
-            rememberGoogleAccess(response.access_token, response.expires_in);
-            resolve(response.access_token);
-          },
-          error_callback: (error) => reject(new Error(error.type ?? 'Google penceresi kapatıldı')),
-        });
-        client.requestAccessToken({ prompt });
-      });
-    } catch {
-      setGoogleCalendarStatus(silent ? 'disconnected' : 'error');
-      if (!silent) notify('Google Takvim bağlantısı tamamlanamadı. Yeniden deneyebilirsin.');
-      return null;
-    }
-  };
-
-  const syncGoogleCalendar = async (token = googleAccessTokenRef.current, cursor = calendarCursor, calendarIdOverride?: string) => {
-    if (!token) return;
+  const syncGoogleCalendar = async (cursor = calendarCursor) => {
+    if (!googleConfig.connected) return;
     setGoogleCalendarStatus('syncing');
     const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
     const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-    const calendarId = calendarIdOverride?.trim() || googleCalendarId;
-    const query = new URLSearchParams({ timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '250' });
+    const query = new URLSearchParams({ timeMin: start.toISOString(), timeMax: end.toISOString() });
     try {
-      const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${query}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error('Google Calendar API error');
+      const response = await fetch(`/api/google-calendar/events?${query}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({})) as { reconnect?: boolean };
+        if (response.status === 401 || failure.reconnect) {
+          setGoogleConfig((current) => ({ ...current, connected: false }));
+          setGoogleCalendarStatus('disconnected');
+          notify('Google Takvim izni sona ermiş. Bir kez yeniden bağlamalısın.');
+          return;
+        }
+        throw new Error('Google Calendar API error');
+      }
       const payload = await response.json() as { items?: Array<{ id: string; summary?: string; description?: string; htmlLink?: string; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }> };
       const grouped: Record<string, CalendarEvent[]> = {};
       for (const item of payload.items ?? []) {
@@ -1716,7 +1659,6 @@ export default function PersonalOS() {
         (grouped[date] ??= []).push({ id: `google-${item.id}`, googleEventId: item.id, title: item.summary ?? 'Adsız etkinlik', tone: 'blue', time: item.start?.dateTime ? startDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : 'Tüm gün', duration, description: item.description, source: 'Google Takvim', htmlLink: item.htmlLink });
       }
       setGoogleCalendarEvents((current) => ({ ...current, ...grouped }));
-      googleAccessTokenRef.current = token;
       setGoogleCalendarStatus('connected');
     } catch {
       setGoogleCalendarStatus('error'); notify('Google Takvim verileri alınamadı. Yeniden bağlanmayı dene.');
@@ -1725,61 +1667,54 @@ export default function PersonalOS() {
 
   const connectGoogleCalendar = async () => {
     if (googleCalendarStatus === 'connecting') return;
-    const token = await requestGoogleAccess();
-    if (!token) return;
-    await syncGoogleCalendar(token, calendarCursor, googleCalendarId);
-    notify('Google Takvim bağlandı ve güncellendi.');
+    if (!googleConfig.configured) {
+      setGoogleCalendarStatus('error');
+      notify('Google bağlantısının sunucu ayarları henüz tamamlanmamış.');
+      return;
+    }
+    setGoogleCalendarStatus('connecting');
+    window.location.assign('/api/google-calendar/connect');
   };
 
-  const disconnectGoogleCalendar = () => {
-    const token = googleAccessTokenRef.current;
-    const googleWindow = window as GoogleOAuthWindow;
-    if (token && googleWindow.google?.accounts.oauth2) googleWindow.google.accounts.oauth2.revoke(token, () => undefined);
-    localStorage.removeItem(GOOGLE_SESSION_KEY);
-    googleRestoreStartedRef.current = false;
-    googleAccessTokenRef.current = ''; setGoogleCalendarEvents({}); setGoogleCalendarStatus('disconnected');
-    notify('Google Takvim bağlantısı kapatıldı.');
+  const disconnectGoogleCalendar = async () => {
+    try {
+      const response = await fetch('/api/google-calendar/disconnect', { method: 'DELETE' });
+      if (!response.ok) throw new Error('Disconnect failed');
+      googleRestoreStartedRef.current = false;
+      setGoogleConfig((current) => ({ ...current, connected: false }));
+      setGoogleCalendarEvents({}); setGoogleCalendarStatus('disconnected');
+      notify('Google Takvim bağlantısı kapatıldı.');
+    } catch { notify('Google Takvim bağlantısı şu anda kapatılamadı.'); }
   };
+
+  const restoreGoogleCalendar = useEffectEvent(() => {
+    const result = new URL(window.location.href).searchParams.get('google-calendar');
+    if (result) {
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete('google-calendar');
+      window.history.replaceState(window.history.state, '', clean);
+      if (result === 'connected') notify('Google Takvim kalıcı olarak bağlandı.');
+      else notify(result === 'denied' ? 'Google Takvim izni verilmedi.' : 'Google Takvim bağlantısı tamamlanamadı.');
+    }
+    if (googleConfig.connected) void syncGoogleCalendar(calendarCursor);
+    else setGoogleCalendarStatus('disconnected');
+  });
 
   useEffect(() => {
-    if (!googleConfig.loaded || !googleCalendarClientId || googleRestoreStartedRef.current) return;
+    if (!googleConfig.loaded || googleRestoreStartedRef.current) return;
     googleRestoreStartedRef.current = true;
-
-    let stored: StoredGoogleSession | null = null;
-    try { stored = JSON.parse(localStorage.getItem(GOOGLE_SESSION_KEY) ?? 'null') as StoredGoogleSession | null; } catch { localStorage.removeItem(GOOGLE_SESSION_KEY); }
-    if (!stored?.reconnect) return;
-    const session = stored;
-
-    const restoreConnection = async () => {
-      if (session.accessToken && session.expiresAt > Date.now() + 60_000) {
-        googleAccessTokenRef.current = session.accessToken;
-        await syncGoogleCalendar(session.accessToken, calendarCursor, googleCalendarId);
-        return;
-      }
-
-      // Google Identity Services cannot refresh this browser token without a
-      // user gesture. Trying here opens an account chooser on every later
-      // visit after the one-hour token expires. Keep startup passive and let
-      // the user reconnect from the calendar when they actually need sync.
-      localStorage.removeItem(GOOGLE_SESSION_KEY);
-      googleAccessTokenRef.current = '';
-      setGoogleCalendarStatus('disconnected');
-    };
-
-    void restoreConnection();
-  }, [googleConfig.loaded, googleCalendarClientId]);
+    restoreGoogleCalendar();
+  }, [googleConfig.loaded, googleConfig.connected]);
 
   const createGoogleCalendarEvent = async (event: CalendarEvent, date: string) => {
-    const token = googleAccessTokenRef.current;
-    if (!token) return null;
-    const calendarId = googleCalendarId;
+    if (!googleConfig.connected) return null;
     const timed = /^\d{2}:\d{2}$/.test(event.time);
     const start = timed ? new Date(`${date}T${event.time}:00`) : new Date(`${date}T00:00:00`);
     const end = new Date(start.getTime() + (timed ? durationInMinutes(event.duration) : 24 * 60) * 60_000);
     const body = timed
       ? { summary: event.title, description: [event.description, event.source ? `Orbit · ${event.source}` : ''].filter(Boolean).join('\n'), start: { dateTime: start.toISOString(), timeZone: 'Europe/Istanbul' }, end: { dateTime: end.toISOString(), timeZone: 'Europe/Istanbul' } }
       : { summary: event.title, description: event.description, start: { date }, end: { date: localDateKey(end) } };
-    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch('/api/google-calendar/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!response.ok) throw new Error('Google event insert failed');
     return await response.json() as { id: string; htmlLink?: string };
   };
@@ -1796,7 +1731,7 @@ export default function PersonalOS() {
     const event: CalendarEvent = { id: `event-${Date.now()}`, title: eventDraft.title.trim(), tone: eventDraft.tone, time: eventDraft.time || 'Saat yok', duration: eventDraft.duration.trim() || 'Süre yok', description: eventDraft.description.trim(), source: eventDraft.source.trim() || 'Orbit' };
     setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [eventDraft.date]: [...(current.calendarEvents[eventDraft.date] ?? []), event] } }));
     setModal(null);
-    if (googleAccessTokenRef.current) {
+    if (googleConfig.connected) {
       try {
         const googleEvent = await createGoogleCalendarEvent(event, eventDraft.date);
         if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [eventDraft.date]: (current.calendarEvents[eventDraft.date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } }));
@@ -1808,10 +1743,10 @@ export default function PersonalOS() {
   const deleteEvent = async (date: string, id: string) => {
     const removed = (state.calendarEvents[date] ?? []).find((event) => event.id === id);
     setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).filter((event) => event.id !== id) } }));
-    if (removed?.googleEventId && googleAccessTokenRef.current) {
-      const calendarId = googleCalendarId;
+    if (removed?.googleEventId && googleConfig.connected) {
       try {
-        await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(removed.googleEventId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${googleAccessTokenRef.current}` } });
+        const response = await fetch('/api/google-calendar/events', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventId: removed.googleEventId }) });
+        if (!response.ok) throw new Error('Google event delete failed');
         notify('Etkinlik Orbit ve Google Takvim’den kaldırıldı.');
       } catch { notify('Etkinlik Orbit’ten kaldırıldı; Google kaydı kaldı.'); }
     } else notify('Etkinlik takvimden kaldırıldı.');
@@ -2129,12 +2064,12 @@ export default function PersonalOS() {
     const selectedDateKey = dateKey(selectedDay);
     const eventsFor = (day: number) => eventsForDate(dateKey(day));
     const selectedEvents = eventsFor(selectedDay);
-    const changeMonth = (delta: number) => { const next = new Date(year, monthIndex + delta, 1); setCalendarCursor(next); setSelectedDay(1); if (googleAccessTokenRef.current) void syncGoogleCalendar(googleAccessTokenRef.current, next); };
-    const goToday = () => { const currentDate = new Date(); const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); setCalendarCursor(next); setSelectedDay(currentDate.getDate()); if (googleAccessTokenRef.current) void syncGoogleCalendar(googleAccessTokenRef.current, next); };
+    const changeMonth = (delta: number) => { const next = new Date(year, monthIndex + delta, 1); setCalendarCursor(next); setSelectedDay(1); if (googleConfig.connected) void syncGoogleCalendar(next); };
+    const goToday = () => { const currentDate = new Date(); const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); setCalendarCursor(next); setSelectedDay(currentDate.getDate()); if (googleConfig.connected) void syncGoogleCalendar(next); };
     const selectedWeekday = new Intl.DateTimeFormat('tr-TR', { weekday: 'long' }).format(new Date(year, monthIndex, selectedDay));
     return <>
-      <PageTitle eyebrow="TAKVİM" title="Zamana biraz boşluk bırak." description={`${titleMonth} ${year} · Yalnızca kendi planların ve bağlı Google Takvimin.`} action={<div className="calendar-title-actions"><button className={`google-calendar-button ${googleCalendarStatus === 'connected' ? 'connected' : ''}`} disabled={googleCalendarStatus === 'connecting'} onClick={() => googleCalendarStatus === 'connected' ? void syncGoogleCalendar() : void connectGoogleCalendar()}><RefreshCw size={14}/>{googleCalendarStatus === 'connected' ? 'Google’ı güncelle' : googleCalendarStatus === 'connecting' ? 'Google bekleniyor…' : 'Google hesabını bağla'}</button><button className="primary-button compact" onClick={()=>openEvent(selectedDateKey)}><Plus size={15}/> Etkinlik ekle</button></div>}/>
-      <div className="calendar-layout"><section className="surface calendar-card"><header><div><IconButton label="Önceki ay" onClick={()=>changeMonth(-1)}><ChevronRight className="flip" size={16}/></IconButton><h2>{titleMonth} <span>{year}</span></h2><IconButton label="Sonraki ay" onClick={()=>changeMonth(1)}><ChevronRight size={16}/></IconButton></div><button className="today-button" onClick={goToday}>Bugün</button></header>{googleCalendarStatus === 'syncing' && <div className="calendar-sync-note"><RefreshCw size={13}/> Google Takvim güncelleniyor…</div>}<div className="calendar-weekdays">{['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'].map((day)=><span key={day}>{day}</span>)}</div><div className="calendar-grid">{Array.from({length:leadingDays},(_,i)=><span className="empty-day" key={`empty-${i}`}/>)}{days.map((day)=>{const events=eventsFor(day);return <button key={day} onClick={()=>setSelectedDay(day)} className={`${dateKey(day) === todayKey() ? 'today' : ''} ${selectedDay===day?'selected':''}`}><span>{day}</span><div>{events.slice(0,3).map((event)=><i key={event.id} className={event.tone}>{event.title}</i>)}{events.length>3&&<small>+{events.length-3} daha</small>}</div></button>})}</div></section><aside className="surface day-panel"><span className="eyebrow">SEÇİLİ GÜN</span><div className="day-number"><strong>{selectedDay}</strong><span>{titleMonth}<br/>{year}</span></div><h3>{selectedWeekday.charAt(0).toLocaleUpperCase('tr')+selectedWeekday.slice(1)}</h3><div className="day-events">{selectedEvents.length?selectedEvents.map((event)=><div className="day-event" key={event.id}><i className={event.tone}/><span><strong>{event.title}</strong><small>{event.time} · {event.duration}{event.source ? ` · ${event.source}` : ''}</small></span><span className="day-event-actions"><a href={event.htmlLink ?? googleCalendarTemplateUrl(event, selectedDateKey)} target="_blank" rel="noreferrer" aria-label={`${event.title} etkinliğini Google Takvim'de aç`}><ExternalLink size={13}/></a>{event.id.startsWith('event-') && <IconButton label="Etkinliği sil" onClick={() => deleteEvent(selectedDateKey, event.id)}><Trash2 size={13}/></IconButton>}</span></div>):<div className="empty-state"><CalendarDays size={24}/><p>Bu gün henüz boş.<br/>Biraz nefes iyi gelebilir.</p></div>}</div><button className="inline-add" onClick={()=>openEvent(selectedDateKey)}><Plus size={14}/> Bu güne ekle</button>{googleCalendarStatus === 'connected' && <button className="calendar-disconnect" onClick={disconnectGoogleCalendar}>Google bağlantısını kapat</button>}</aside></div>
+      <PageTitle eyebrow="TAKVİM" title="Zamana biraz boşluk bırak." description={`${titleMonth} ${year} · Yalnızca kendi planların ve bağlı Google Takvimin.`} action={<div className="calendar-title-actions"><button className={`google-calendar-button ${googleConfig.connected ? 'connected' : ''}`} disabled={googleCalendarStatus === 'connecting'} onClick={() => googleConfig.connected ? void syncGoogleCalendar() : void connectGoogleCalendar()}><RefreshCw size={14}/>{googleCalendarStatus === 'syncing' ? 'Google güncelleniyor…' : googleConfig.connected ? 'Google’ı güncelle' : googleCalendarStatus === 'connecting' ? 'Google bekleniyor…' : 'Google hesabını bağla'}</button><button className="primary-button compact" onClick={()=>openEvent(selectedDateKey)}><Plus size={15}/> Etkinlik ekle</button></div>}/>
+      <div className="calendar-layout"><section className="surface calendar-card"><header><div><IconButton label="Önceki ay" onClick={()=>changeMonth(-1)}><ChevronRight className="flip" size={16}/></IconButton><h2>{titleMonth} <span>{year}</span></h2><IconButton label="Sonraki ay" onClick={()=>changeMonth(1)}><ChevronRight size={16}/></IconButton></div><button className="today-button" onClick={goToday}>Bugün</button></header>{googleCalendarStatus === 'syncing' && <div className="calendar-sync-note"><RefreshCw size={13}/> Google Takvim güncelleniyor…</div>}<div className="calendar-weekdays">{['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'].map((day)=><span key={day}>{day}</span>)}</div><div className="calendar-grid">{Array.from({length:leadingDays},(_,i)=><span className="empty-day" key={`empty-${i}`}/>)}{days.map((day)=>{const events=eventsFor(day);return <button key={day} onClick={()=>setSelectedDay(day)} className={`${dateKey(day) === todayKey() ? 'today' : ''} ${selectedDay===day?'selected':''}`}><span>{day}</span><div>{events.slice(0,3).map((event)=><i key={event.id} className={event.tone}>{event.title}</i>)}{events.length>3&&<small>+{events.length-3} daha</small>}</div></button>})}</div></section><aside className="surface day-panel"><span className="eyebrow">SEÇİLİ GÜN</span><div className="day-number"><strong>{selectedDay}</strong><span>{titleMonth}<br/>{year}</span></div><h3>{selectedWeekday.charAt(0).toLocaleUpperCase('tr')+selectedWeekday.slice(1)}</h3><div className="day-events">{selectedEvents.length?selectedEvents.map((event)=><div className="day-event" key={event.id}><i className={event.tone}/><span><strong>{event.title}</strong><small>{event.time} · {event.duration}{event.source ? ` · ${event.source}` : ''}</small></span><span className="day-event-actions"><a href={event.htmlLink ?? googleCalendarTemplateUrl(event, selectedDateKey)} target="_blank" rel="noreferrer" aria-label={`${event.title} etkinliğini Google Takvim'de aç`}><ExternalLink size={13}/></a>{event.id.startsWith('event-') && <IconButton label="Etkinliği sil" onClick={() => deleteEvent(selectedDateKey, event.id)}><Trash2 size={13}/></IconButton>}</span></div>):<div className="empty-state"><CalendarDays size={24}/><p>Bu gün henüz boş.<br/>Biraz nefes iyi gelebilir.</p></div>}</div><button className="inline-add" onClick={()=>openEvent(selectedDateKey)}><Plus size={14}/> Bu güne ekle</button>{googleConfig.connected && <button className="calendar-disconnect" onClick={() => void disconnectGoogleCalendar()}>Google bağlantısını kapat</button>}</aside></div>
     </>;
   };
 
@@ -2221,7 +2156,7 @@ export default function PersonalOS() {
     <>
       <PageTitle eyebrow="AYARLAR" title="Orbit sana uyum sağlasın." description="Görünümü, bildirimleri ve çalışma biçimini kişiselleştir."/>
       <div className="settings-layout"><nav className="surface settings-nav"><button className={settingsTab==='general'?'active':''} onClick={()=>setSettingsTab('general')}><UserRound size={16}/> Genel</button><button className={settingsTab==='appearance'?'active':''} onClick={()=>setSettingsTab('appearance')}><Palette size={16}/> Görünüm</button><button className={settingsTab==='notifications'?'active':''} onClick={()=>setSettingsTab('notifications')}><Bell size={16}/> Bildirimler</button><button className={settingsTab==='data'?'active':''} onClick={()=>setSettingsTab('data')}><Download size={16}/> Veri</button></nav><div className="settings-content">
-        {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">{profileInitials}</div><div><h2>{state.profile.name}</h2><p>{state.profile.workspace}</p></div><button onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><CheckCircle2 size={18} className="setting-ok"/></div></section><section className="surface settings-section"><header><h3>Takvim bağlantısı</h3><p>Orbit etkinliklerini kendi Google Takviminle birleştir.</p></header><div className="setting-row"><span className="setting-icon"><CalendarDays size={17}/></span><span><strong>Google Takvim</strong><small>{googleCalendarStatus==='connected'?'Bağlı · Etkinlikler okunuyor ve yeni planlar eşitleniyor':googleCalendarStatus==='connecting'?'Google hesap penceresi bekleniyor':googleCalendarClientId?'Hazır · Google hesabınla tek dokunuşla bağlan':'Uygulama yapılandırması gerekiyor'}</small></span><button className="settings-edit-button" disabled={googleCalendarStatus==='connecting'} onClick={()=>googleCalendarStatus==='connected'?disconnectGoogleCalendar():void connectGoogleCalendar()}>{googleCalendarStatus==='connected'?'Bağlantıyı kes':googleCalendarStatus==='connecting'?'Bekleniyor…':'Google ile bağla'}</button></div></section></>}
+        {settingsTab==='general'&&<><section className="surface settings-section"><div className="settings-profile"><div className="large-avatar">{profileInitials}</div><div><h2>{state.profile.name}</h2><p>{state.profile.workspace}</p></div><button onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}>Düzenle</button></div></section><section className="surface settings-section"><header><h3>Çalışma alanı</h3><p>Orbit’in temel bilgileri ve yerel kayıt durumu.</p></header><div className="setting-row"><span className="setting-icon"><Smartphone size={17}/></span><span><strong>Bu cihaz</strong><small>Değişiklikler bu tarayıcıda otomatik saklanıyor</small></span><CheckCircle2 size={18} className="setting-ok"/></div><div className="setting-row"><span className="setting-icon"><Globe2 size={17}/></span><span><strong>Dil ve bölge</strong><small>Türkçe · Europe/Istanbul</small></span><CheckCircle2 size={18} className="setting-ok"/></div></section><section className="surface settings-section"><header><h3>Takvim bağlantısı</h3><p>Orbit etkinliklerini kendi Google Takviminle birleştir.</p></header><div className="setting-row"><span className="setting-icon"><CalendarDays size={17}/></span><span><strong>Google Takvim</strong><small>{googleConfig.connected?'Kalıcı bağlı · Etkinlikler okunuyor ve yeni planlar eşitleniyor':googleCalendarStatus==='connecting'?'Google izin ekranı açılıyor':googleConfig.configured?'Hazır · Google hesabınla bir kez bağlan':'Uygulama yapılandırması gerekiyor'}</small></span><button className="settings-edit-button" disabled={googleCalendarStatus==='connecting'} onClick={()=>googleConfig.connected?void disconnectGoogleCalendar():void connectGoogleCalendar()}>{googleConfig.connected?'Bağlantıyı kes':googleCalendarStatus==='connecting'?'Bekleniyor…':'Google ile bağla'}</button></div></section></>}
         {settingsTab==='appearance'&&<section className="surface settings-section"><header><h3>Görünüm ve deneyim</h3><p>Orbit’in nasıl hissettirdiğini seç.</p></header><div className="setting-row theme-setting"><span className="setting-icon">{resolvedTheme==='dark'?<Moon size={17}/>:<Sun size={17}/>}</span><span><strong>Arayüz teması</strong><small>Açık, koyu veya cihazın görünümü</small></span><div className="theme-options" role="group" aria-label="Arayüz teması">{([{id:'light',label:'Açık',icon:Sun},{id:'system',label:'Sistem',icon:Monitor},{id:'dark',label:'Koyu',icon:Moon}] as const).map(({id,label,icon:ThemeIcon})=><button key={id} className={state.settings.theme===id?'selected':''} aria-pressed={state.settings.theme===id} onClick={()=>updateSetting('theme',id)}><ThemeIcon size={13}/><span>{label}</span></button>)}</div></div><div className="setting-row"><span className="setting-icon"><Palette size={17}/></span><span><strong>Vurgu rengi</strong><small>Altı renk seçeneğinden birini kullan</small></span><div className="color-options">{['violet','blue','mint','sand','rose','slate'].map((color)=><button aria-label={`${color} vurgu rengi`} key={color} className={`${color} ${state.settings.accent===color?'selected':''}`} onClick={()=>updateSetting('accent',color)}/>)}</div></div><div className="setting-row density-setting"><span className="setting-icon"><PanelsTopLeft size={17}/></span><span><strong>Bilgi yoğunluğu</strong><small>Ekranda daha ferah veya daha sıkı bir düzen seç</small></span><div className="theme-options" role="group" aria-label="Bilgi yoğunluğu">{([{id:'comfortable',label:'Ferah'},{id:'compact',label:'Kompakt'}] as const).map(({id,label})=><button key={id} className={state.settings.density===id?'selected':''} aria-pressed={state.settings.density===id} onClick={()=>updateSetting('density',id)}><span>{label}</span></button>)}</div></div><div className="setting-row nav-setting"><span className="setting-icon"><Menu size={17}/></span><span><strong>Alt menü</strong><small>Mobil çubuktaki dört sayfayı değiştir</small></span><button className="settings-edit-button" onClick={()=>setModal('navCustomize')}>Düzenle</button></div><SettingToggle icon={Sparkles} title="Hareket ve animasyon" description="Yumuşak geçişleri ve mikro animasyonları kullan" value={state.settings.motion} onChange={(value)=>updateSetting('motion',value)}/><SettingToggle icon={Volume2} title="Arayüz sesleri" description="Buton ve işlem anlarında yumuşak geri bildirim" value={state.settings.sound} onChange={(value)=>updateSetting('sound',value)}/><SettingToggle icon={Smartphone} title="Dokunsal geri bildirim" description="Mobil işlemlerde hafif titreşim kullan" value={state.settings.haptics} onChange={(value)=>updateSetting('haptics',value)}/><button data-feedback-test className="feedback-test-button" onClick={()=>{playFeedback('confirm',true,true,true);notify('Ses ve titreşim denemesi çalıştırıldı.');}}><Volume2 size={16}/><span><strong>Geri bildirimi dene</strong><small>Ses ve titreşim bu cihazda birlikte çalışır</small></span><Zap size={15}/></button></section>}
         {settingsTab==='appearance'&&<section className="surface settings-section sound-settings-section"><header><h3>Ses seviyesi</h3><p>Arayüz efektlerini cihazına göre ayarla.</p></header><div className="sound-level-control"><div className="sound-level-copy"><span className="setting-icon"><Volume1 size={17}/></span><span><strong>Efekt yüksekliği</strong><small>Düşükten ekstra güçlü seviyeye</small></span><em>%{state.settings.soundVolume}</em></div><div className="sound-volume-control"><Volume1 size={14}/><input aria-label="Arayüz ses seviyesi" type="range" min="10" max="150" step="5" value={state.settings.soundVolume} style={{'--sound-fill':`${Math.round(state.settings.soundVolume/1.5)}%`} as CSSProperties} onChange={(event)=>updateSetting('soundVolume',Number(event.target.value))} onPointerUp={()=>playFeedback('confirm',false,true)} onKeyUp={()=>playFeedback('confirm',false,true)}/><Volume2 size={16}/></div></div></section>}
         {settingsTab==='notifications'&&<section className="surface settings-section"><header><h3>Akış ve bildirimler</h3><p>Yalnızca gerçekten yaklaşan kayıtlar için haber al.</p></header><div className="setting-row"><span className="setting-icon"><CalendarDays size={17}/></span><span><strong>Orbit bildirim merkezi</strong><small>Bugün ve yarının takvim kayıtlarını gösterir · {unreadNotificationCount ? `${unreadNotificationCount} okunmamış` : 'şu an yeni bildirim yok'}</small></span><button className="settings-edit-button" onClick={()=>setModal('notifications')}>Merkezi aç</button></div><SettingToggle icon={Bell} title="Sistem hatırlatmaları" description="İzin açıksa cihaz bildirimlerine de izin ver" value={state.settings.notifications} onChange={(value)=>void updateNotifications(value)}/><SettingToggle icon={Eye} title="Tamamlananları göster" description="Personal listelerinde biten işleri görünür tut" value={state.settings.showCompleted} onChange={(value)=>updateSetting('showCompleted',value)}/></section>}
@@ -2293,7 +2228,7 @@ export default function PersonalOS() {
       {modal==='departmentTask'&&<><span className="modal-icon"><ListTodo size={20}/></span><span className="eyebrow">OPERASYON GÖREVİ</span><h2>{departments.find((department)=>department.id===expandedDepartment)?.title} için görev ekle.</h2><p>Yeni görev doğrudan açık departmanın operasyon listesine kaydedilecek.</p><label>Görev adı<input required autoFocus value={departmentTaskDraft} onChange={(event)=>setDepartmentTaskDraft(event.target.value)} onKeyDown={(event)=>event.key==='Enter'&&addDepartmentTask()} placeholder="Örn. Tedarikçiden teyit al"/></label><button className="primary-button full" disabled={!departmentTaskDraft.trim()} onClick={addDepartmentTask}>Görevi ekle <ArrowRight size={15}/></button></>}
       {modal==='navCustomize'&&<><span className="modal-icon"><Menu size={20}/></span><span className="eyebrow">ALT MENÜ</span><h2>Hızlı erişimlerini seç.</h2><p>Ana Sayfa her açılışta başlangıç ekranıdır ve üç çizgili menüde kalır. Burada gün içinde en çok kullandığın dört bölümü seç.</p><div className="nav-customizer">{state.mobileNav.map((selectedPage,index)=><label key={index}>{index < 2?'Sol':'Sağ'} alan {index % 2 + 1}<select value={selectedPage} onChange={(event)=>updateMobileNavItem(index,event.target.value as PageKey)}>{nav.filter((item)=>item.id!=='home').map((item)=><option key={item.id} value={item.id} disabled={item.id!==selectedPage&&state.mobileNav.includes(item.id)}>{item.label}</option>)}</select></label>)}</div><button className="primary-button full" onClick={()=>{setModal(null);notify('Alt menü güncellendi.')}}>Kaydet <Check size={15}/></button></>}
       {modal==='capture'&&renderCaptureModal()}
-      {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2><p>Önce zamanını belirle; bağlantı açıksa Google Takvim’e de otomatik eklenecek.</p>{eventDraft.source&&<div className="calendar-source-chip"><Link2 size={13}/>{eventDraft.source}</div>}<label>Etkinlik adı<input required autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input required type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat <small>İsteğe bağlı</small><input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre <small>İsteğe bağlı</small><input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'},{value:'orange',label:'Turuncu'}].map((tone)=><option key={tone.value} value={tone.value}>{tone.label}</option>)}</select></label></div><label>Açıklama <small>İsteğe bağlı</small><textarea value={eventDraft.description} onChange={(event)=>setEventDraft({...eventDraft,description:event.target.value})} placeholder="Etkinlik ayrıntıları..."/></label><div className={`calendar-save-status ${googleCalendarStatus==='connected'?'connected':''}`}><CalendarDays size={14}/><span><strong>{googleCalendarStatus==='connected'?'Orbit + Google Takvim':'Orbit Takvimi'}</strong><small>{googleCalendarStatus==='connected'?'İki takvime birlikte kaydedilecek':'Kaydettikten sonra Google’a tek dokunuşla aktarabilirsin'}</small></span></div><button className="primary-button full" disabled={!eventDraft.title.trim()||!eventDraft.date} onClick={()=>void addEvent()}>Takvime ekle <ArrowRight size={15}/></button></>}
+      {modal==='event'&&<><span className="modal-icon"><CalendarDays size={20}/></span><span className="eyebrow">YENİ ETKİNLİK</span><h2>Takvimde yer aç.</h2><p>Önce zamanını belirle; bağlantı açıksa Google Takvim’e de otomatik eklenecek.</p>{eventDraft.source&&<div className="calendar-source-chip"><Link2 size={13}/>{eventDraft.source}</div>}<label>Etkinlik adı<input required autoFocus value={eventDraft.title} onChange={(event)=>setEventDraft({...eventDraft,title:event.target.value})} placeholder="Örn. Tur semineri"/></label><div className="form-row"><label>Tarih<input required type="date" value={eventDraft.date} onChange={(event)=>setEventDraft({...eventDraft,date:event.target.value})}/></label><label>Saat <small>İsteğe bağlı</small><input type="time" value={eventDraft.time} onChange={(event)=>setEventDraft({...eventDraft,time:event.target.value})}/></label></div><div className="form-row"><label>Süre <small>İsteğe bağlı</small><input value={eventDraft.duration} onChange={(event)=>setEventDraft({...eventDraft,duration:event.target.value})} placeholder="60 dk"/></label><label>Renk<select value={eventDraft.tone} onChange={(event)=>setEventDraft({...eventDraft,tone:event.target.value})}>{[{value:'violet',label:'Mor'},{value:'blue',label:'Mavi'},{value:'mint',label:'Yeşil'},{value:'sand',label:'Kum'},{value:'rose',label:'Gül'},{value:'orange',label:'Turuncu'}].map((tone)=><option key={tone.value} value={tone.value}>{tone.label}</option>)}</select></label></div><label>Açıklama <small>İsteğe bağlı</small><textarea value={eventDraft.description} onChange={(event)=>setEventDraft({...eventDraft,description:event.target.value})} placeholder="Etkinlik ayrıntıları..."/></label><div className={`calendar-save-status ${googleConfig.connected?'connected':''}`}><CalendarDays size={14}/><span><strong>{googleConfig.connected?'Orbit + Google Takvim':'Orbit Takvimi'}</strong><small>{googleConfig.connected?'İki takvime birlikte kaydedilecek':'Kaydettikten sonra Google’a tek dokunuşla aktarabilirsin'}</small></span></div><button className="primary-button full" disabled={!eventDraft.title.trim()||!eventDraft.date} onClick={()=>void addEvent()}>Takvime ekle <ArrowRight size={15}/></button></>}
       {modal==='profile'&&<><span className="modal-icon"><UserRound size={20}/></span><span className="eyebrow">ÇALIŞMA ALANI</span><h2>Profilini kişiselleştir.</h2><p>Bu bilgiler yalnızca Orbit içindeki çalışma alanını tanımlar.</p><label>İsim<input required autoFocus value={profileDraft.name} onChange={(event)=>setProfileDraft({...profileDraft,name:event.target.value})} placeholder="İsmin"/></label><label>Çalışma alanı<input required value={profileDraft.workspace} onChange={(event)=>setProfileDraft({...profileDraft,workspace:event.target.value})} placeholder="Örn. Tasarım ve operasyon"/></label><button className="primary-button full" disabled={!profileDraft.name.trim()||!profileDraft.workspace.trim()} onClick={saveProfile}>Değişiklikleri kaydet <Check size={15}/></button></>}
       {modal==='search'&&<><div className="command-input"><Search size={18}/><input autoFocus value={searchText} onChange={(event)=>setSearchText(event.target.value)} onKeyDown={(event)=>{if(event.key==='Enter'&&searchResults[0]){go(searchResults[0].id);setModal(null);setSearchText('');}}} placeholder="Sayfa veya kayıt ara..."/></div><div className="command-results"><span>Hızlı geçiş</span>{searchResults.map((item)=>{const ItemIcon=item.icon;return <button key={item.id} onClick={()=>{go(item.id);setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.label}</strong><small>Sayfaya git</small><ChevronRight size={14}/></button>})}{personalSearchResults.length>0&&<><span>Personal kayıtları</span>{personalSearchResults.map((item)=>{const ItemIcon=personalLists[item.list].icon;return <button key={item.id} onClick={()=>{setPersonalTab(item.list);go('personal');setModal(null);setSearchText('')}}><i><ItemIcon size={17}/></i><strong>{item.title}</strong><small>{personalLists[item.list].title}</small><ChevronRight size={14}/></button>})}</>}{!searchResults.length&&!personalSearchResults.length&&<p className="empty-inline">Eşleşen sonuç bulunamadı.</p>}</div><div className="command-footer"><span><Command size={12}/> Orbit hızlı arama</span><span>↵ ilk sayfayı aç · esc kapat</span></div></>}
     </section></div>}

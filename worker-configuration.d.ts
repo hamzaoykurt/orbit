@@ -6,6 +6,10 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	ORBIT_AUTH_USERNAME: string;
 	ORBIT_AUTH_PASSWORD_HASH: string;
+	GOOGLE_OAUTH_CLIENT_ID: string;
+	GOOGLE_OAUTH_CLIENT_SECRET: string;
+	GOOGLE_TOKEN_ENCRYPTION_KEY: string;
+	GOOGLE_CALENDAR_ID: string;
 }
 declare namespace Cloudflare {
 	interface Env extends __BaseEnv_Env {}
@@ -15,5 +19,5 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ORBIT_AUTH_USERNAME" | "ORBIT_AUTH_PASSWORD_HASH">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ORBIT_AUTH_USERNAME" | "ORBIT_AUTH_PASSWORD_HASH" | "GOOGLE_OAUTH_CLIENT_ID" | "GOOGLE_OAUTH_CLIENT_SECRET" | "GOOGLE_TOKEN_ENCRYPTION_KEY" | "GOOGLE_CALENDAR_ID">> {}
 }

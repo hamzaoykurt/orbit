@@ -24,6 +24,17 @@ Gemini receives an OpenAPI-compatible `responseSchema` for every generation, nov
 
 OpenAI remains available via `AI_PROVIDER=openai`, `OPENAI_API_KEY` and optional `OPENAI_MODEL`. ChatGPT Plus does not provide API credits. When no provider is selected, a configured Gemini key selects Gemini; otherwise OpenAI is selected. An explicitly selected provider never borrows the other provider's credentials.
 
+## Persistent Google Calendar connection
+
+Google Calendar uses the OAuth web-server flow with offline access. The browser never stores Google access or refresh tokens. D1 stores one refresh token per authenticated Orbit owner, encrypted with AES-GCM; the Worker obtains a fresh short-lived access token whenever Calendar is read or changed. Deploys, browser restarts and access-token expiry therefore do not disconnect the calendar. A user only needs to reconnect after explicitly disconnecting, revoking Google access, or changing the encryption secret.
+
+Before deploying this migration:
+
+1. In the Google OAuth web client, add `https://os.cosmibit.com/api/google-calendar/callback` as an exact authorized redirect URI and enable the Google Calendar API.
+2. Apply `migrations/0004_google_calendar.sql` with `npm run db:migrate:remote`.
+3. Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and a long random `GOOGLE_TOKEN_ENCRYPTION_KEY` as Worker secrets. Set `GOOGLE_CALENDAR_ID=primary` as a normal variable unless a different calendar is intentional. Never rotate the encryption key without first planning a one-time reconnect, because existing ciphertext cannot be decrypted with the new key.
+4. Deploy, connect once from Orbit, reload the app, and verify `/api/google-calendar/status` remains `connected: true` and the month is populated without opening Google's account chooser.
+
 - Push changes to `main` in `hamzaoykurt/orbit`.
 - Cloudflare Workers Builds automatically runs `npm run build`, then `npx wrangler deploy --config dist/server/wrangler.json`.
 - Wait for that commit's Cloudflare build to finish successfully. A Git push or a successful local build alone does not mean production was updated.
