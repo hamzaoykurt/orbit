@@ -23,6 +23,7 @@ import { findSimilar, mentorContext, parseMentorJson, projectContext, researchCo
 import type { MentorImport, MentorProjectView } from './mentor-sync';
 import { parseProgramDateRange } from './program-date';
 import { taskCopyText } from './task-copy';
+import { putPersonalItemFirst } from './personal-order';
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
@@ -1115,10 +1116,12 @@ export default function PersonalOS() {
     setState((current) => {
       const index = personalLists[personalItemDraft.list].items.length + (current.customPersonal[personalItemDraft.list]?.length ?? 0);
       const id = `personal-${personalItemDraft.list}-${index}`;
+      const visibleIds = personalItemsFrom(personalItemDraft.list, current).map((item) => item.id);
       return {
         ...current,
         customPersonal: { ...current.customPersonal, [personalItemDraft.list]: [...(current.customPersonal[personalItemDraft.list] ?? []), personalItemDraft.title.trim()] },
         personalItemDetails: { ...current.personalItemDetails, [id]: details },
+        personalOrder: { ...current.personalOrder, [personalItemDraft.list]: putPersonalItemFirst(visibleIds, id) },
       };
     });
     setPersonalTab(personalItemDraft.list); setModal(null); notify('Yeni kayıt eklendi.');
@@ -1144,7 +1147,16 @@ export default function PersonalOS() {
 
   const addQuick = () => {
     if (!quickText.trim()) return;
-    setState((current) => ({ ...current, customPersonal: { ...current.customPersonal, [quickTarget]: [...current.customPersonal[quickTarget], quickText.trim()] } }));
+    setState((current) => {
+      const index = personalLists[quickTarget].items.length + current.customPersonal[quickTarget].length;
+      const id = `personal-${quickTarget}-${index}`;
+      const visibleIds = personalItemsFrom(quickTarget, current).map((item) => item.id);
+      return {
+        ...current,
+        customPersonal: { ...current.customPersonal, [quickTarget]: [...current.customPersonal[quickTarget], quickText.trim()] },
+        personalOrder: { ...current.personalOrder, [quickTarget]: putPersonalItemFirst(visibleIds, id) },
+      };
+    });
     setQuickText(''); setModal(null); notify('Görev Personal listene eklendi.');
   };
 
@@ -1500,6 +1512,7 @@ export default function PersonalOS() {
         ...current,
         customPersonal: { ...current.customPersonal, todo: [...current.customPersonal.todo], buy: [...current.customPersonal.buy], visit: [...current.customPersonal.visit] },
         personalItemDetails: { ...current.personalItemDetails },
+        personalOrder: { ...current.personalOrder, todo: [...current.personalOrder.todo], buy: [...current.personalOrder.buy], visit: [...current.personalOrder.visit] },
         customProjects: [...current.customProjects], projectExtraTasks: { ...current.projectExtraTasks },
         customRebuildTasks: { ...current.customRebuildTasks }, customDepartmentTasks: { ...current.customDepartmentTasks },
         programExtraTasks: { ...current.programExtraTasks }, calendarEvents: { ...current.calendarEvents }, notes: [...current.notes],
@@ -1510,8 +1523,10 @@ export default function PersonalOS() {
           const list: PersonalListKey = item.kind === 'buy' ? 'buy' : item.kind === 'visit' ? 'visit' : 'todo';
           const itemIndex = personalLists[list].items.length + next.customPersonal[list].length;
           const id = `personal-${list}-${itemIndex}`;
+          const visibleIds = personalItemsFrom(list, next).map((entry) => entry.id);
           next.customPersonal[list].push(item.title);
           next.personalItemDetails[id] = { title: item.title, note: item.details, priority: 'normal', ...(list === 'buy' ? { price: item.price, link: item.link } : {}), ...(list === 'visit' ? { locationUrl: item.locationUrl } : {}) };
+          next.personalOrder[list] = putPersonalItemFirst(visibleIds, id);
         } else if (item.kind === 'project') {
           next.customProjects.push({ id: `ai-project-${now}-${index}`, title: item.title, stage: 0, progress: 0, color: 'violet', due: item.date || 'Planlanacak', tags: item.tags, tasks: item.subtasks.length ? item.subtasks : item.details ? [item.details] : [], cover: 'aurora' });
         } else if (item.kind === 'project_task') {
@@ -1567,7 +1582,8 @@ export default function PersonalOS() {
       setState((current) => {
         const index = personalLists[list].items.length + (current.customPersonal[list]?.length ?? 0);
         const id = `personal-${list}-${index}`;
-        return { ...current, customPersonal: { ...current.customPersonal, [list]: [...(current.customPersonal[list] ?? []), title] }, personalItemDetails: { ...current.personalItemDetails, [id]: { title, note: captureDetails.trim(), priority: captureExtras.priority, ...(list === 'buy' ? { price: captureExtras.price.trim(), link: captureExtras.link.trim() } : {}), ...(list === 'visit' ? { locationUrl: captureExtras.locationUrl.trim() } : {}) } } };
+        const visibleIds = personalItemsFrom(list, current).map((item) => item.id);
+        return { ...current, customPersonal: { ...current.customPersonal, [list]: [...(current.customPersonal[list] ?? []), title] }, personalItemDetails: { ...current.personalItemDetails, [id]: { title, note: captureDetails.trim(), priority: captureExtras.priority, ...(list === 'buy' ? { price: captureExtras.price.trim(), link: captureExtras.link.trim() } : {}), ...(list === 'visit' ? { locationUrl: captureExtras.locationUrl.trim() } : {}) } }, personalOrder: { ...current.personalOrder, [list]: putPersonalItemFirst(visibleIds, id) } };
       });
       setPersonalTab(list);
     }
@@ -1953,7 +1969,7 @@ export default function PersonalOS() {
             const subtasks = state.personalSubtasks[item.id] ?? [];
             const isDragging = personalDrag?.kind === 'item' && personalDrag.itemId === item.id;
             const isDragOver = personalDrag?.kind === 'item' && personalDrag.overId === item.id && !isDragging;
-            return <article data-personal-item={item.id} key={item.id} className={`task-item personal-task-card ${state.completed[item.id] ? 'completed' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}>
+            return <article data-personal-item={item.id} key={item.id} className={`task-item personal-task-card ${item.details.priority === 'important' ? 'important' : ''} ${state.completed[item.id] ? 'completed' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}>
               <div className="personal-task-main">
                 <button className="personal-drag-handle" aria-label={`${item.title} kaydını sürükleyerek sırala`} title="Sürükle veya ok tuşlarıyla sırala" onPointerDown={(event)=>beginPersonalDrag(event,{kind:'item',list:personalTab,itemId:item.id,title:item.title})} onKeyDown={(event)=>{if(event.key==='ArrowUp'){event.preventDefault();movePersonalItem(personalTab,item.id,-1)}if(event.key==='ArrowDown'){event.preventDefault();movePersonalItem(personalTab,item.id,1)}}}><GripVertical size={16}/></button>
                 <button className="task-item-toggle" onClick={() => toggle(item.id)}>
