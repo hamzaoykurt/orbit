@@ -10,7 +10,7 @@ import { useNavigation, useNavigationState } from './use-navigation';
 import type { PageKey } from './navigation';
 import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
 import { emptyTask, emptyWorkspace, normalizeWorkspace, removeProjectTaskState, visibleProjectTaskEntries, visibleProjectTaskTitles } from './projects/project-types';
-import type { ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
+import type { ProjectPhoto, ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
 import { NotesWorkspace } from './notes/notes-workspace';
 import { newNote, normalizeNotes } from './notes/note-model';
 import type { Note } from './notes/note-model';
@@ -23,6 +23,7 @@ import { findSimilar, mentorContext, parseMentorJson, projectContext, researchCo
 import type { MentorImport, MentorProjectView } from './mentor-sync';
 import { parseProgramDateRange } from './program-date';
 import { taskCopyText } from './task-copy';
+import { copyImage, copyTextWithImages } from './clipboard-media';
 import { putPersonalItemFirst } from './personal-order';
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
@@ -1859,6 +1860,8 @@ export default function PersonalOS() {
     return {id:project.id,name:project.title,goal:workspace.description||plan?.input.answers.goal||'',stage,type:plan?.analysis.type||project.tags[0]||'',scope:(plan?.overrides.scope||plan?.analysis.scope||''),nextAction:firstTask,progress:completionRate(completedTasks.length,tasks.length),tasks:remaining,completed:completedTasks,designLanguage:designCatalog.find(style=>style.id===plan?.selectedStyle)?.name||workspace.mentor?.suggestedDesignLanguage||'',notes:workspace.notes.slice(-3).map(note=>note.body||note.outcome||note.title),lastActivity:workspace.mentor?.importedAt||plan?.updatedAt||''};
   };
   const copyText=async(text:string,message:string)=>{try{await navigator.clipboard.writeText(text);notify(message);}catch{notify('Panoya kopyalanamadı. Tarayıcı iznini kontrol et.');}};
+  const copyProjectTask=async(text:string,photos:ProjectPhoto[]=[])=>{try{await copyTextWithImages(text,photos);notify(photos.length?`Görev ve ${photos.length} görsel GPT’ye yapıştırmak için kopyalandı.`:'Görev GPT’ye yapıştırmak için kopyalandı.');}catch{if(photos.length){try{await navigator.clipboard.writeText(text);notify('Görev metni kopyalandı; görseller panoya eklenemedi.');return;}catch{}}notify('Panoya kopyalanamadı. Tarayıcı iznini kontrol et.');}};
+  const copyProjectPhoto=async(photo:ProjectPhoto)=>{try{await copyImage(photo);notify('Görsel panoya kopyalandı.');}catch{notify('Görsel panoya kopyalanamadı. Tarayıcı iznini kontrol et.');}};
   const copyTask=(input:Parameters<typeof taskCopyText>[0])=>void copyText(taskCopyText(input),'Görev Codex’e yapıştırmak için kopyalandı.');
   const buildMentorContext=(generatedAt=new Date())=>{
     const views=projectMetrics.map(item=>mentorProjectView(item.project));
@@ -2021,7 +2024,7 @@ export default function PersonalOS() {
       const project = allProjects.find(item => item.id === activeProjectId);
       if (!hydrated) return <p role="status">Proje yükleniyor…</p>;
       if (!project) return <section className="surface"><h2>Bu proje bulunamadı.</h2><button onClick={() => go('projects')}>Proje panosuna dön</button></section>;
-      return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => backTo('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onCopyContext={()=>void copyText(projectContext(mentorProjectView(project)),'Proje bağlamı kopyalandı.')} onCopyTask={text=>void copyText(text,'Görev Codex’e yapıştırmak için kopyalandı.')} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
+      return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => backTo('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onCopyContext={()=>void copyText(projectContext(mentorProjectView(project)),'Proje bağlamı kopyalandı.')} onCopyTask={(text,photos)=>void copyProjectTask(text,photos)} onCopyPhoto={photo=>void copyProjectPhoto(photo)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
         onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
         onEditTask={(index, title) => editProjectTask(project, index, title)}
