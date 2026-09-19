@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent } from 'react';
-import { Maximize2, Pencil, Undo2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Pencil, Undo2, Upload, X } from 'lucide-react';
 
 type Stroke = { color: string; width: number; points: { x: number; y: number }[] };
 export function PhotoAnnotator({ source, name, onClose, onSave }: { source: string; name: string; onClose: () => void; onSave: (blob: Blob) => Promise<void> }) {
@@ -15,7 +15,6 @@ export function PhotoAnnotator({ source, name, onClose, onSave }: { source: stri
   const [width, setWidth] = useState(6);
   const [strokeCount, setStrokeCount] = useState(0);
   const [tool, setTool] = useState<'view' | 'draw'>('view');
-  const [zoom, setZoom] = useState(1);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -66,11 +65,10 @@ export function PhotoAnnotator({ source, name, onClose, onSave }: { source: stri
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Yüklenemedi. Tekrar dene.'); }
     finally { setSaving(false); }
   };
-  const changeZoom = (next: number) => setZoom(Math.max(1, Math.min(3, next)));
   return <dialog className="pw-photo-dialog" ref={dialog} aria-labelledby="photo-editor-title" onCancel={event => { event.preventDefault(); close(); }}>
-    <header><div><span className="eyebrow">FOTOĞRAF ÜZERİNDE ÇALIŞ</span><h2 id="photo-editor-title">Önce incele, sonra işaretle.</h2><p>{name} · Görsele dokunarak büyüt; çizmek için kalemi aç.</p></div><button type="button" aria-label="Fotoğraf düzenleyiciyi kapat" disabled={saving} onClick={close}><X size={20}/></button></header>
-    <div className="pw-pen-tools"><button type="button" className={`pw-tool-button ${tool === 'draw' ? 'active' : ''}`} aria-pressed={tool === 'draw'} disabled={saving} onClick={() => setTool(current => current === 'draw' ? 'view' : 'draw')}><Pencil size={17}/>{tool === 'draw' ? 'Kalem açık' : 'Çizmeye başla'}</button>{tool === 'draw' ? <><label>Renk<input type="color" value={color} disabled={saving} onChange={event => setColor(event.target.value)}/></label><label>Kalınlık<input aria-label="Kalem kalınlığı" type="range" min="2" max="24" value={width} disabled={saving} onChange={event => setWidth(Number(event.target.value))}/></label><button type="button" disabled={!strokeCount || saving} onClick={() => { strokes.current.pop(); setStrokeCount(strokes.current.length); paint(); }}><Undo2 size={16}/> Geri al</button><button type="button" disabled={!strokeCount || saving} onClick={() => { strokes.current = []; setStrokeCount(strokes.current.length); paint(); }}>Çizimleri temizle</button></> : <span className="pw-tool-hint">İnceleme modu · Görsele dokununca büyür.</span>}<div className="pw-zoom-tools"><button type="button" aria-label="Uzaklaştır" title="Uzaklaştır" disabled={zoom <= 1 || saving} onClick={() => changeZoom(zoom - .5)}><ZoomOut size={16}/></button><output aria-live="polite">%{Math.round(zoom * 100)}</output><button type="button" aria-label="Yakınlaştır" title="Yakınlaştır" disabled={zoom >= 3 || saving} onClick={() => changeZoom(zoom + .5)}><ZoomIn size={16}/></button><button type="button" aria-label="Görseli alana sığdır" title="Alana sığdır" disabled={zoom === 1 || saving} onClick={() => setZoom(1)}><Maximize2 size={16}/></button></div></div>
-    <div className="pw-canvas-region"><div className={`pw-canvas-wrap ${tool === 'draw' ? 'drawing' : 'viewing'}`}><div className="pw-canvas-stage" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}><canvas ref={canvas} aria-label={tool === 'draw' ? 'Fotoğraf işaretleme tuvali' : 'Yakınlaştırmak için fotoğrafa dokun'} onClick={() => { if (tool === 'view' && ready && !saving) setZoom(current => current === 1 ? 2 : current); }} onPointerDown={event => {
+    <header><div><span className="eyebrow">FOTOĞRAF ÜZERİNDE ÇALIŞ</span><h2 id="photo-editor-title">Önce incele, sonra işaretle.</h2><p>{name} · Fotoğraf ekrana sığdırıldı; çizmek için kalemi aç.</p></div><button type="button" aria-label="Fotoğraf düzenleyiciyi kapat" disabled={saving} onClick={close}><X size={20}/></button></header>
+    <div className="pw-pen-tools"><button type="button" className={`pw-tool-button ${tool === 'draw' ? 'active' : ''}`} aria-pressed={tool === 'draw'} disabled={saving} onClick={() => setTool(current => current === 'draw' ? 'view' : 'draw')}><Pencil size={17}/>{tool === 'draw' ? 'Kalem açık' : 'Çizmeye başla'}</button>{tool === 'draw' ? <><label>Renk<input type="color" value={color} disabled={saving} onChange={event => setColor(event.target.value)}/></label><label>Kalınlık<input aria-label="Kalem kalınlığı" type="range" min="2" max="24" value={width} disabled={saving} onChange={event => setWidth(Number(event.target.value))}/></label><button type="button" disabled={!strokeCount || saving} onClick={() => { strokes.current.pop(); setStrokeCount(strokes.current.length); paint(); }}><Undo2 size={16}/> Geri al</button><button type="button" disabled={!strokeCount || saving} onClick={() => { strokes.current = []; setStrokeCount(strokes.current.length); paint(); }}>Çizimleri temizle</button></> : <span className="pw-tool-hint">İnceleme modu · Fotoğraf tam boy alana sığdırıldı.</span>}</div>
+    <div className="pw-canvas-region"><div className={`pw-canvas-wrap ${tool === 'draw' ? 'drawing' : 'viewing'}`}><div className="pw-canvas-stage"><canvas ref={canvas} aria-label={tool === 'draw' ? 'Fotoğraf işaretleme tuvali' : 'Tam ekranda fotoğraf önizlemesi'} onPointerDown={event => {
       if (tool !== 'draw' || !ready || saving || drawing.current !== null || event.button !== 0) return;
       event.currentTarget.setPointerCapture(event.pointerId); drawing.current = event.pointerId;
       strokes.current.push({ color, width: width * event.currentTarget.width / event.currentTarget.getBoundingClientRect().width, points: [position(event)] });
