@@ -9,7 +9,7 @@ import { readStartupState } from './startup';
 import { useNavigation, useNavigationState } from './use-navigation';
 import type { PageKey } from './navigation';
 import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
-import { emptyTask, emptyWorkspace, normalizeWorkspace, removeProjectTaskState, visibleProjectTaskEntries, visibleProjectTaskTitles } from './projects/project-types';
+import { emptyTask, emptyWorkspace, normalizeWorkspace, removeProjectTaskState, visibleProjectTaskEntries } from './projects/project-types';
 import type { ProjectPhoto, ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
 import { NotesWorkspace } from './notes/notes-workspace';
 import { newNote, normalizeNotes } from './notes/note-model';
@@ -25,6 +25,7 @@ import { parseProgramDateRange } from './program-date';
 import { taskCopyText } from './task-copy';
 import { copyImage, copyTextWithImages } from './clipboard-media';
 import { putPersonalItemFirst } from './personal-order';
+import { newestCustomFirst } from './task-order';
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
@@ -1285,10 +1286,14 @@ export default function PersonalOS() {
     setExpandedProgram(program.id); setModal(null); notify('Yeni tur programı eklendi.');
   };
 
-  const programTaskEntries = (programId: string, category: string) => [
-    ...programCategories.find((item) => item.name === category)!.tasks,
-    ...(state.programExtraTasks[programId]?.[category] ?? []),
-  ].filter((source) => !(state.programRemovedTasks[programId] ?? []).includes(source)).map(source => ({ source, title: state.programTaskEdits[programId]?.[`${category}\n${source}`] ?? source }));
+  const programTaskEntries = (programId: string, category: string) => {
+    const defaults = programCategories.find((item) => item.name === category)!.tasks;
+    const customs = state.programExtraTasks[programId]?.[category] ?? [];
+    return newestCustomFirst(
+      defaults.map((source, sourceIndex) => ({ source, sourceIndex })),
+      customs.map((source, index) => ({ source, sourceIndex: defaults.length + index })),
+    ).filter(({ source }) => !(state.programRemovedTasks[programId] ?? []).includes(source)).map(entry => ({ ...entry, title: state.programTaskEdits[programId]?.[`${category}\n${entry.source}`] ?? entry.source }));
+  };
   const visibleProgramTasks = (programId: string, category: string) => programTaskEntries(programId, category).map(task => task.title);
 
   const openProgramTask = (programId: string, category = programCategories[0].name) => {
@@ -1365,7 +1370,8 @@ export default function PersonalOS() {
     });
   };
 
-  const visibleProjectTasks = (project: Project) => visibleProjectTaskTitles(project.tasks, state.projectExtraTasks[project.id] ?? [], state.projectRemovedTasks[project.id] ?? []);
+  const visibleProjectTaskList = (project: Project) => visibleProjectTaskEntries(project.tasks, state.projectExtraTasks[project.id] ?? [], state.projectRemovedTasks[project.id] ?? []);
+  const visibleProjectTasks = (project: Project) => visibleProjectTaskList(project).map(task => task.title);
 
   const editProjectTask = (project: Project, taskIndex: number, currentTitle: string) => {
     openTaskEditor(currentTitle, `${project.title} projesindeki bu görevin başlığını güncelle.`, (title) => {
@@ -1821,7 +1827,7 @@ export default function PersonalOS() {
   const personalProgress = completionRate(personalDone, personalMetricItems.length);
   const currentWeekKey = weekStartKey();
   const rebuildMetrics = rebuildAreas.map((area) => {
-    const habits = [...area.habits, ...(state.customRebuildTasks[area.title] ?? [])];
+    const habits = newestCustomFirst(area.habits, state.customRebuildTasks[area.title] ?? []);
     const activities = state.rebuildActivities.filter((activity) => activity.areaId === area.id && weekStartKey(new Date(`${activity.date}T12:00:00`)) === currentWeekKey);
     const value = area.measure === 'minutes' ? activities.reduce((sum, activity) => sum + activity.duration, 0) : activities.length;
     return { ...area, habits, activities, value, done: Math.min(value, area.target), progress: Math.min(100, completionRate(value, area.target)) };
@@ -1829,9 +1835,12 @@ export default function PersonalOS() {
   const rebuildDone = rebuildMetrics.reduce((sum, area) => sum + area.done, 0);
   const rebuildTotal = rebuildMetrics.reduce((sum, area) => sum + area.target, 0);
   const departmentMetrics = departments.map((department) => {
-    const taskEntries = [...department.tasks, ...(state.customDepartmentTasks[department.id] ?? [])]
-      .filter((source) => !(state.departmentRemovedTasks[department.id] ?? []).includes(source))
-      .map((source) => ({ source, title: state.departmentTaskEdits[department.id]?.[source] ?? source }));
+    const taskEntries = newestCustomFirst(
+      department.tasks.map((source, sourceIndex) => ({ source, sourceIndex })),
+      (state.customDepartmentTasks[department.id] ?? []).map((source, index) => ({ source, sourceIndex: department.tasks.length + index })),
+    )
+      .filter(({ source }) => !(state.departmentRemovedTasks[department.id] ?? []).includes(source))
+      .map((entry) => ({ ...entry, title: state.departmentTaskEdits[department.id]?.[entry.source] ?? entry.source }));
     const tasks = taskEntries.map((task) => task.title);
     const done = tasks.filter((_, index) => state.completed[`dept-${department.id}-${index}`]).length;
     return { ...department, tasks, taskEntries, done, progress: completionRate(done, tasks.length) };

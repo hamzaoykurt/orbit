@@ -32,7 +32,15 @@ export function visibleProjectTaskTitles(tasks: string[], extraTasks: string[], 
 }
 
 export function visibleProjectTaskEntries(tasks: string[], extraTasks: string[], removedTasks: string[]): ProjectTaskEntry[] {
-  return [...tasks, ...extraTasks].map((title, sourceIndex) => ({ title, sourceIndex })).filter(({ title, sourceIndex }) => !removedTasks.includes(title) && !removedTasks.includes(removalKey(sourceIndex, title)));
+  const entries = [...tasks, ...extraTasks].map((title, sourceIndex) => ({ title, sourceIndex })).filter(({ title, sourceIndex }) => !removedTasks.includes(title) && !removedTasks.includes(removalKey(sourceIndex, title)));
+  const groups: ProjectTaskEntry[][] = [];
+  for (const entry of entries) {
+    if (entry.title.startsWith('>') && groups.length) groups[groups.length - 1].push(entry);
+    else groups.push([entry]);
+  }
+  const defaults = groups.filter(group => group[0].sourceIndex < tasks.length);
+  const customs = groups.filter(group => group[0].sourceIndex >= tasks.length);
+  return [...customs].reverse().concat(defaults).flat();
 }
 
 // Task identities are index based in the persisted model. Compact every related
@@ -79,9 +87,9 @@ export function removeProjectTaskState(projectId: string, tasks: string[], extra
 }
 
 // Preserve the original indices used by existing completion and subtask records.
-export function buildProjectTasks(projectId: string, titles: string[], subtasks: Record<string, { id: string; title: string }[]>): WorkspaceTask[] {
+export function buildProjectTasks(projectId: string, titles: (string | ProjectTaskEntry)[], subtasks: Record<string, { id: string; title: string }[]>): WorkspaceTask[] {
   const result: WorkspaceTask[] = [];
-  titles.forEach((title, index) => {
+  titles.map((entry, index) => typeof entry === 'string' ? { title: entry, sourceIndex: index } : entry).forEach(({ title, sourceIndex: index }) => {
     const id = `project-${projectId}-${index}`;
     if (title.startsWith('>') && result.length) result[result.length - 1].children.push({ id, title: title.slice(1).trim(), legacy: true });
     else result.push({ id, index, title: title.replace(/^>\s*/, ''), children: [...(subtasks[`${projectId}:${index}`] ?? [])] });

@@ -40,6 +40,9 @@ test('task removal keys distinguish duplicate titles', () => {
 test('standalone legacy child remains accessible', () => {
   assert.equal(model.buildProjectTasks('x', ['> Legacy'], {})[0].title, 'Legacy');
 });
+test('new custom project tasks appear first and keep their legacy children together', () => {
+  assert.deepEqual(model.visibleProjectTaskTitles(['Default'], ['Older', 'Newest', '> Child'], []), ['Newest', '> Child', 'Older', 'Default']);
+});
 test('resource links reject scripts and credentials', () => {
   for (const url of ['javascript:alert(1)', 'data:text/html,test', 'file:///tmp/test', 'https://a:b@example.com', 'not a url']) assert.equal(model.safeResourceUrl(url), null);
   assert.equal(model.safeResourceUrl('https://example.com/design'), 'https://example.com/design');
