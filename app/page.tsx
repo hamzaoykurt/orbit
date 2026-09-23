@@ -25,7 +25,7 @@ import { parseProgramDateRange } from './program-date';
 import { taskCopyText } from './task-copy';
 import { copyImage, copyTextWithImages } from './clipboard-media';
 import { putPersonalItemFirst } from './personal-order';
-import { newestCustomFirst } from './task-order';
+import { insertIndexedRecord, newestCustomFirst, withoutRecordKey } from './task-order';
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
@@ -305,6 +305,12 @@ const removeIndexedCompletion = (completed: Record<string, boolean>, prefix: str
   if (index === removedIndex) return [];
   return [[index > removedIndex ? `${prefix}${index - 1}` : id, value]];
 }));
+const insertProjectTaskState = (state: PersistedState, projectId: string, count = 1) => ({
+  completed: insertIndexedRecord(state.completed, `project-${projectId}-`, count),
+  projectSubtasks: insertIndexedRecord(state.projectSubtasks, `${projectId}:`, count),
+  projectTaskDetails: insertIndexedRecord(state.projectTaskDetails, `project-${projectId}-`, count),
+});
+const programTaskPrefix = (programId: string, category: string) => `program-${programId}-${programCategories.findIndex((item) => item.name === category)}-`;
 const durationInMinutes = (duration: string) => Math.max(15, Number(duration.match(/\d+/)?.[0] ?? 60));
 const compactGoogleDate = (date: Date) => date.toISOString().replace(/[-:]|\.\d{3}/g, '');
 
@@ -1124,6 +1130,8 @@ export default function PersonalOS() {
         customPersonal: { ...current.customPersonal, [personalItemDraft.list]: [...(current.customPersonal[personalItemDraft.list] ?? []), personalItemDraft.title.trim()] },
         personalItemDetails: { ...current.personalItemDetails, [id]: details },
         personalOrder: { ...current.personalOrder, [personalItemDraft.list]: putPersonalItemFirst(visibleIds, id) },
+        personalRemovedItems: current.personalRemovedItems.filter((removedId) => removedId !== id),
+        completed: withoutRecordKey(current.completed, id),
       };
     });
     setPersonalTab(personalItemDraft.list); setModal(null); notify('Yeni kayıt eklendi.');
@@ -1157,6 +1165,8 @@ export default function PersonalOS() {
         ...current,
         customPersonal: { ...current.customPersonal, [quickTarget]: [...current.customPersonal[quickTarget], quickText.trim()] },
         personalOrder: { ...current.personalOrder, [quickTarget]: putPersonalItemFirst(visibleIds, id) },
+        personalRemovedItems: current.personalRemovedItems.filter((removedId) => removedId !== id),
+        completed: withoutRecordKey(current.completed, id),
       };
     });
     setQuickText(''); setModal(null); notify('Görev Personal listene eklendi.');
@@ -1313,6 +1323,7 @@ export default function PersonalOS() {
         },
       },
       programRemovedTasks: { ...current.programRemovedTasks, [programTaskDraft.programId]: (current.programRemovedTasks[programTaskDraft.programId] ?? []).filter((task) => task !== programTaskDraft.title.trim()) },
+      completed: insertIndexedRecord(current.completed, programTaskPrefix(programTaskDraft.programId, programTaskDraft.category)),
     }));
     setModal(null); notify('Hazırlık görevi eklendi.');
   };
@@ -1343,6 +1354,7 @@ export default function PersonalOS() {
         [expandedDepartment]: [...(current.customDepartmentTasks[expandedDepartment] ?? []), departmentTaskDraft.trim()],
       },
       departmentRemovedTasks: { ...current.departmentRemovedTasks, [expandedDepartment]: (current.departmentRemovedTasks[expandedDepartment] ?? []).filter((task) => task !== departmentTaskDraft.trim()) },
+      completed: insertIndexedRecord(current.completed, `dept-${expandedDepartment}-`),
     }));
     setModal(null); notify('Operasyon görevi eklendi.');
   };
@@ -1517,8 +1529,10 @@ export default function PersonalOS() {
     setState((current) => {
       const next: PersistedState = {
         ...current,
+        completed: { ...current.completed },
         customPersonal: { ...current.customPersonal, todo: [...current.customPersonal.todo], buy: [...current.customPersonal.buy], visit: [...current.customPersonal.visit] },
         personalItemDetails: { ...current.personalItemDetails },
+        personalRemovedItems: [...current.personalRemovedItems],
         personalOrder: { ...current.personalOrder, todo: [...current.personalOrder.todo], buy: [...current.personalOrder.buy], visit: [...current.personalOrder.visit] },
         customProjects: [...current.customProjects], projectExtraTasks: { ...current.projectExtraTasks },
         customRebuildTasks: { ...current.customRebuildTasks }, customDepartmentTasks: { ...current.customDepartmentTasks },
@@ -1534,21 +1548,30 @@ export default function PersonalOS() {
           next.customPersonal[list].push(item.title);
           next.personalItemDetails[id] = { title: item.title, note: item.details, priority: 'normal', ...(list === 'buy' ? { price: item.price, link: item.link } : {}), ...(list === 'visit' ? { locationUrl: item.locationUrl } : {}) };
           next.personalOrder[list] = putPersonalItemFirst(visibleIds, id);
+          next.personalRemovedItems = next.personalRemovedItems.filter((removedId) => removedId !== id);
+          next.completed = withoutRecordKey(next.completed, id);
         } else if (item.kind === 'project') {
           next.customProjects.push({ id: `ai-project-${now}-${index}`, title: item.title, stage: 0, progress: 0, color: 'violet', due: item.date || 'Planlanacak', tags: item.tags, tasks: item.subtasks.length ? item.subtasks : item.details ? [item.details] : [], cover: 'aurora' });
         } else if (item.kind === 'project_task') {
           const targetId = allCaptureProjects.some((project) => project.id === item.targetId) ? item.targetId : allCaptureProjects[0]?.id;
-          if (targetId) next.projectExtraTasks[targetId] = [...(next.projectExtraTasks[targetId] ?? []), item.title, ...item.subtasks.map((task) => `> ${task}`)];
+          if (targetId) {
+            Object.assign(next, insertProjectTaskState(next, targetId, 1 + item.subtasks.length));
+            next.projectExtraTasks[targetId] = [...(next.projectExtraTasks[targetId] ?? []), item.title, ...item.subtasks.map((task) => `> ${task}`)];
+          }
         } else if (item.kind === 'rebuild_task') {
           const target = rebuildAreas.some((area) => area.title === item.targetId) ? item.targetId : rebuildAreas[0].title;
           next.customRebuildTasks[target] = [...(next.customRebuildTasks[target] ?? []), item.title];
         } else if (item.kind === 'department_task') {
           const target = departments.some((department) => department.id === item.targetId) ? item.targetId : departments[0].id;
+          next.completed = insertIndexedRecord(next.completed, `dept-${target}-`);
           next.customDepartmentTasks[target] = [...(next.customDepartmentTasks[target] ?? []), item.title];
         } else if (item.kind === 'program_task') {
           const programId = allCapturePrograms.some((program) => program.id === item.targetId) ? item.targetId : allCapturePrograms[0]?.id;
           const category = programCategories.some((entry) => entry.name === item.category) ? item.category : programCategories[0].name;
-          if (programId) next.programExtraTasks[programId] = { ...(next.programExtraTasks[programId] ?? {}), [category]: [...(next.programExtraTasks[programId]?.[category] ?? []), item.title] };
+          if (programId) {
+            next.completed = insertIndexedRecord(next.completed, programTaskPrefix(programId, category));
+            next.programExtraTasks[programId] = { ...(next.programExtraTasks[programId] ?? {}), [category]: [...(next.programExtraTasks[programId]?.[category] ?? []), item.title] };
+          }
         } else if (item.kind === 'calendar_event') {
           const date = /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : todayKey();
           const event: CalendarEvent = { id: `ai-event-${now}-${index}`, title: item.title, tone: 'blue', time: item.time || 'Tüm gün', duration: item.duration || '60 dk', description: item.details, source: 'Orbit AI' };
@@ -1590,7 +1613,7 @@ export default function PersonalOS() {
         const index = personalLists[list].items.length + (current.customPersonal[list]?.length ?? 0);
         const id = `personal-${list}-${index}`;
         const visibleIds = personalItemsFrom(list, current).map((item) => item.id);
-        return { ...current, customPersonal: { ...current.customPersonal, [list]: [...(current.customPersonal[list] ?? []), title] }, personalItemDetails: { ...current.personalItemDetails, [id]: { title, note: captureDetails.trim(), priority: captureExtras.priority, ...(list === 'buy' ? { price: captureExtras.price.trim(), link: captureExtras.link.trim() } : {}), ...(list === 'visit' ? { locationUrl: captureExtras.locationUrl.trim() } : {}) } }, personalOrder: { ...current.personalOrder, [list]: putPersonalItemFirst(visibleIds, id) } };
+        return { ...current, customPersonal: { ...current.customPersonal, [list]: [...(current.customPersonal[list] ?? []), title] }, personalItemDetails: { ...current.personalItemDetails, [id]: { title, note: captureDetails.trim(), priority: captureExtras.priority, ...(list === 'buy' ? { price: captureExtras.price.trim(), link: captureExtras.link.trim() } : {}), ...(list === 'visit' ? { locationUrl: captureExtras.locationUrl.trim() } : {}) } }, personalOrder: { ...current.personalOrder, [list]: putPersonalItemFirst(visibleIds, id) }, personalRemovedItems: current.personalRemovedItems.filter((removedId) => removedId !== id), completed: withoutRecordKey(current.completed, id) };
       });
       setPersonalTab(list);
     }
@@ -1599,14 +1622,14 @@ export default function PersonalOS() {
     }
     if (capturePage === 'projects') {
       const extraLines = captureDetails.split('\n').map((line) => line.trim()).filter((line) => line && line !== title);
-      setState((current) => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title, ...extraLines.map((line) => line.startsWith('>') ? line : `> ${line}`)] } }));
+      setState((current) => ({ ...current, ...insertProjectTaskState(current, captureArea, 1 + extraLines.length), projectExtraTasks: { ...current.projectExtraTasks, [captureArea]: [...(current.projectExtraTasks[captureArea] ?? []), title, ...extraLines.map((line) => line.startsWith('>') ? line : `> ${line}`)] } }));
     }
     if (capturePage === 'kibleteyn') {
-      setState((current) => ({ ...current, customDepartmentTasks: { ...current.customDepartmentTasks, [captureArea]: [...(current.customDepartmentTasks[captureArea] ?? []), title] } })); setExpandedDepartment(captureArea);
+      setState((current) => ({ ...current, completed: insertIndexedRecord(current.completed, `dept-${captureArea}-`), customDepartmentTasks: { ...current.customDepartmentTasks, [captureArea]: [...(current.customDepartmentTasks[captureArea] ?? []), title] } })); setExpandedDepartment(captureArea);
     }
     if (capturePage === 'programs') {
       const [programId, category] = captureArea.split('::');
-      setState((current) => ({ ...current, programExtraTasks: { ...current.programExtraTasks, [programId]: { ...(current.programExtraTasks[programId] ?? {}), [category]: [...(current.programExtraTasks[programId]?.[category] ?? []), title] } } })); setExpandedProgram(programId);
+      setState((current) => ({ ...current, completed: insertIndexedRecord(current.completed, programTaskPrefix(programId, category)), programExtraTasks: { ...current.programExtraTasks, [programId]: { ...(current.programExtraTasks[programId] ?? {}), [category]: [...(current.programExtraTasks[programId]?.[category] ?? []), title] } } })); setExpandedProgram(programId);
     }
     if (capturePage === 'calendar') {
       const event: CalendarEvent = { id: `event-${Date.now()}`, title, tone: captureMethod === 'voice' ? 'blue' : 'violet', time: captureExtras.time || 'Tüm gün', duration: captureExtras.duration || '60 dk', description: captureDetails.trim(), source: captureMethod === 'voice' ? 'Sesli hızlı kayıt' : 'Yazılı hızlı kayıt' };
@@ -2035,7 +2058,7 @@ export default function PersonalOS() {
       if (!project) return <section className="surface"><h2>Bu proje bulunamadı.</h2><button onClick={() => go('projects')}>Proje panosuna dön</button></section>;
       return <Suspense fallback={<p role="status">Proje araçları yükleniyor…</p>}><ProjectWorkspace key={project.id} project={project} tasks={visibleProjectTasks(project)} subtasks={state.projectSubtasks} completed={state.completed} details={state.projectTaskDetails} workspace={state.projectWorkspaces[project.id] ?? emptyWorkspace} syncStatus={syncStatus} onRetry={() => setSyncRetry(value => value + 1)} onBack={() => backTo('projects')} onEdit={() => openProjectEdit(project)} onPlan={() => developProject(project)} onResearch={() => openProjectResearch(project)} onCopyContext={()=>void copyText(projectContext(mentorProjectView(project)),'Proje bağlamı kopyalandı.')} onCopyTask={(text,photos)=>void copyProjectTask(text,photos)} onCopyPhoto={photo=>void copyProjectPhoto(photo)} onToggle={toggle} onSchedule={title => scheduleItem(title, `Proje · ${project.title}`)}
         onStage={stage => setState(current => ({ ...current, projectStages: { ...current.projectStages, [project.id]: stage } }))}
-        onAddTask={title => setState(current => ({ ...current, projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
+        onAddTask={title => setState(current => ({ ...current, ...insertProjectTaskState(current, project.id), projectExtraTasks: { ...current.projectExtraTasks, [project.id]: [...(current.projectExtraTasks[project.id] ?? []), title.replace(/^>\s*/, '')] } }))}
         onEditTask={(index, title) => editProjectTask(project, index, title)}
         onRemoveTask={index => openTaskDelete(visibleProjectTasks(project)[index] ?? 'Proje görevi', 'Bu görev, bağlı alt görevleri, notları ve tamamlanma bilgisiyle birlikte silinecek.', () => removeProjectTask(project, index))}
         onAddSubtask={(index, title) => setState(current => { const key = `${project.id}:${index}`; return { ...current, projectSubtasks: { ...current.projectSubtasks, [key]: [...(current.projectSubtasks[key] ?? []), { id: `project-subtask-${crypto.randomUUID()}`, title }] } }; })}

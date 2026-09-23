@@ -43,6 +43,16 @@ test('standalone legacy child remains accessible', () => {
 test('new custom project tasks appear first and keep their legacy children together', () => {
   assert.deepEqual(model.visibleProjectTaskTitles(['Default'], ['Older', 'Newest', '> Child'], []), ['Newest', '> Child', 'Older', 'Default']);
 });
+test('removing a reordered custom project task uses its visible index', () => {
+  const state = model.removeProjectTaskState('p', ['Default'], ['Older', 'Newest'], 0, {
+    removedTasks: [],
+    completed: { 'project-p-0': true, 'project-p-1': true, 'project-p-2': false },
+    subtasks: {},
+    details: {},
+  });
+  assert.deepEqual(model.visibleProjectTaskTitles(['Default'], ['Older', 'Newest'], state.removedTasks), ['Older', 'Default']);
+  assert.deepEqual(state.completed, { 'project-p-0': true, 'project-p-1': false });
+});
 test('resource links reject scripts and credentials', () => {
   for (const url of ['javascript:alert(1)', 'data:text/html,test', 'file:///tmp/test', 'https://a:b@example.com', 'not a url']) assert.equal(model.safeResourceUrl(url), null);
   assert.equal(model.safeResourceUrl('https://example.com/design'), 'https://example.com/design');

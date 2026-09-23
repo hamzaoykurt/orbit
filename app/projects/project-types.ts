@@ -47,8 +47,7 @@ export function visibleProjectTaskEntries(tasks: string[], extraTasks: string[],
 // collection together so removing a task cannot attach its notes/subtasks to the
 // task that moves into the vacated position.
 export function removeProjectTaskState(projectId: string, tasks: string[], extraTasks: string[], taskIndex: number, state: ProjectTaskState): ProjectTaskState {
-  const all = [...tasks, ...extraTasks];
-  const visible = all.map((title, sourceIndex) => ({ title, sourceIndex })).filter(item => !state.removedTasks.includes(item.title) && !state.removedTasks.includes(removalKey(item.sourceIndex, item.title)));
+  const visible = visibleProjectTaskEntries(tasks, extraTasks, state.removedTasks);
   if (!visible[taskIndex]) return state;
   let end = taskIndex + 1;
   while (end < visible.length && visible[end].title.startsWith('>')) end += 1;
