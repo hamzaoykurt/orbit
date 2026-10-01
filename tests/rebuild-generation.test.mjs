@@ -262,9 +262,17 @@ test('Visual Lab generates concepts, full prompts and sourced variations with du
     if(request.name==='orbit_novelty'){assert.equal(request.input.source,undefined);return {duplicate:false};}
     const number=++counter;
     return {title:`Işık bahçesi ${number}`,text:number===1?'Gece açan cam çiçeklerden oluşan bir bahçe.':`${number} numaralı sahne: `+'Gece ışığında cam çiçekler, yumuşak gölgeler ve derin lacivert bir arka plan. '.repeat(15),domain:'Deneysel fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
-  },'test');
+  },'test',()=>.8);
   const concept=await service.generateVisualConcept();assert.equal(concept.visualMode,'concept');
   const prompt=await service.generateVisualPrompt({sourceId:concept.id});assert.equal(prompt.parentId,concept.id);assert.ok(prompt.text.length>600);
+  const conceptCall=calls.find(x=>x.name==='orbit_suggestion'&&x.input.visualMode===undefined);
+  const promptCall=calls.find(x=>x.name==='orbit_suggestion'&&x.input.visualMode==='prompt');
+  assert.match(conceptCall.instructions,/contemporary or era-neutral visual world/);
+  assert.match(conceptCall.instructions,/Historical, ancient.*never a general creativity shortcut/);
+  assert.match(conceptCall.input.direction,/contemporary or era-neutral world/);
+  assert.match(promptCall.instructions,/technical image-generation prompt in natural English/);
+  assert.match(promptCall.instructions,/Do not age, historicize, modernize, polish or make the source more cinematic by default/);
+  assert.match(promptCall.input.direction,/preserving its main subject, intended era and reality type/);
   assert.ok((await import(engineUrl)).isIdea(prompt));
   const variation=await service.generateVisualVariation({sourceId:prompt.id});assert.equal(variation.visualMode,'variation');assert.equal(variation.parentId,prompt.id);
   assert.equal(calls.filter(x=>x.name==='orbit_suggestion'&&x.input.source).length,2);
