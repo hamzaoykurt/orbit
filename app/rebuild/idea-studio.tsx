@@ -18,13 +18,13 @@ export function IdeaStudio({request,onSave,onClose,historyOnly=false}:{request:O
   const mounted=useRef(true);
   const start=()=>{controller.current?.abort();const next=new AbortController();controller.current=next;setError('');setGenerationFailed(false);return next;};
   async function draw(previous:GeneratedIdea|null=null, visualMode?:IdeaRequest['visualMode'], retry=false) {
-    const nextRequest=retry?lastRequest.current:{...requestRef.current,...(visualMode?{type:'image_prompt' as const,visualMode,sourceId:previous?.id}:{})};
-    const retained=nextRequest.sourceId?previous:null;
+    const nextRequest=retry?lastRequest.current:{...requestRef.current,...(previous&&!visualMode?{brief:undefined}:{}),...(visualMode?{type:'image_prompt' as const,visualMode,sourceId:previous?.id}:{})};
+    const retained=previous;
     const active=start();setBusy(true);setSaving(false);setIdea(retained);setShowHistory(false);setCopied(false);setGenerationFailed(false);setActiveRequest(nextRequest);
+    lastRequest.current=nextRequest;
     if(!retained)setFromHistory(false);
     try {
       if(previous&&!nextRequest.sourceId&&!retry&&previous.status!=='accepted')await recordIdeaDecision(previous.id,'skipped',active.signal);
-      lastRequest.current=nextRequest;
       const value=await generateIdea({...nextRequest,signal:active.signal});
       if(!active.signal.aborted){setIdea(value);setFromHistory(false);}
     }catch(cause){if(!active.signal.aborted){setError(cause instanceof Error?cause.message:GENERATION_UNAVAILABLE);setGenerationFailed(true);}}

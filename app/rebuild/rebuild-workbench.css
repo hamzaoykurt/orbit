@@ -1,0 +1,74 @@
+/* Rebuild is a two-lane index, not a wall of competing feature cards. */
+.rebuild-deck.rb-workbench{padding:8px 0 36px;border:0;background:transparent;box-shadow:none;max-width:1120px}
+html[data-theme] .rebuild-deck.rb-workbench{background:transparent;border:0;box-shadow:none}
+.rb-workbench .rd-heading{margin-bottom:30px;align-items:center}
+.rb-workbench .rd-heading h1{font-size:38px;font-weight:550;margin:8px 0 10px}
+.rb-workbench .rd-heading p{font-size:13px;color:var(--muted)}
+.rb-workbench .rd-week-index{border:0;border-left:1px solid var(--line);border-radius:0;background:transparent;padding:0 0 0 24px;box-shadow:none}
+.rb-workbench .rx-focus{border:0;border-left:3px solid var(--accent);border-radius:0;background:transparent;box-shadow:none;padding:8px 0 8px 24px;margin-bottom:42px}
+.rb-workbench .rx-focus h2{font-size:28px;font-weight:500;max-width:600px}
+.rb-workbench .rx-focus p{font-size:13px;max-width:530px;line-height:1.7}
+.rb-workbench :is(.rd-done-action,.rd-completion-action){background:var(--ink);color:var(--canvas);border-color:var(--ink);box-shadow:none;border-radius:8px;font-size:13px;min-height:44px}
+.rb-lanes{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:50px}
+.rb-lane{min-width:0}
+.rb-lane>header{min-height:112px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-bottom:10px}
+.rb-lane h2{font-size:21px;font-weight:500;letter-spacing:-.035em;margin:0}
+.rb-lane>header p{font-size:12px;color:var(--muted);margin:0;line-height:1.6}
+.rb-workbench .rd-kicker{font-size:10px;letter-spacing:.12em;color:var(--muted)}
+.rb-routes{border-top:1px solid var(--line)}
+.rb-route{display:grid;grid-template-columns:24px minmax(0,1fr) 20px;align-items:center;gap:14px;width:100%;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--ink);padding:19px 0;text-align:left;min-height:86px}
+.rb-route-number{font-size:11px;color:var(--soft);font-variant-numeric:tabular-nums}
+.rb-route strong{display:block;font-size:16px;font-weight:500;letter-spacing:-.02em}
+.rb-route small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;line-height:1.6;color:var(--muted);margin-top:5px}
+.rb-route>svg{color:var(--muted)}
+.rb-route:hover strong,.rb-route:hover>svg{color:var(--accent)}
+.rb-workbench .rx-home-footer{margin-top:32px;border:0;justify-content:flex-end}
+.rb-workbench .rx-workspace{max-width:860px;margin:0 auto}
+.rb-workbench .rx-workspace-heading{margin:30px 0}
+.rb-workbench .rx-workspace-heading h1{font-size:32px;font-weight:500;line-height:1.25;margin:10px 0}
+.rb-workbench .rx-content-card{padding:24px 0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.rb-workbench .rx-practice-tabs{gap:24px;padding:0;margin-bottom:24px}
+.rb-workbench .rx-practice-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding:12px 0;font-size:13px;flex:1}
+.rb-workbench .rx-practice-tabs button[aria-pressed=true]{border-color:var(--ink);background:transparent}
+.rb-workbench .rx-english .rx-word{border:1px solid var(--line);border-radius:12px;box-shadow:none;background:var(--panel-solid);padding:32px}
+.rb-workbench .rx-english .rx-speaking{border:0;border-radius:0;padding:0;background:transparent;box-shadow:none}
+.rb-workbench :is(.rd-question,.rd-notebook,.rd-research-intro,.rd-speaking-prompt,.rd-learning-queue){box-shadow:none;background:var(--panel-solid);border-color:var(--line);border-radius:10px}
+.rb-workbench .rn-shell{border:0;border-radius:0;background:transparent;overflow:visible}
+.rb-workbench .rn-heading{padding:0 0 24px;gap:24px}
+.rb-workbench .rn-heading h3{font-size:24px;font-weight:500;line-height:1.4;margin:8px 0 0}
+.rb-workbench .rn-heading span{color:var(--muted);font-weight:500}
+.rb-workbench .rn-progress small{font-size:11px}
+.rb-workbench .rn-tabs{padding:0;border-top:0;gap:16px;background:transparent}
+.rb-workbench .rn-tabs button{padding:12px 0;border-radius:0;border-bottom:2px solid transparent;background:transparent;font-size:12px;min-height:44px;box-shadow:none}
+.rb-workbench .rn-tabs button.active{border-bottom-color:var(--ink);background:transparent;box-shadow:none}
+.rb-workbench :is(.rn-notes,.rn-sources,.rn-quiz){padding:24px 0}
+.rb-workbench .rn-shell label{font-weight:500;font-size:12px}
+.rb-workbench .rn-shell :is(textarea,input){background:var(--panel-solid);font-weight:400;border-radius:8px}
+.rb-workbench .rx-research-context{padding-inline:0}
+.rb-workbench .rd-text-button{font-size:12px;min-height:44px}
+.rb-visual{max-width:680px;margin:36px 0}
+.rb-visual h2{font-size:26px;font-weight:500;margin:12px 0}
+.rb-visual>p{font-size:14px;color:var(--muted);line-height:1.7;margin:0 0 26px}
+.rb-visual label{display:flex;justify-content:space-between;gap:16px;font-size:12px;margin-bottom:10px;color:var(--ink)}
+.rb-visual label span{color:var(--muted)}
+.rb-visual textarea{width:100%;padding:18px;border:1px solid var(--line);border-radius:10px;color:var(--ink);background:var(--panel-solid);font-size:14px;line-height:1.7;resize:vertical;min-height:130px}
+.rb-visual-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:20px 0}
+.rb-visual .rb-visual-note{font-size:12px;max-width:540px;margin:0}
+html[data-theme] .rd-dialog{background:var(--panel-solid);box-shadow:0 24px 80px rgba(0,0,0,.25);border:1px solid var(--line);border-radius:14px}
+.rd-dialog :is(button,input,textarea,select){box-shadow:none}
+.rd-dialog .rd-drawn-idea textarea{background:var(--canvas);border-color:var(--line);font-size:14px;line-height:1.8}
+@media(max-width:760px){
+ .rebuild-deck.rb-workbench{padding:4px 0 28px}
+ .rb-workbench .rd-heading{margin-bottom:28px}.rb-workbench .rd-heading h1{font-size:32px}
+ .rb-workbench .rd-week-index{padding-left:14px}.rb-workbench .rd-week-index small{font-size:10px}
+ .rb-workbench .rx-focus{display:block;padding-left:18px;margin-bottom:32px}.rb-workbench .rx-focus h2{font-size:25px}.rb-workbench .rx-focus .rd-done-action{margin-top:18px}
+ .rb-lanes{grid-template-columns:1fr;gap:32px}.rb-lane>header{min-height:0;margin-bottom:18px;gap:8px}.rb-lane>header .rd-text-button{margin-top:0}
+ .rb-route{padding:16px 0;min-height:78px}.rb-route strong{font-size:16px}
+ .rb-workbench .rx-home-footer{justify-content:flex-start;flex-wrap:wrap;gap:12px}
+ .rb-workbench .rx-workspace-heading{margin:24px 0}.rb-workbench .rx-workspace-heading h1{font-size:28px}
+ .rb-workbench .rx-english .rx-word{padding:24px 18px}.rb-workbench .rx-workspace-bar{gap:12px;flex-wrap:wrap}
+ .rb-workbench .rn-heading h3{font-size:22px}.rb-workbench .rn-heading{gap:16px;padding-bottom:20px}.rb-workbench .rn-tabs{gap:10px}.rb-workbench .rn-tabs button{font-size:11px}.rb-workbench .rn-tabs button:last-child{flex:1.4}
+ .rb-visual{margin:26px 0}.rb-visual h2{font-size:24px}.rb-visual textarea{font-size:16px}.rb-visual-actions{align-items:stretch;flex-direction:column;gap:6px}
+ .rd-overlay{padding:0;align-items:stretch}.rd-overlay .rd-dialog{width:100%;max-width:none;max-height:100dvh;height:100dvh;border:0;border-radius:0;padding:calc(26px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));overflow-y:auto}
+ .rd-dialog :is(textarea,input,select){font-size:16px}.rd-dialog .rd-drawn-idea textarea{font-size:16px}.rd-dialog .rd-close{min-height:44px;min-width:44px}
+}

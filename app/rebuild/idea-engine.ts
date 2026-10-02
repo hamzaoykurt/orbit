@@ -26,7 +26,7 @@ export type GeneratedIdea = Idea & {
   title: string; type: SuggestionType; domain: string; generatedAt: string; model: string;
   status: 'generated' | 'skipped' | 'rejected' | 'accepted';
 };
-export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; category?:IdeaCategory; platform?:DigitalPlatform; words?: string[]; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; signal?: AbortSignal };
+export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; category?:IdeaCategory; platform?:DigitalPlatform; words?: string[]; brief?: string; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; signal?: AbortSignal };
 export const GENERATION_UNAVAILABLE = 'AI üretimi şu anda kullanılamıyor. Lütfen daha sonra tekrar dene.';
 
 export function isIdea(value: unknown): value is Idea {

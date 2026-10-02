@@ -5,6 +5,7 @@ import './globals.css';
 import './workspace-scale.css';
 import './brand-logo.css';
 import './theme-accent.css';
+import './workspace-refresh.css';
 import { PwaRegister } from './pwa-register';
 import { startupScript } from './startup';
 import { authClientScript } from './auth-client';
@@ -16,7 +17,7 @@ const geistSans = Geist({
 
 const title = 'Orbit — Personal OS';
 const description = 'Hayatın, projelerin, programların ve hedeflerin için sakin bir çalışma alanı.';
-const themeBootScript = `(function(){function apply(dark){var theme=dark?'dark':'light';document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme;var meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',dark?'#15131a':'#f4f3f7')}try{var raw=localStorage.getItem('orbit-personal-os');var saved=raw?JSON.parse(raw):null;var preference=saved&&saved.settings&&saved.settings.theme?saved.settings.theme:'system';apply(preference==='dark'||(preference==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches))}catch(e){apply(window.matchMedia('(prefers-color-scheme: dark)').matches)}})();`;
+const themeBootScript = `(function(){function apply(dark){var theme=dark?'dark':'light';document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme;var meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',dark?'#151a1f':'#f5f6f8')}try{var raw=localStorage.getItem('orbit-personal-os');var saved=raw?JSON.parse(raw):null;var preference=saved&&saved.settings&&saved.settings.theme?saved.settings.theme:'system';apply(preference==='dark'||(preference==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches))}catch(e){apply(window.matchMedia('(prefers-color-scheme: dark)').matches)}})();`;
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -39,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(origin),
     title,
     description,
-    manifest: '/manifest.webmanifest?v=6',
+    manifest: '/manifest.webmanifest?v=7',
     icons: {
       icon: [{ url: '/orbit-favicon-v6.png', sizes: '64x64', type: 'image/png' }, { url: '/orbit-icon-v6-192.png', sizes: '192x192', type: 'image/png' }],
       shortcut: '/orbit-favicon-v6.png',
@@ -58,7 +59,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest?v=6"/><meta name="theme-color" content="#15131a"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest?v=7"/><meta name="theme-color" content="#151a1f"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
         className={`${geistSans.variable} antialiased`}
       >
