@@ -194,6 +194,23 @@ test('new navigation after Back replaces the forward branch', async () => {
   await app.back(); assert.equal(app.snapshot.page, 'personal');
 });
 
+test('Rebuild focused areas and research question restore, and return unwinds their nested steps', async () => {
+  const app = harness(); await app.go('rebuild');
+  await app.view('rebuild:expanded', 'research');
+  await app.view('research:topic:tab', 'notes');
+  await app.view('research:topic:question', 'question-2');
+  app.navigation.backToView('rebuild:expanded', null, null); await app.settle();
+  assert.equal(app.snapshot.page, 'rebuild');
+  assert.equal(app.snapshot.views['rebuild:expanded'], undefined);
+  await app.back(); assert.equal(app.snapshot.page, 'home');
+  await app.go('rebuild'); await app.view('rebuild:expanded', 'research');
+  await app.view('research:topic:question', 'question-2'); app.reload();
+  assert.equal(app.snapshot.views['rebuild:expanded'], 'research');
+  assert.equal(app.snapshot.views['research:topic:question'], 'question-2');
+  app.navigation.backToView('rebuild:expanded', null, null); await app.settle();
+  assert.equal(app.snapshot.views['rebuild:expanded'], null);
+});
+
 test('URLs validate page names, preserve unrelated parameters and encode project IDs', () => {
   assert.equal(routeFromUrl('https://orbit.test/?view=bogus').page, 'home');
   assert.equal(routeFromUrl('https://orbit.test/?view=rebuild').page, 'rebuild');

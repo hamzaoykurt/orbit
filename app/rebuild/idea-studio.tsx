@@ -60,7 +60,7 @@ export function IdeaStudio({request,onSave,onClose,historyOnly=false}:{request:O
   const type=idea?.type||activeRequest.type;
   const project=type==='project'||type==='digital_project';
   const visual=type==='image_prompt',concept=visual&&(idea?.visualMode||activeRequest.visualMode)==='concept';
-  const section=visual?'Visual Lab':type==='digital_project'?'Digital':type==='project'?'Create':type==='research'?'Research':type==='meal'?'Yemek fikri':type==='speaking'||type==='vocabulary'?'English':'Yeni bir ihtimal';
+  const section=visual?'Görsel atölye':type==='digital_project'?'Dijital projeler':type==='project'?'Üret':type==='research'?'Araştırma':type==='meal'?'Yemek fikri':type==='speaking'||type==='vocabulary'?'İngilizce':'Yeni bir ihtimal';
   const preparing=visual?(activeRequest.visualMode==='concept'?'Yeni bir görsel konsept hazırlanıyor.':activeRequest.visualMode==='variation'?'Aynı konunun yeni bir yorumu hazırlanıyor.':'Görsel promptun hazırlanıyor.'):project?'Yeni bir proje fikri hazırlanıyor.':'Yeni bir fikir hazırlanıyor.';
   const platforms={mobile_app:'Mobil uygulama',web_app:'Web uygulaması',desktop_app:'Masaüstü',game:'Oyun',browser_extension:'Tarayıcı eklentisi',plugin:'Eklenti',automation:'Otomasyon',interactive_experience:'İnteraktif deneyim'};
   const label=project?'Projelere ekle':idea?.type==='research'?'Bu konuyu seç':idea?.type==='meal'?'Bu yemeği seç':'Bu haftaya al';
