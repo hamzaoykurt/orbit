@@ -57,7 +57,7 @@ html[data-theme] .surface, .note-card, .project-card { border-radius:var(--r-m);
 .ph-strip { display:block; height:3px; border-radius:99px; background:var(--page-accent); }
 .ph-main { display:flex; align-items:flex-end; justify-content:space-between; gap:var(--sp-4); flex-wrap:wrap; }
 .ph-text { display:grid; gap:var(--sp-1); min-width:0; flex:1 1 260px; }
-.ph-title { margin:0; font-size:clamp(28px,3.6vw,36px); line-height:1.14; font-weight:700; letter-spacing:-.03em; color:var(--ink); overflow-wrap:anywhere; }
+.ph .ph-title { margin:0; font-size:clamp(28px,3.6vw,36px); line-height:1.14; font-weight:700; letter-spacing:-.03em; color:var(--ink); overflow-wrap:anywhere; }
 .ph-desc { margin:0; font-size:15px; line-height:22px; color:var(--muted); max-width:62ch; }
 .ph-action { display:flex; gap:var(--sp-2); align-items:center; flex-wrap:wrap; }
 .ph-chips { display:flex; gap:var(--sp-2); flex-wrap:wrap; align-items:center; }
