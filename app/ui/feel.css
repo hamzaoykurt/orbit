@@ -167,3 +167,18 @@ html[data-theme] .surface, .note-card, .project-card { border-radius:var(--r-m);
   .ph-main { flex-wrap:wrap; }
   .ph-text { flex:1 1 200px; }
 }
+
+/* Safe areas: camera cut-out, status bar, home indicator, landscape sides. */
+.boot-skeleton { padding-top:calc(var(--sat) + var(--sp-4)); }
+.celebrate-banner { top:max(18px,calc(var(--sat) + 8px)); }
+@media (max-width:820px) {
+  .toast { bottom:calc(92px + var(--sab)); }
+  .sheet-layer.is-sheet .modal-card .modal-close { position:sticky; top:32px; z-index:12; margin:4px 0 -31px auto; }
+}
+@media (min-width:821px) {
+  .app-shell .sidebar { padding-left:max(18px,var(--sal)); }
+  .app-shell .topbar, .app-shell .content { padding-right:max(24px,var(--sar)); }
+}
+@media (orientation:landscape) and (max-height:500px) {
+  html[data-theme] .app-shell .bottom-nav { left:max(12px,var(--sal)); right:max(12px,var(--sar)); }
+}
