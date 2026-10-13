@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist } from 'next/font/google';
+import { Geist, Bricolage_Grotesque } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
 import './workspace-scale.css';
@@ -8,6 +8,7 @@ import './theme-accent.css';
 import './workspace-refresh.css';
 import './energy.css';
 import './ui/feel.css';
+import './daylight.css';
 import { PwaRegister } from './pwa-register';
 import { startupScript } from './startup';
 import { authClientScript } from './auth-client';
@@ -17,15 +18,24 @@ const geistSans = Geist({
   subsets: ['latin'],
 });
 
+// Headings and numbers only (h1/h2, XP, streak, level, clock). Latin-ext carries the Turkish glyphs.
+const displayFont = Bricolage_Grotesque({
+  variable: '--font-display',
+  subsets: ['latin', 'latin-ext'],
+  weight: ['700', '800'],
+  display: 'swap',
+});
+
 const title = 'Orbit — Personal OS';
 const description = 'Hayatın, projelerin, programların ve hedeflerin için sakin bir çalışma alanı.';
-const themeBootScript = `(function(){function apply(dark){var theme=dark?'dark':'light';document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme;var meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',dark?'#151a1f':'#fbf7f1')}try{var raw=localStorage.getItem('orbit-personal-os');var saved=raw?JSON.parse(raw):null;var preference=saved&&saved.settings&&saved.settings.theme?saved.settings.theme:'system';apply(preference==='dark'||(preference==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches))}catch(e){apply(window.matchMedia('(prefers-color-scheme: dark)').matches)}})();`;
+// One theme only (Gun Isigi). Stored preference is left untouched but no longer read.
+const themeBootScript = `(function(){var d=document.documentElement;d.dataset.theme='light';d.style.colorScheme='light';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#FFF7EA')})();`;
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  colorScheme: 'dark light',
+  colorScheme: 'light',
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -60,10 +70,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="tr" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest?v=9"/><meta name="theme-color" content="#151a1f"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+    <html lang="tr" data-theme="light" suppressHydrationWarning>
+      <head><link rel="manifest" href="/manifest.webmanifest?v=9"/><meta name="theme-color" content="#FFF7EA"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
-        className={`${geistSans.variable} antialiased`}
+        className={`${geistSans.variable} ${displayFont.variable} antialiased`}
       >
         <PwaRegister />
         {children}

@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { ArrowRight, Plus, Search, FolderOpen, ClipboardCopy } from 'lucide-react';
+import { ArrowRight, Plus, Search, FolderOpen, ClipboardCopy, Folder } from 'lucide-react';
 import type { ProjectWorkspaceData } from './project-types';
 import { lifecycleFromStage, lifecycleLabels } from './planning-types';
 import type { ProjectLifecycle } from './planning-types';
@@ -29,8 +29,8 @@ export function ProjectsHub({ projects, workspaces, hasDraft, onNew, onOpen, onC
     {groups.map(group => {
       const items = visible.filter(({ project }) => group.states.includes(lifecycle(project)));
       if (!items.length) return null;
-      return <section className="pb-project-group" key={group.id} aria-labelledby={`group-${group.id}`}><header><h2 id={`group-${group.id}`}>{group.label}</h2><span>{items.length}</span></header><div className="pb-project-index">{items.map(({ project, progress, done, total, nextAction }, index) => <article className="pb-project-entry" key={project.id}>
-        <button type="button" className="pb-project-open" onClick={() => onOpen(project.id)} aria-label={`${project.title} projesini aç`}><span className="pb-project-number">{String(index + 1).padStart(2, '0')}</span><span className="pb-project-copy"><span className="pb-project-name">{project.title}</span><span className="pb-project-next">{nextAction || (total && done === total ? 'Görevler tamamlandı · sonucu gözden geçir' : 'İlk görevini ekle')}</span></span><span className="pb-project-meter"><span>{done}/{total} görev</span><progress max={100} value={progress} aria-label={`${project.title} ilerleme`}/></span><ArrowRight size={18}/></button>
+      return <section className="pb-project-group" key={group.id} aria-labelledby={`group-${group.id}`}><header><h2 id={`group-${group.id}`}>{group.label}</h2><span>{items.length}</span></header><div className="pb-project-index">{items.map(({ project, progress, done, total, nextAction }) => <article className="pb-project-entry" key={project.id}>
+        <button type="button" className="pb-project-open" onClick={() => onOpen(project.id)} aria-label={`${project.title} projesini aç`}><span className="bubble pb-project-number" aria-hidden="true"><Folder size={22}/></span><span className="pb-project-copy"><span className="pb-project-name">{project.title}</span><span className="pb-project-next">{nextAction || (total && done === total ? 'Görevler tamamlandı · sonucu gözden geçir' : 'İlk görevini ekle')}</span></span><span className="pb-project-meter"><span>{done}/{total} görev</span><progress max={100} value={progress} aria-label={`${project.title} ilerleme`}/></span><ArrowRight size={18}/></button>
         <div className="pb-project-entry-meta"><span className={`px-status px-status-${lifecycle(project)}`}>{lifecycleLabels[lifecycle(project)]}</span>{project.due && <span>{project.due}</span>}<button type="button" onClick={() => onCopy(project.id)} aria-label={`${project.title} proje bağlamını kopyala`} title="Proje bağlamını kopyala"><ClipboardCopy size={15}/></button></div>
       </article>)}</div></section>;
     })}

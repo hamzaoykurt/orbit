@@ -1,7 +1,7 @@
 // Short, purposeful completion feedback: floating label, a few particles and an
 // optional banner. Pure DOM + CSS (transform/opacity only); skipped when motion is off.
-// Particles are the confetti-8 symbol set (currentColor), so they take the page accent.
-const COLORS = ['var(--accent)', 'var(--page-accent)', '#f2b43b', '#34b27b', '#e5586f'];
+// Particles are the confetti-8 symbol set (currentColor) in the decor palette: at most 14, 900 ms.
+const COLORS = ['var(--sun)', 'var(--pink)', 'var(--mint)', 'var(--sky)', 'var(--lav)', 'var(--tang)'];
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const motionOff = (motion: boolean) => !motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -10,7 +10,10 @@ export function celebrateAt(x: number, y: number, options: { label?: string; par
   const layer = document.createElement('div');
   layer.className = 'celebrate-layer';
   layer.setAttribute('aria-hidden', 'true');
-  const count = Math.min(10, options.particles ?? 8);
+  const wave = document.createElement('em');
+  wave.style.cssText = `left:${x}px;top:${y}px`;
+  layer.appendChild(wave);
+  const count = Math.min(14, options.particles ?? 12);
   for (let i = 0; i < count; i++) {
     const piece = document.createElementNS(SVG_NS, 'svg');
     const use = document.createElementNS(SVG_NS, 'use');

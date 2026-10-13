@@ -8,6 +8,7 @@ import { weekGoalRows } from '../home-today';
 import { celebrateAt, celebrateBanner } from '../ui/celebrate';
 import { PageHeader } from '../ui/page-header';
 import { EmptyState } from '../ui/empty-state';
+import { Hud } from '../ui/hud';
 import { useFlip } from '../ui/list-motion';
 import * as P from './program-model';
 import type { Block, Events, Program, Task } from './program-model';
@@ -81,15 +82,10 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
   return (
     <div className="wp">
       <PageHeader eyebrow="HAFTALIK RİTİM" title="Program" description="Bugünün adımlarını yap, seriyi koru, XP topla."
-        chips={<><span className="chip-streak"><Flame size={14}/> {streak} gün seri</span><span className="chip-xp"><Zap size={14}/> Bu hafta {P.weekXp(week)} XP</span><span><Award size={14}/> {Object.keys(program.profile.badges).length} rozet</span></>}
-        action={<button className="ghost-button" onClick={() => setEditing(value => !value)} aria-pressed={editing}><Pencil size={15}/> {editing ? 'Bitti' : 'Düzenle'}</button>}/>
-      <section className="wp-hud surface" aria-label="Seviye">
-        <div className="wp-level" aria-hidden="true"><b>{level.level}</b><small>SEV</small></div>
-        <div className="wp-hud-main">
-          <div className="wp-hud-top"><strong>{level.title}</strong><span>{level.inLevel} / {level.step} XP</span></div>
-          <div className="wp-xpbar" role="progressbar" aria-valuemin={0} aria-valuemax={level.step} aria-valuenow={level.inLevel} aria-label="Seviye ilerlemesi"><i style={{ transform: `scaleX(${level.inLevel / level.step})` }}/></div>
-        </div>
-      </section>
+        action={<button className="ghost-button" onClick={() => setEditing(value => !value)} aria-pressed={editing}><Pencil size={16}/> {editing ? 'Bitti' : 'Düzenle'}</button>}/>
+      <Hud level={level.level} title={level.title} inLevel={level.inLevel} step={level.step}>
+        <span className="chip chip-streak"><Flame size={16}/> {streak} gün seri</span><span className="chip chip-xp"><Zap size={16}/> Bu hafta {P.weekXp(week)} XP</span><span className="chip chip-gold"><Award size={16}/> {Object.keys(program.profile.badges).length} rozet</span>
+      </Hud>
 
       {!editing && <>
         <nav className="wp-days" aria-label="Haftanın günleri">
