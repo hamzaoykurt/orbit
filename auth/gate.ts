@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { authenticatedRequest, unauthorized } from './context';
 import { validPasswordHash, verifyPassword } from './password';
 import { loginPage } from './login-page';
+import { forgetSession, lookupSession, updateCachedSession, type Session } from './session-cache';
 
 const DAY = 86_400;
 export const REMEMBER_SECONDS = 90 * DAY;
@@ -24,7 +25,6 @@ const PUBLIC_FILES = new Set([
   '/manifest.webmanifest',
   '/sw.js',
 ]);
-type Session = { token_hash: string; remembered: number; expires_at: number; refreshed_at: number };
 type Next = () => Promise<Response>;
 const seconds = () => Math.floor(Date.now() / 1000);
 const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
@@ -114,10 +114,24 @@ async function login(request: Request, env: Cloudflare.Env, version: string) {
     env.DB.prepare('INSERT INTO orbit_auth_sessions (token_hash, credential_version, remembered, created_at, refreshed_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(await hash(token), version, remembered ? 1 : 0, now, now, now + (remembered ? REMEMBER_SECONDS : SESSION_SECONDS)),
   ]);
+  forgetSession(previous ? await hash(previous) : null);
   return redirect(next, cookie(request, token, remembered));
 }
 
+type Timing = { session: number; source: string; appStart: number; appEnd: number };
+// Server-Timing carries durations (ms) and a hit/miss label only, never data.
 export async function withAuthentication(request: Request, env: Cloudflare.Env, next: Next): Promise<Response> {
+  const started = Date.now();
+  const timing: Timing = { session: 0, source: 'none', appStart: 0, appEnd: 0 };
+  const response = await authenticate(request, env, next, timing);
+  try {
+    const app = timing.appStart ? Math.max(0, timing.appEnd - timing.appStart) : 0;
+    response.headers.set('Server-Timing', `session;dur=${timing.session};desc="${timing.source}", app;dur=${app}, total;dur=${Date.now() - started}`);
+  } catch { /* Immutable response: skip the diagnostic header. */ }
+  return response;
+}
+
+async function authenticate(request: Request, env: Cloudflare.Env, next: Next, timing: Timing): Promise<Response> {
   const url = new URL(request.url);
   if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
     url.protocol = 'https:';
@@ -141,15 +155,28 @@ export async function withAuthentication(request: Request, env: Cloudflare.Env, 
     const token = cookieValue(request);
     const tokenHash = token ? await hash(token) : null;
     const now = seconds();
-    const session = tokenHash ? await env.DB.prepare('SELECT token_hash, remembered, expires_at, refreshed_at FROM orbit_auth_sessions WHERE token_hash = ? AND credential_version = ? AND expires_at > ?')
-      .bind(tokenHash, version, now).first<Session>() : null;
     if (url.pathname === '/auth/logout') {
       if (request.method !== 'POST') return secureResponse(new Response(null, { status: 405, headers: { Allow: 'POST' } }));
       if (!sameOrigin(request)) return secureResponse(new Response(null, { status: 403 }));
+      forgetSession(tokenHash);
       if (tokenHash) await env.DB.prepare('DELETE FROM orbit_auth_sessions WHERE token_hash = ?').bind(tokenHash).run();
       const response = redirect('/login', cookie(request, '', false, true));
       response.headers.set('Clear-Site-Data', '"cache", "storage"');
       return secureResponse(response);
+    }
+    const isStatic = url.pathname.startsWith('/_next/static/');
+    const withState = request.method === 'GET' && url.pathname === '/api/state';
+    let session: Session | null = null;
+    let stateRow: unknown;
+    if (tokenHash) {
+      const lookupStart = Date.now();
+      // Reads may reuse a lookup that is at most a few seconds old (session-cache.ts);
+      // anything that changes data re-checks D1 every time.
+      const found = await lookupSession(env, { tokenHash, version, now, fresh: !['GET', 'HEAD', 'OPTIONS'].includes(request.method), withState });
+      timing.session = Date.now() - lookupStart;
+      timing.source = found.source;
+      session = found.session;
+      if (withState) stateRow = found.stateRow;
     }
     if (url.pathname === '/login') {
       if (!['GET', 'HEAD'].includes(request.method)) return secureResponse(new Response(null, { status: 405 }));
@@ -161,21 +188,28 @@ export async function withAuthentication(request: Request, env: Cloudflare.Env, 
     }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !sameOrigin(request)) return secureResponse(new Response('Geçersiz istek kaynağı.', { status: 403 }));
     let refreshedCookie: string | undefined;
-    if (session.remembered && now - session.refreshed_at >= DAY) {
+    // Hashed bundles never renew the session or carry a cookie: they stay cacheable.
+    if (!isStatic && session.remembered && now - session.refreshed_at >= DAY) {
       const update = await env.DB.prepare('UPDATE orbit_auth_sessions SET refreshed_at = ?, expires_at = ? WHERE token_hash = ? AND expires_at > ?')
         .bind(now, now + REMEMBER_SECONDS, session.token_hash, now).run();
-      if (!update.meta.changes) return secureResponse(unauthorized());
+      if (!update.meta.changes) { forgetSession(session.token_hash); return secureResponse(unauthorized()); }
+      updateCachedSession(session.token_hash, { refreshed_at: now, expires_at: now + REMEMBER_SECONDS });
       refreshedCookie = cookie(request, token!, true);
     }
     if (!refreshedCookie && (url.pathname === '/auth/session' || (request.method === 'GET' && (url.pathname === '/' || request.headers.get('sec-fetch-dest') === 'document')))) {
       // Upgrade existing Strict cookies without extending the database expiry.
       refreshedCookie = cookie(request, token!, Boolean(session.remembered), false, session.expires_at);
     }
+    timing.appStart = Date.now();
     const response = url.pathname === '/auth/session'
       ? Response.json({ authenticated: true, remembered: Boolean(session.remembered) })
-      : await authenticatedRequest.run({ username: env.ORBIT_AUTH_USERNAME }, next);
-    const hashedAsset = request.method === 'GET' && response.status === 200 && url.pathname.startsWith('/_next/static/') && !refreshedCookie;
-    return secureResponse(response, refreshedCookie, hashedAsset);
+      : await authenticatedRequest.run({ username: env.ORBIT_AUTH_USERNAME, ...(withState ? { stateRow } : {}) }, next);
+    timing.appEnd = Date.now();
+    const hashedAsset = request.method === 'GET' && response.status === 200 && isStatic && !refreshedCookie;
+    const secured = secureResponse(response, refreshedCookie, hashedAsset);
+    // Tells the service worker this is the authenticated app shell (safe to keep on the device).
+    if (request.method === 'GET' && url.pathname === '/' && secured.status === 200 && /text\/html/i.test(secured.headers.get('Content-Type') ?? '')) secured.headers.set('X-Orbit-Shell', '1');
+    return secured;
   } catch (error) {
     // Never fall through to the app if credentials, hashing or D1 are unavailable.
     console.error('Authentication service unavailable', error instanceof Error ? error.message : 'unknown error');

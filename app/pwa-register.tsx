@@ -9,7 +9,12 @@ export function PwaRegister() {
     let idleId: number | undefined;
     let timerId: number | undefined;
     const register = () => {
-      if (!cancelled) void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined);
+      if (cancelled) return;
+      void navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        // Ask the worker to keep the app shell on this device (no-op once it already has one).
+        .then(() => navigator.serviceWorker.ready)
+        .then(registration => registration.active?.postMessage({ type: 'orbit-prime-shell' }))
+        .catch(() => undefined);
     };
     const schedule = () => {
       if (typeof window.requestIdleCallback === 'function') idleId = window.requestIdleCallback(register, { timeout: 3000 });

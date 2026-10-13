@@ -1,5 +1,4 @@
 import { env } from 'cloudflare:workers';
-import { ORBIT_STATE_TABLE_SQL } from './schema';
 
 type OrbitBindings = {
   DB: D1Database;
@@ -15,7 +14,4 @@ export function getDatabase(): D1Database {
   return database;
 }
 
-export async function ensureOrbitSchema(database = getDatabase()) {
-  await database.prepare(ORBIT_STATE_TABLE_SQL).run();
-  return database;
-}
+// Tables come from migrations/ (npm run db:migrate:*). Never run DDL per request.

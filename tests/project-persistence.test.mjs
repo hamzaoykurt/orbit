@@ -88,7 +88,8 @@ globalThis.__stateTestDb={prepare(sql){let args=[];return{bind(...values){args=v
 const contextUrl=loadModuleUrl(new URL('../auth/context.ts',import.meta.url));
 const {authenticatedRequest}=await import(contextUrl);
 let code=ts.transpileModule(readFileSync(new URL('../app/api/state/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-code=code.replace("import { ensureOrbitSchema } from '../../../db/client';",'const ensureOrbitSchema=async()=>globalThis.__stateTestDb;').replace("'../../../auth/context'",JSON.stringify(contextUrl));
+const queryUrl=loadModuleUrl(new URL('../app/api/state/query.ts',import.meta.url));
+code=code.replace("import { getDatabase } from '../../../db/client';",'const getDatabase=()=>globalThis.__stateTestDb;').replace("'../../../auth/context'",JSON.stringify(contextUrl)).replace("'./query'",JSON.stringify(queryUrl));
 const api=await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 const put=(state,revision)=>api.PUT(new Request('https://os.cosmibit.com/api/state',{method:'PUT',headers:{origin:'https://os.cosmibit.com','Content-Type':'application/json'},body:JSON.stringify({state,revision})}));
 test('D1 round-trip preserves planning; stale or pre-update clients cannot silently replace state',async()=>{
