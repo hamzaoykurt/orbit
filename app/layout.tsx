@@ -6,6 +6,7 @@ import './workspace-scale.css';
 import './brand-logo.css';
 import './theme-accent.css';
 import './workspace-refresh.css';
+import './energy.css';
 import { PwaRegister } from './pwa-register';
 import { startupScript } from './startup';
 import { authClientScript } from './auth-client';

@@ -30,7 +30,9 @@ import { insertIndexedRecord, newestCustomFirst, withoutRecordKey } from './task
 import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
-import { emptyDeck, normalizeDeck } from './rebuild/weekly-deck-model';
+import { emptyDeck, normalizeDeck, weekView } from './rebuild/weekly-deck-model';
+import { activeStreak, greeting, weekGoalRows, weekXp, XP_PER_STEP } from './home-today';
+import { celebrateAt, celebrateBanner } from './ui/celebrate';
 import type { WeeklyDeck } from './rebuild/weekly-deck-model';
 import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
 import type { Practice } from './rebuild/practice-model';
@@ -395,6 +397,9 @@ function IconButton({ label, children, onClick, className = '' }: { label: strin
   return <button aria-label={label} title={label} onClick={onClick} className={`icon-button ${className}`}>{children}</button>;
 }
 
+function EmptyArt() {
+  return <svg className="empty-art" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><circle cx="32" cy="32" r="12" fill="var(--page-accent)" opacity=".9"/><ellipse cx="32" cy="32" rx="26" ry="9" fill="none" stroke="var(--page-accent)" strokeWidth="2.5" transform="rotate(-24 32 32)"/><circle cx="53" cy="20" r="3.5" fill="#f2b43b"/><circle cx="12" cy="46" r="2.5" fill="var(--accent)"/></svg>;
+}
 function ProgressRing({ value, size = 'large' }: { value: number; size?: 'small' | 'large' }) {
   return <div className={`progress-ring ${size}`} style={{ '--progress': `${value * 3.6}deg` } as React.CSSProperties}><div><strong>{value}</strong><span>%</span></div></div>;
 }
@@ -1006,7 +1011,23 @@ export default function PersonalOS() {
     setFocusActive(false); setFocusSeconds(focusMode === 'countdown' ? focusMinutes * 60 : 0); notify('Odak sayacı sıfırlandı.');
   };
 
-  const toggle = (id: string) => setState((current) => ({ ...current, completed: { ...current.completed, [id]: !current.completed[id] } }));
+  const lastPointer = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const track = (event: PointerEvent) => { lastPointer.current = { x: event.clientX, y: event.clientY }; };
+    window.addEventListener('pointerdown', track, { passive: true, capture: true });
+    return () => window.removeEventListener('pointerdown', track, true);
+  }, []);
+  useEffect(() => { document.documentElement.dataset.page = active; }, [active]);
+  const toggle = (id: string) => {
+    if (!state.completed[id]) {
+      celebrateAt(lastPointer.current.x, lastPointer.current.y, { label: `+${XP_PER_STEP} XP`, motion: state.settings.motion });
+      const list = personalItemsFor(personalTab);
+      if (list.length > 1 && list.some(item => item.id === id) && list.every(item => item.id === id || state.completed[item.id])) {
+        celebrateBanner('Liste tamam!', `${personalLists[personalTab].title} bitti. Bir mola hak ettin.`, state.settings.motion);
+      }
+    }
+    setState((current) => ({ ...current, completed: { ...current.completed, [id]: !current.completed[id] } }));
+  };
 
   const personalItemsFrom = (list: PersonalListKey, sourceState: PersistedState) => {
     const source = [...personalLists[list].items, ...(sourceState.customPersonal[list] ?? [])];
@@ -2015,8 +2036,31 @@ export default function PersonalOS() {
   const profileInitials = state.profile.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('tr') || 'O';
   const focusDisplay = `${String(Math.floor(focusSeconds / 60)).padStart(2, '0')}:${String(focusSeconds % 60).padStart(2, '0')}`;
   const focusProgress = focusMode === 'countdown' ? Math.max(0, Math.min(100, (1 - focusSeconds / (focusMinutes * 60)) * 100)) : Math.min(100, focusSeconds / (focusMinutes * 60) * 100);
-  const renderHome = () => (
+  const renderHome = () => {
+    const weekKey = weekStartKey();
+    const goalRows = weekGoalRows(weekView(state.rebuildDeck, weekKey));
+    const goalsDone = goalRows.filter(row => row.complete).length;
+    const streak = activeStreak(state.rebuildDeck, now);
+    const openImportant = personalItemsFor('todo').filter(item => !state.completed[item.id]).sort((a, b) => Number(b.details.priority === 'important') - Number(a.details.priority === 'important')).slice(0, 3);
+    return (
     <>
+      <section className="today-program surface" aria-labelledby="today-program-title">
+        <div className="today-program-head">
+          <div><span className="eyebrow">{displayDate.toLocaleUpperCase('tr-TR')}</span><h2 id="today-program-title">{greeting(now, state.profile.name)}</h2><p>{goalRows.length && goalsDone === goalRows.length ? 'Bu haftanın hedeflerini bitirdin. Harikasın!' : todayEvents.length ? `Bugün ${todayEvents.length} planın var. Küçük bir adımla başla.` : 'Bugün sana kalmış. Küçük bir adım seç, gerisi gelir.'}</p></div>
+          <div className="today-chips" aria-label="Haftalık özet"><span className="chip-streak"><Zap size={14}/> {streak} gün seri</span><span className="chip-xp"><Sparkles size={14}/> {weekXp(goalRows)} XP</span></div>
+        </div>
+        <div className="today-program-body">
+          <div className="today-goals">
+            <span className="eyebrow">HAFTALIK HEDEFLER · {goalsDone}/{goalRows.length}</span>
+            {goalRows.length ? goalRows.map(row => <button key={row.id} className={`goal-row ${row.complete ? 'complete' : ''}`} onClick={() => go('rebuild')}><span>{row.name}</span><span className="pips" role="img" aria-label={`${row.done}/${row.target}`}>{Array.from({ length: Math.min(row.target, 7) }, (_, index) => <i key={index} className={index < row.done ? 'on' : ''}/>)}</span></button>) : <p className="empty-line">Rebuild'de haftalık hedeflerini belirle.</p>}
+          </div>
+          <div className="today-next">
+            <span className="eyebrow">SIRADAKİ</span>
+            {openImportant.length ? openImportant.map(item => <button key={item.id} className="next-row" onClick={() => go('personal')}><span className="check-circle"/><strong>{item.title}</strong></button>) : <div className="empty-line empty-with-art"><EmptyArt/><span>Açık görev kalmadı. Yeni bir şey ekle ya da dinlen.</span></div>}
+            <button className="text-button" onClick={() => setModal('quick')}><Plus size={13}/> Hızlı görev ekle</button>
+          </div>
+        </div>
+      </section>
       <div className="dashboard-grid">
         <article className={`surface focus-card ${focusActive ? 'is-focusing' : ''}`}>
           <div className="focus-session-head"><div><span className="eyebrow">ODAK SEANSI</span><strong>{focusActive ? 'Derin çalışma sürüyor' : 'Tek işe yer aç.'}</strong></div><div className="focus-mode-toggle" role="group" aria-label="Odak sayacı türü"><button className={focusMode==='countdown'?'active':''} onClick={()=>changeFocusMode('countdown')}>Sayaç</button><button className={focusMode==='stopwatch'?'active':''} onClick={()=>changeFocusMode('stopwatch')}>Kronometre</button></div></div>
@@ -2029,7 +2073,7 @@ export default function PersonalOS() {
           <div className="timeline">
             {todayEvents.length ? todayEvents.slice(0, 6).map((event) => (
               <button key={event.id} className="time-row" onClick={() => go('calendar')}><time>{event.time}</time><span className="line-dot"/><span><strong>{event.title}</strong><small>{event.source ?? 'Orbit'} · {event.duration}</small></span><ChevronRight size={14}/></button>
-            )) : <button className="empty-timeline" onClick={() => openEvent(todayKey())}><CalendarDays size={18}/><span><strong>Bugün için kayıt yok</strong><small>İlk etkinliğini planla</small></span><Plus size={14}/></button>}
+            )) : <button className="empty-timeline" onClick={() => openEvent(todayKey())}><EmptyArt/><span><strong>Takvim bomboş, güzel.</strong><small>İstersen ilk planını şimdi ekle.</small></span><Plus size={14}/></button>}
           </div>
         </article>
         <article className="surface quick-card">
@@ -2049,7 +2093,8 @@ export default function PersonalOS() {
         <div className="progress-wrap"><ProgressRing value={overallProgress}/><div className="progress-meta"><p><i className="dot violet"/> {overallDone} tamamlandı</p><p><i className="dot soft"/> {Math.max(0, overallTotal - overallDone)} açık</p><button onClick={() => go('rebuild')}>Detayları gör <ChevronRight size={12}/></button></div></div>
       </section>
     </>
-  );
+    );
+  };
 
   const renderPersonal = () => {
     const current = personalLists[personalTab];
@@ -2058,7 +2103,7 @@ export default function PersonalOS() {
     const openBudget = personalTab === 'buy' ? openItems.reduce((total, item) => total + numericPrice(item.details.price), 0) : 0;
     const CurrentIcon = current.icon;
     return <>
-      <PageTitle eyebrow="PERSONAL" title="Kendine ait alan." description="Günlük hayatın küçük yüklerini tek, sakin bir yerde tut." action={<button className="primary-button compact" onClick={() => openPersonalItem(personalTab)}><Plus size={15}/> Yeni ekle</button>}/>
+      <PageTitle eyebrow="PERSONAL" title="Küçük işler, büyük rahatlama." description="Günlük hayatın küçük yüklerini tek, sakin bir yerde tut." action={<button className="primary-button compact" onClick={() => openPersonalItem(personalTab)}><Plus size={15}/> Yeni ekle</button>}/>
       <div className="segmented-control">{(Object.keys(personalLists) as PersonalListKey[]).map((key) => { const item = personalLists[key]; const TabIcon = item.icon; return <button key={key} onClick={() => setPersonalTab(key)} className={personalTab === key ? 'active' : ''}><TabIcon size={16}/>{item.title}<span>{personalItemsFor(key).length}</span></button>})}</div>
       <div className="personal-layout action-first">
         <section className="surface personal-main">
@@ -2185,7 +2230,7 @@ export default function PersonalOS() {
     const goToday = () => { const currentDate = new Date(); const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); setCalendarCursor(next); setSelectedDay(currentDate.getDate()); if (googleConfig.connected) void syncGoogleCalendar(next); };
     const selectedWeekday = new Intl.DateTimeFormat('tr-TR', { weekday: 'long' }).format(new Date(year, monthIndex, selectedDay));
     return <>
-      <PageTitle eyebrow="TAKVİM" title="Zamana biraz boşluk bırak." description={`${titleMonth} ${year} · Yalnızca kendi planların ve bağlı Google Takvimin.`} action={<div className="calendar-title-actions"><button className={`google-calendar-button ${googleConfig.connected ? 'connected' : ''}`} disabled={googleCalendarStatus === 'connecting'} onClick={() => googleConfig.connected ? void syncGoogleCalendar() : void connectGoogleCalendar()}><RefreshCw size={14}/>{googleCalendarStatus === 'syncing' ? 'Google güncelleniyor…' : googleConfig.connected ? 'Google’ı güncelle' : googleCalendarStatus === 'connecting' ? 'Google bekleniyor…' : 'Google hesabını bağla'}</button><button className="primary-button compact" onClick={()=>openEvent(selectedDateKey)}><Plus size={15}/> Etkinlik ekle</button></div>}/>
+      <PageTitle eyebrow="TAKVİM" title="Haftanı şekillendir." description={`${titleMonth} ${year} · Yalnızca kendi planların ve bağlı Google Takvimin.`} action={<div className="calendar-title-actions"><button className={`google-calendar-button ${googleConfig.connected ? 'connected' : ''}`} disabled={googleCalendarStatus === 'connecting'} onClick={() => googleConfig.connected ? void syncGoogleCalendar() : void connectGoogleCalendar()}><RefreshCw size={14}/>{googleCalendarStatus === 'syncing' ? 'Google güncelleniyor…' : googleConfig.connected ? 'Google’ı güncelle' : googleCalendarStatus === 'connecting' ? 'Google bekleniyor…' : 'Google hesabını bağla'}</button><button className="primary-button compact" onClick={()=>openEvent(selectedDateKey)}><Plus size={15}/> Etkinlik ekle</button></div>}/>
       <div className="calendar-layout"><section className="surface calendar-card"><header><div><IconButton label="Önceki ay" onClick={()=>changeMonth(-1)}><ChevronRight className="flip" size={16}/></IconButton><h2>{titleMonth} <span>{year}</span></h2><IconButton label="Sonraki ay" onClick={()=>changeMonth(1)}><ChevronRight size={16}/></IconButton></div><button className="today-button" onClick={goToday}>Bugün</button></header>{googleCalendarStatus === 'syncing' && <div className="calendar-sync-note"><RefreshCw size={13}/> Google Takvim güncelleniyor…</div>}<div className="calendar-weekdays">{['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'].map((day)=><span key={day}>{day}</span>)}</div><div className="calendar-grid">{Array.from({length:leadingDays},(_,i)=><span className="empty-day" key={`empty-${i}`}/>)}{days.map((day)=>{const events=eventsFor(day);return <button key={day} onClick={()=>setSelectedDay(day)} className={`${dateKey(day) === todayKey() ? 'today' : ''} ${selectedDay===day?'selected':''}`}><span>{day}</span><div>{events.slice(0,3).map((event)=><i key={event.id} className={event.tone}>{event.title}</i>)}{events.length>3&&<small>+{events.length-3} daha</small>}</div></button>})}</div></section><aside className="surface day-panel"><span className="eyebrow">SEÇİLİ GÜN</span><div className="day-number"><strong>{selectedDay}</strong><span>{titleMonth}<br/>{year}</span></div><h3>{selectedWeekday.charAt(0).toLocaleUpperCase('tr')+selectedWeekday.slice(1)}</h3><div className="day-events">{selectedEvents.length?selectedEvents.map((event)=><div className="day-event" key={event.id}><i className={event.tone}/><span><strong>{event.title}</strong><small>{event.time} · {event.duration}{event.source ? ` · ${event.source}` : ''}</small></span><span className="day-event-actions"><a href={event.htmlLink ?? googleCalendarTemplateUrl(event, selectedDateKey)} target="_blank" rel="noreferrer" aria-label={`${event.title} etkinliğini Google Takvim'de aç`}><ExternalLink size={13}/></a>{event.id.startsWith('event-') && <IconButton label="Etkinliği sil" onClick={() => deleteEvent(selectedDateKey, event.id)}><Trash2 size={13}/></IconButton>}</span></div>):<div className="empty-state"><CalendarDays size={24}/><p>Bu gün henüz boş.<br/>Biraz nefes iyi gelebilir.</p></div>}</div><button className="inline-add" onClick={()=>openEvent(selectedDateKey)}><Plus size={14}/> Bu güne ekle</button>{googleConfig.connected && <button className="calendar-disconnect" onClick={() => void disconnectGoogleCalendar()}>Google bağlantısını kapat</button>}</aside></div>
     </>;
   };
