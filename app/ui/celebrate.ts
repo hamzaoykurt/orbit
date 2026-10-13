@@ -1,18 +1,25 @@
 // Short, purposeful completion feedback: floating label, a few particles and an
 // optional banner. Pure DOM + CSS (transform/opacity only); skipped when motion is off.
+// Particles are the confetti-8 symbol set (currentColor), so they take the page accent.
 const COLORS = ['var(--accent)', 'var(--page-accent)', '#f2b43b', '#34b27b', '#e5586f'];
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const motionOff = (motion: boolean) => !motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function celebrateAt(x: number, y: number, options: { label?: string; particles?: number; motion: boolean }) {
-  if (typeof document === 'undefined' || !options.motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (typeof document === 'undefined' || motionOff(options.motion)) return;
   const layer = document.createElement('div');
   layer.className = 'celebrate-layer';
   layer.setAttribute('aria-hidden', 'true');
   const count = Math.min(10, options.particles ?? 8);
   for (let i = 0; i < count; i++) {
-    const piece = document.createElement('i');
+    const piece = document.createElementNS(SVG_NS, 'svg');
+    const use = document.createElementNS(SVG_NS, 'use');
+    use.setAttribute('href', `/illustrations/confetti-8.svg#c${(i % 8) + 1}`);
+    piece.appendChild(use);
     const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
     const distance = 34 + Math.random() * 30;
-    piece.style.cssText = `left:${x}px;top:${y}px;background:${COLORS[i % COLORS.length]};--dx:${Math.round(Math.cos(angle) * distance)}px;--dy:${Math.round(Math.sin(angle) * distance - 14)}px`;
+    piece.setAttribute('width', '16'); piece.setAttribute('height', '16');
+    piece.style.cssText = `left:${x}px;top:${y}px;color:${COLORS[i % COLORS.length]};--dx:${Math.round(Math.cos(angle) * distance)}px;--dy:${Math.round(Math.sin(angle) * distance - 14)}px`;
     layer.appendChild(piece);
   }
   if (options.label) {
@@ -25,11 +32,16 @@ export function celebrateAt(x: number, y: number, options: { label?: string; par
   window.setTimeout(() => layer.remove(), 1100);
 }
 
-export function celebrateBanner(title: string, detail: string, motion: boolean) {
+export function celebrateBanner(title: string, detail: string, motion: boolean, badge = false) {
   if (typeof document === 'undefined') return;
   const banner = document.createElement('div');
-  banner.className = `celebrate-banner${motion ? '' : ' still'}`;
+  banner.className = `celebrate-banner${motion ? '' : ' still'}${badge ? ' level' : ''}`;
   banner.setAttribute('role', 'status');
+  if (badge) {
+    const img = document.createElement('img');
+    img.src = '/illustrations/level-badge.svg'; img.alt = ''; img.width = 48; img.height = 48;
+    banner.appendChild(img);
+  }
   const strong = document.createElement('strong'); strong.textContent = title;
   const span = document.createElement('span'); span.textContent = detail;
   banner.appendChild(strong); banner.appendChild(span);

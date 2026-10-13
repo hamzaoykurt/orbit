@@ -1,0 +1,21 @@
+import type { ReactNode } from 'react';
+import './feel.css';
+
+// Inline so the artwork picks up the page accent (an <img> cannot see CSS variables).
+const art = {
+  today: <><ellipse cx="80" cy="106" rx="46" ry="5" fill="var(--art-fill)" opacity=".35"/><rect x="40" y="22" width="80" height="78" rx="16" fill="var(--art-fill)" stroke="var(--art-line)" strokeWidth="3"/><circle cx="80" cy="58" r="19" fill="var(--page-accent)"/><path d="M71 58.5l6.5 6.5L90 51" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M58 85h44" stroke="var(--art-line)" strokeWidth="4" strokeLinecap="round"/><circle cx="132" cy="34" r="4" fill="var(--page-accent)"/><circle cx="26" cy="52" r="3" fill="var(--art-line)"/></>,
+  tasks: <><ellipse cx="80" cy="106" rx="46" ry="5" fill="var(--art-fill)" opacity=".35"/><rect x="34" y="24" width="92" height="26" rx="10" fill="var(--art-fill)" stroke="var(--art-line)" strokeWidth="3"/><rect x="34" y="60" width="92" height="26" rx="10" fill="var(--art-fill)" stroke="var(--art-line)" strokeWidth="3"/><circle cx="50" cy="37" r="6.5" stroke="var(--art-line)" strokeWidth="3"/><circle cx="50" cy="73" r="7.5" fill="var(--page-accent)"/><path d="M46.5 73l2.7 2.7 5-5.4" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M65 37h44M65 73h32" stroke="var(--art-line)" strokeWidth="4" strokeLinecap="round"/><circle cx="136" cy="20" r="4" fill="var(--page-accent)"/></>,
+  notes: <><ellipse cx="80" cy="106" rx="46" ry="5" fill="var(--art-fill)" opacity=".35"/><rect x="42" y="16" width="70" height="86" rx="12" fill="var(--art-fill)" stroke="var(--art-line)" strokeWidth="3"/><path d="M56 40h40M56 54h40M56 68h24" stroke="var(--art-line)" strokeWidth="4" strokeLinecap="round"/><path d="M118 40l14 14-30 30-17 3 3-17z" fill="var(--page-accent)"/><path d="M114 44l14 14" stroke="#fff" strokeOpacity=".55" strokeWidth="3"/></>,
+  projects: <><ellipse cx="80" cy="106" rx="46" ry="5" fill="var(--art-fill)" opacity=".35"/><path d="M30 36a10 10 0 0 1 10-10h24l10 12h46a10 10 0 0 1 10 10v44a10 10 0 0 1-10 10H40a10 10 0 0 1-10-10z" fill="var(--art-fill)" stroke="var(--art-line)" strokeWidth="3" strokeLinejoin="round"/><path d="M30 56h100" stroke="var(--art-line)" strokeWidth="3"/><rect x="48" y="68" width="26" height="6" rx="3" fill="var(--page-accent)"/><rect x="48" y="80" width="46" height="5" rx="2.5" fill="var(--art-line)"/><circle cx="134" cy="22" r="4" fill="var(--page-accent)"/></>,
+  calendar: <><ellipse cx="80" cy="106" rx="46" ry="5" fill="var(--art-fill)" opacity=".35"/><rect x="32" y="24" width="96" height="78" rx="14" fill="var(--art-fill)" stroke="var(--art-line)" strokeWidth="3"/><path d="M32 46h96" stroke="var(--art-line)" strokeWidth="3"/><path d="M56 16v16M104 16v16" stroke="var(--art-line)" strokeWidth="4" strokeLinecap="round"/><g fill="var(--art-line)"><circle cx="52" cy="62" r="3.5"/><circle cx="68" cy="62" r="3.5"/><circle cx="84" cy="62" r="3.5"/><circle cx="100" cy="62" r="3.5"/><circle cx="116" cy="62" r="3.5"/><circle cx="52" cy="82" r="3.5"/><circle cx="68" cy="82" r="3.5"/><circle cx="100" cy="82" r="3.5"/><circle cx="116" cy="82" r="3.5"/></g><circle cx="84" cy="82" r="8" fill="var(--page-accent)"/></>,
+  search: <><ellipse cx="80" cy="106" rx="46" ry="5" fill="var(--art-fill)" opacity=".35"/><circle cx="72" cy="54" r="28" fill="var(--art-fill)" stroke="var(--page-accent)" strokeWidth="7"/><path d="M93 75l24 24" stroke="var(--page-accent)" strokeWidth="9" strokeLinecap="round"/><path d="M58 54h28" stroke="var(--art-line)" strokeWidth="4" strokeLinecap="round"/><circle cx="128" cy="30" r="4" fill="var(--art-line)"/><circle cx="30" cy="88" r="3" fill="var(--page-accent)"/></>,
+} as const;
+export type EmptyArtKey = keyof typeof art;
+
+export function EmptyState({ art: key, title, description, action, compact = false }: { art: EmptyArtKey; title: string; description?: string; action?: ReactNode; compact?: boolean }) {
+  return <div className={`empty-state${compact ? ' compact' : ''}`}>
+    <svg viewBox="0 0 160 120" fill="none" aria-hidden="true">{art[key]}</svg>
+    <div><h3>{title}</h3>{description && <p>{description}</p>}</div>
+    {action}
+  </div>;
+}

@@ -1,9 +1,9 @@
 /* Project workbench. Structural controls deliberately beat legacy dark button fills. */
 .pb-hub .px-hub-heading{margin-bottom:36px}
 .pb-hub .px-hub-heading h1{font-size:38px;font-weight:550;letter-spacing:-.045em}
-.pb-hub .pp-primary{background:var(--ink);color:var(--canvas);border-color:var(--ink);box-shadow:none;border-radius:8px}
+.pb-hub .pp-primary{background:var(--ink);color:var(--canvas);border-color:var(--ink);box-shadow:none;border-radius:10px}
 .pb-hub .px-hub-controls{margin-bottom:32px;gap:20px}
-.pb-hub .pp-search{background:transparent;border-color:var(--line);border-radius:8px;box-shadow:none}
+.pb-hub .pp-search{background:transparent;border-color:var(--line);border-radius:10px;box-shadow:none}
 .pb-project-group{margin:0 0 30px}
 .pb-project-group>header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .pb-project-group h2{font-size:13px;font-weight:550;color:var(--muted);margin:0}
@@ -31,13 +31,13 @@
 .project-workspace.pw-redesign .pb-project-title h1{font-size:32px;line-height:1.2;letter-spacing:-.045em;font-weight:550;margin:10px 0 12px}
 .project-workspace.pw-redesign .pb-project-title p{font-size:13px;line-height:1.7;margin:0;max-width:730px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pb-project-meta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;font-size:12px;color:var(--muted);padding-left:24px;border-left:1px solid var(--line)}
-.pb-project-meta progress{appearance:none;width:100%;height:4px;border:0;border-radius:9px;overflow:hidden;background:var(--line)}
+.pb-project-meta progress{appearance:none;width:100%;height:4px;border:0;border-radius:10px;overflow:hidden;background:var(--line)}
 .pb-project-meta progress::-webkit-progress-bar{background:var(--line)}
-.pb-project-meta progress::-webkit-progress-value{background:var(--accent);border-radius:9px}
+.pb-project-meta progress::-webkit-progress-value{background:var(--accent);border-radius:10px}
 .pb-project-meta progress::-moz-progress-bar{background:var(--accent)}
 .project-workspace.pw-redesign .pb-subtle{background:none;border:0;color:var(--muted);padding:8px 0;font-size:12px;box-shadow:none}
 .project-workspace.pw-redesign .pb-subtle:hover{color:var(--ink);background:none}
-.project-workspace.pw-redesign .pb-action{background:var(--ink);color:var(--canvas);border:1px solid var(--ink);border-radius:8px;font-size:12px;font-weight:600;min-height:38px;padding:9px 14px;box-shadow:none}
+.project-workspace.pw-redesign .pb-action{background:var(--ink);color:var(--canvas);border:1px solid var(--ink);border-radius:10px;font-size:12px;font-weight:600;min-height:38px;padding:9px 14px;box-shadow:none}
 .project-workspace.pw-redesign .pb-action:hover{background:var(--ink-2);border-color:var(--ink-2);color:var(--canvas)}
 .project-workspace.pw-redesign .pw-tabs{margin:0 0 30px;padding:0;gap:28px;justify-content:flex-start;border-bottom:1px solid var(--line)}
 .project-workspace.pw-redesign .pw-tabs button{background:none;border:0;border-radius:0;box-shadow:none;padding:12px 0 14px;min-height:44px;color:var(--muted);font-size:13px;font-weight:500;gap:8px}
@@ -46,19 +46,19 @@
 .project-workspace.pw-redesign .pw-tabs button>svg{width:15px;height:15px}
 .project-workspace.pw-redesign .pw-tabs button>span{background:none;padding:0;color:var(--muted);font-size:11px}
 .pb-board-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}
-.pb-filters{display:flex;align-items:center;gap:4px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.pb-filters{display:flex;align-items:center;gap:4px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 .project-workspace.pw-redesign .pb-filters button{background:none;border:0;border-radius:6px;min-height:32px;padding:7px 10px;font-size:12px;color:var(--muted);gap:8px}
 .project-workspace.pw-redesign .pb-filters button[aria-pressed=true]{background:var(--panel-solid);color:var(--ink);box-shadow:0 1px 4px #0000000b}
-.pb-filters button span{font-size:10px;opacity:.65;font-variant-numeric:tabular-nums}
+.pb-filters button span{font-size:11px;opacity:.65;font-variant-numeric:tabular-nums}
 .pb-task-composer{margin:0 0 18px}
-.project-workspace.pw-redesign .pb-task-composer .pw-add-line{margin:0;background:var(--panel-solid);border:1px solid var(--accent);border-radius:9px;padding:5px 8px 5px 16px}
+.project-workspace.pw-redesign .pb-task-composer .pw-add-line{margin:0;background:var(--panel-solid);border:1px solid var(--accent);border-radius:10px;padding:5px 8px 5px 16px}
 .project-workspace.pw-redesign .pb-task-composer .pw-add-line input{background:none;border:0;box-shadow:none;outline:none;font-size:14px}
 .project-workspace.pw-redesign .pb-task-composer .pw-add-line button{background:var(--ink);border:0;color:var(--canvas);border-radius:6px;font-size:12px}
 .pb-list-heading{display:flex;align-items:center;justify-content:space-between;padding:0 4px 12px}
 .project-workspace.pw-redesign .pb-list-heading h2{font-size:13px;font-weight:550;letter-spacing:0}
 .pb-list-heading>span{font-size:11px;color:var(--muted)}
-.pb-task-list{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel-solid)}
-.pb-task-row{display:flex;align-items:center;gap:14px;padding:0 22px;border-bottom:1px solid var(--line);min-width:0;transition:background .15s}
+.pb-task-list{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel-solid)}
+.pb-task-row{display:flex;align-items:center;gap:14px;padding:0 22px;border-bottom:1px solid var(--line);min-width:0;transition:background var(--t-fast)}
 .pb-task-row:last-child{border-bottom:0}
 .pb-task-row:hover{background:color-mix(in srgb,var(--accent) 4%,var(--panel-solid))}
 .project-workspace.pw-redesign .pb-task-row .pw-check{width:20px;height:20px;min-height:20px;flex-shrink:0;border-radius:6px;border:1px solid var(--soft);background:none;box-shadow:none;padding:0;color:var(--canvas)}
@@ -81,14 +81,14 @@
 .pb-drawer[open]{display:grid;grid-template-rows:auto minmax(0,1fr)}
 .pb-drawer::backdrop{background:#08091166}
 .pb-drawer-header{padding:26px 28px 24px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:1fr 36px;gap:16px;align-items:center}
-.pb-drawer-header>span{font-size:9px;letter-spacing:.12em;color:var(--muted);font-weight:600}
+.pb-drawer-header>span{font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:600}
 .project-workspace.pw-redesign .pb-drawer-header>button{background:none;border:0;padding:6px;min-height:36px;color:var(--muted)}
 .project-workspace.pw-redesign .pb-drawer-header h2{grid-column:1/-1;font-size:22px;line-height:1.4;font-weight:550;letter-spacing:-.025em;overflow-wrap:anywhere;outline:none}
 .pb-drawer-content{overflow:auto;overscroll-behavior:contain;padding:24px 28px 32px;scrollbar-width:thin}
 .project-workspace.pw-redesign .pb-task-editor{padding:0;margin:0;border:0}
 .pb-task-status{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
 .pb-task-status>span{font-size:12px;color:var(--muted)}
-.project-workspace.pw-redesign .pb-drawer :is(input,textarea,select){background:var(--canvas);border:1px solid var(--line);border-radius:8px;font-size:14px;font-weight:400;padding:11px 12px;line-height:1.6}
+.project-workspace.pw-redesign .pb-drawer :is(input,textarea,select){background:var(--canvas);border:1px solid var(--line);border-radius:10px;font-size:14px;font-weight:400;padding:11px 12px;line-height:1.6}
 .project-workspace.pw-redesign .pb-drawer label{font-size:12px;font-weight:550}
 .project-workspace.pw-redesign .pb-drawer label:first-of-type{margin:0 0 26px}
 .project-workspace.pw-redesign .pb-drawer .pb-field-heading{font-size:12px;font-weight:550;display:flex;gap:8px;margin:0 0 12px}
@@ -98,7 +98,7 @@
 .project-workspace.pw-redesign .pb-drawer .pw-child>button:not(.pw-check){background:none;min-height:32px;padding:5px;min-width:28px;color:var(--muted)}
 .project-workspace.pw-redesign .pb-drawer .pw-check{background:none}
 .project-workspace.pw-redesign .pb-drawer .pw-check.checked{background:var(--accent)}
-.project-workspace.pw-redesign .pb-drawer .pw-add-line{background:none;border:1px dashed var(--line);border-radius:8px;margin:12px 0 24px;padding:3px 8px}
+.project-workspace.pw-redesign .pb-drawer .pw-add-line{background:none;border:1px dashed var(--line);border-radius:10px;margin:12px 0 24px;padding:3px 8px}
 .project-workspace.pw-redesign .pb-drawer .pw-add-line input{border:0;background:none;padding:9px 4px;font-size:12px}
 .project-workspace.pw-redesign .pb-drawer .pw-add-line button{border:0;background:none;color:var(--accent);font-size:12px;padding:7px}
 .pb-task-media{border-block:1px solid var(--line);padding:0;margin:8px 0 24px}
@@ -107,7 +107,7 @@
 .pb-task-media[open]{padding-bottom:18px}
 .pb-task-media .pw-photo-grid{margin-bottom:18px}
 .pb-task-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.project-workspace.pw-redesign .pb-task-tools button{background:none;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--muted);padding:9px 12px;box-shadow:none}
+.project-workspace.pw-redesign .pb-task-tools button{background:none;border:1px solid var(--line);border-radius:10px;font-size:12px;color:var(--muted);padding:9px 12px;box-shadow:none}
 .project-workspace.pw-redesign .pb-task-tools .pw-task-delete{color:#c9777d}
 .pb-info-fields{display:grid;gap:22px}
 .pb-info-fields>.pw-meta{margin:0}
@@ -132,7 +132,7 @@
 .project-workspace.pw-redesign .pn-note-body{padding:0 0 26px;border:0}
 .project-workspace.pw-redesign .px-diagram{background:none;border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none;backdrop-filter:none;padding:18px 0;margin:0}
 .project-workspace.pw-redesign .px-diagram>summary{font-size:14px}
-.project-workspace.pw-redesign .pw-section-heading button{background:none;border:1px solid var(--line);border-radius:8px;font-size:12px}
+.project-workspace.pw-redesign .pw-section-heading button{background:none;border:1px solid var(--line);border-radius:10px;font-size:12px}
 @media(max-width:760px){
   .project-workspace.pw-redesign{padding-top:0}
   .project-workspace.pw-redesign .pw-topbar{margin-bottom:20px}
@@ -150,7 +150,7 @@
   .project-workspace.pw-redesign .pb-board-toolbar>.pb-action{font-size:11px;padding:9px 11px}
   .pb-task-row{padding:0 14px;gap:12px}
   .project-workspace.pw-redesign .pb-row-open{grid-template-columns:minmax(0,1fr) 12px;gap:4px 10px;min-height:80px;padding:16px 0;font-size:13px;line-height:1.6}
-  .pb-row-meta{grid-column:1;grid-row:2;font-size:10px;min-height:0;gap:12px}
+  .pb-row-meta{grid-column:1;grid-row:2;font-size:11px;min-height:0;gap:12px}
   .pb-row-meta:empty{display:none}
   .pb-row-arrow{grid-column:2;grid-row:1/3;width:14px;height:14px}
   .pb-drawer{width:100vw;border:0}

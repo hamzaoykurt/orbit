@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRightLeft, Award, CalendarCheck, Check, Coffee, Flame, Pencil, Plus, Trash2, Undo2, Zap } from 'lucide-react';
+import { ArrowRightLeft, Award, Check, Coffee, Flame, Pencil, Plus, Trash2, Undo2, Zap } from 'lucide-react';
 import type { WeeklyDeck } from '../rebuild/weekly-deck-model';
 import { weekView } from '../rebuild/weekly-deck-model';
 import { weekGoalRows } from '../home-today';
 import { celebrateAt, celebrateBanner } from '../ui/celebrate';
+import { PageHeader } from '../ui/page-header';
+import { EmptyState } from '../ui/empty-state';
+import { useFlip } from '../ui/list-motion';
 import * as P from './program-model';
 import type { Block, Events, Program, Task } from './program-model';
 import './program.css';
@@ -21,6 +24,7 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
   const [picker, setPicker] = useState<string | null>(null);
   const [breakEnd, setBreakEnd] = useState<number | null>(null);
   const [breakLeft, setBreakLeft] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
   const programRef = useRef(program); const deckRef = useRef(deck);
   const handlers = useRef({ onChange, onFeedback });
   useEffect(() => { programRef.current = program; deckRef.current = deck; handlers.current = { onChange, onFeedback }; });
@@ -34,8 +38,9 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
   const bonusDone = Object.keys(week.done).filter(key => key.endsWith(':b')).length;
   const daysDone = Object.keys(week.days).length;
 
+  useFlip(listRef, `${selected}:${tasks.map(task => `${task.key}${task.done ? 1 : 0}`).join()}`);
   const announce = (events: Events) => {
-    if (events.levelUp) celebrateBanner(`Seviye ${events.levelUp.level}!`, events.levelUp.title, motion);
+    if (events.levelUp) celebrateBanner(`Seviye ${events.levelUp.level}!`, events.levelUp.title, motion, true);
     else if (events.newBadges.length) celebrateBanner('Yeni rozet!', events.newBadges.map(b => b.name).join(', '), motion);
     else if (events.dayComplete) celebrateBanner('Gün tamam!', `+${P.XP_DAY} XP. Bugün harikaydın.`, motion);
   };
@@ -75,14 +80,15 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
 
   return (
     <div className="wp">
-      <section className="wp-hud surface" aria-label="Seviye ve seri">
+      <PageHeader eyebrow="HAFTALIK RİTİM" title="Program" description="Bugünün adımlarını yap, seriyi koru, XP topla."
+        chips={<><span className="chip-streak"><Flame size={14}/> {streak} gün seri</span><span className="chip-xp"><Zap size={14}/> Bu hafta {P.weekXp(week)} XP</span><span><Award size={14}/> {Object.keys(program.profile.badges).length} rozet</span></>}
+        action={<button className="ghost-button" onClick={() => setEditing(value => !value)} aria-pressed={editing}><Pencil size={15}/> {editing ? 'Bitti' : 'Düzenle'}</button>}/>
+      <section className="wp-hud surface" aria-label="Seviye">
         <div className="wp-level" aria-hidden="true"><b>{level.level}</b><small>SEV</small></div>
         <div className="wp-hud-main">
           <div className="wp-hud-top"><strong>{level.title}</strong><span>{level.inLevel} / {level.step} XP</span></div>
           <div className="wp-xpbar" role="progressbar" aria-valuemin={0} aria-valuemax={level.step} aria-valuenow={level.inLevel} aria-label="Seviye ilerlemesi"><i style={{ transform: `scaleX(${level.inLevel / level.step})` }}/></div>
-          <div className="wp-chips"><span className="chip-streak"><Flame size={14}/> {streak} gün seri</span><span className="chip-xp"><Zap size={14}/> Bu hafta {P.weekXp(week)} XP</span><span><Award size={14}/> {Object.keys(program.profile.badges).length} rozet</span></div>
         </div>
-        <button className="ghost-button wp-edit" onClick={() => setEditing(value => !value)} aria-pressed={editing}><Pencil size={15}/> {editing ? 'Bitti' : 'Düzenle'}</button>
       </section>
 
       {!editing && <>
@@ -98,13 +104,13 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
         <div className="wp-dayhead"><h2>{P.dayNames[selected]}{selected === today ? ' · Bugün' : ''}</h2><span>{stats.done}/{stats.total} görev</span>
           {leftovers && <button className="text-button" onClick={pull}><Undo2 size={13}/> Önceki günlerden kalanları bugüne al</button>}</div>
 
-        {!tasks.length && <div className="wp-empty"><CalendarCheck size={34}/><p>Bu gün için görev yok. Düzenle bölümünden bir blok ata ya da rahatça dinlen.</p></div>}
-        {P.slots.map(slot => {
+        {!tasks.length && <EmptyState art="today" title="Bu gün boş" description="Düzenle bölümünden bir blok ata ya da rahatça dinlen."/>}
+        <div ref={listRef} className="wp-slots">{P.slots.map(slot => {
           const list = tasks.filter(task => task.slot === slot);
           if (!list.length) return null;
-          return <section key={slot} className="wp-slot" aria-label={P.slotLabels[slot]}>
+          return <section key={slot} data-stagger className="wp-slot" aria-label={P.slotLabels[slot]}>
             <h3>{P.slotLabels[slot]}</h3>
-            {list.map(task => <article key={task.key} className={`wp-task ${task.bonus ? 'bonus' : ''} ${task.done ? 'done' : ''}`}>
+            {list.map(task => <article key={task.key} data-flip={task.key} className={`wp-task ${task.bonus ? 'bonus' : ''} ${task.done ? 'done' : ''}`}>
               <div className="wp-task-main">
                 {task.bonus ? <span className="wp-time bonus-tag">BONUS</span> : task.t && <span className="wp-time">{task.t}</span>}
                 <strong>{task.text}</strong>
@@ -117,7 +123,7 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
               {picker === task.key && <div className="wp-picker" role="group" aria-label="Hangi güne ertelensin?">{P.dayShort.map((name, day) => day !== selected && <button key={name} onClick={() => move(task, day)}>{name}</button>)}</div>}
             </article>)}
           </section>;
-        })}
+        })}</div>
 
         <div className="wp-side">
           <section className="wp-card surface" aria-label="Haftalık hedefler">

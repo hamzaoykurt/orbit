@@ -76,7 +76,7 @@
 .page-archive .archive-tabs button { min-height: var(--workspace-control); font-size: var(--workspace-description); padding: 10px 14px; }
 .page-archive .archive-list { gap: 11px; }
 .page-archive .archive-item { min-height: 78px; padding: 17px 20px; gap: 13px; grid-template-columns: 42px minmax(0,1fr) auto auto 36px; }
-.page-archive .archive-icon { width: 42px; height: 42px; border-radius: 14px; }
+.page-archive .archive-icon { width: 42px; height: 42px; border-radius: 16px; }
 .page-archive .archive-item strong { font-size: var(--workspace-text); line-height: 1.4; }
 .page-archive :is(.archive-item small,.archive-item em,.archive-quote span) { font-size: var(--workspace-caption); line-height: 1.5; }
 .page-archive .archive-item>button:not(.icon-button) { min-height: var(--workspace-control); font-size: var(--workspace-description); }
@@ -88,7 +88,7 @@
 .page-settings :is(.settings-profile p,.settings-section>header p,.setting-row small,.data-export small,.feedback-test-button small,.sound-level-copy small) { font-size: var(--workspace-caption); line-height: 1.6; }
 .page-settings :is(.setting-row strong,.data-export strong,.feedback-test-button strong,.sound-level-copy strong) { font-size: var(--workspace-text); line-height: 1.4; }
 .page-settings .setting-row { min-height: 70px; grid-template-columns: 42px minmax(0,1fr) auto; gap: 12px; padding: 16px 0; }
-.page-settings .setting-icon { width: 42px; height: 42px; border-radius: 14px; }
+.page-settings .setting-icon { width: 42px; height: 42px; border-radius: 16px; }
 .page-settings :is(.settings-edit-button,.settings-profile button,.danger-section button,.theme-options button) { font-size: var(--workspace-description); min-height: 38px; }
 .page-settings .theme-options button { padding-inline: 11px; }
 .page-settings .data-export, .page-settings .feedback-test-button { min-height: 70px; padding: 16px; }

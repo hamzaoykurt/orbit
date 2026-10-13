@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true">
+  <!-- Use: <svg width="16" height="16" style="color:var(--page-accent)"><use href="/illustrations/confetti-8.svg#c1"/></svg>. All shapes fill currentColor. -->
+  <symbol id="c1" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="currentColor"/></symbol>
+  <symbol id="c2" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/></symbol>
+  <symbol id="c3" viewBox="0 0 16 16"><rect x="1.5" y="6" width="13" height="4" rx="2" fill="currentColor"/></symbol>
+  <symbol id="c4" viewBox="0 0 16 16"><path d="M8 2l6 11H2z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="c5" viewBox="0 0 16 16"><path d="M8 1.5l1.9 4.6 4.6 1.9-4.6 1.9L8 14.5l-1.9-4.6L1.5 8l4.6-1.9z" fill="currentColor"/></symbol>
+  <symbol id="c6" viewBox="0 0 16 16"><path d="M3 11c2-6 4 2 5-3s3 0 5-3" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="c7" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="c8" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5" stroke="currentColor" stroke-width="2.4" fill="none"/></symbol>
+</svg>

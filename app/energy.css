@@ -40,22 +40,19 @@ html[data-theme] .app-shell .bottom-nav button.active { color:var(--page-ink); }
 
 /* Cards lift a little on hover (pointer devices only). */
 @media (hover:hover) {
-  .note-card, .project-card { transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease; }
-  .note-card:hover, .project-card:hover { transform:translateY(-2px); box-shadow:0 10px 26px rgba(60,40,20,.12); }
+  .note-card, .project-card { transition:transform var(--t-fast) var(--ease-out),box-shadow var(--t-fast) var(--ease-out),border-color var(--t-fast) var(--ease-out); }
+  .note-card:hover, .project-card:hover { transform:translateY(-2px); box-shadow:var(--e2); }
 }
 /* Press feedback and first-appearance motion: transform/opacity only. */
-.primary-button, .ghost-button, .icon-button, .quick-actions button, .segmented-control button, .side-nav button, .bottom-nav button, .goal-row, .next-row { transition:transform .12s ease,background-color .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease; }
+.primary-button, .ghost-button, .icon-button, .quick-actions button, .segmented-control button, .side-nav button, .bottom-nav button, .goal-row, .next-row { transition:transform var(--t-press) var(--ease-out),background-color var(--t-fast) var(--ease-out),color var(--t-fast) var(--ease-out),border-color var(--t-fast) var(--ease-out),box-shadow var(--t-fast) var(--ease-out); }
 .primary-button:active, .ghost-button:active, .icon-button:active, .quick-actions button:active, .bottom-nav button:active, .goal-row:active, .next-row:active { transform:scale(.97); }
 @media (prefers-reduced-motion:no-preference) {
-  .app-shell .content > * { animation:rise .26s ease-out backwards; }
-  .app-shell .content > *:nth-child(2) { animation-delay:.04s; } .app-shell .content > *:nth-child(3) { animation-delay:.08s; }
-  .app-shell .content > *:nth-child(4) { animation-delay:.12s; } .app-shell .content > *:nth-child(n+5) { animation-delay:.16s; }
   .task-item.completed .check-circle svg { animation:pop .26s ease-out; }
   .pips i.on { animation:pop .26s ease-out; }
 }
 @keyframes rise { from { opacity:0; transform:translateY(8px); } }
 @keyframes pop { 0% { transform:scale(.4); } 60% { transform:scale(1.25); } 100% { transform:scale(1); } }
-.check-circle { transition:background-color .15s ease,border-color .15s ease; }
+.check-circle { transition:background-color var(--t-fast) var(--ease-out),border-color var(--t-fast) var(--ease-out); }
 .task-item.completed .check-circle { background:var(--accent); border-color:var(--accent); color:#fff; }
 
 /* Completion moment. */
@@ -64,7 +61,7 @@ html[data-theme] .app-shell .bottom-nav button.active { color:var(--page-ink); }
 .celebrate-layer b { position:absolute; transform:translate(-50%,-10px); font-size:15px; font-weight:700; color:var(--page-ink); text-shadow:0 1px 0 var(--canvas),0 0 8px var(--canvas); animation:xp-rise .95s ease-out forwards; }
 @keyframes burst { to { transform:translate(var(--dx),var(--dy)) scale(.4); opacity:0; } }
 @keyframes xp-rise { 0% { opacity:0; transform:translate(-50%,0); } 15% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-46px); } }
-.celebrate-banner { position:fixed; z-index:310; left:50%; top:max(18px,env(safe-area-inset-top)); transform:translateX(-50%); display:grid; gap:2px; padding:12px 22px; border-radius:14px; background:var(--btn-bg); color:#fff; text-align:center; box-shadow:0 12px 34px rgba(0,0,0,.25); animation:banner-in .4s cubic-bezier(.2,1.2,.3,1) both,banner-out .3s ease-in 2.2s forwards; pointer-events:none; }
+.celebrate-banner { position:fixed; z-index:310; left:50%; top:max(18px,env(safe-area-inset-top)); transform:translateX(-50%); display:grid; gap:2px; padding:12px 22px; border-radius:16px; background:var(--btn-bg); color:#fff; text-align:center; box-shadow:0 12px 34px rgba(0,0,0,.25); animation:banner-in .4s cubic-bezier(.2,1.2,.3,1) both,banner-out .3s ease-in 2.2s forwards; pointer-events:none; }
 .celebrate-banner strong { font-size:18px; } .celebrate-banner span { font-size:13px; opacity:.92; }
 .celebrate-banner.still { animation:none; }
 @keyframes banner-in { from { opacity:0; transform:translate(-50%,-24px) scale(.9); } }
@@ -82,7 +79,7 @@ html[data-theme] .app-shell .bottom-nav button.active { color:var(--page-ink); }
 html[data-theme=dark] .chip-streak { color:#ffc489; }
 .today-program-body { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; }
 .today-goals, .today-next { display:grid; gap:8px; align-content:start; }
-.goal-row, .next-row { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; padding:6px 12px; border:1px solid var(--line); border-radius:12px; background:var(--canvas); color:var(--ink); font-size:14px; text-align:left; cursor:pointer; }
+.goal-row, .next-row { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; padding:6px 12px; border:1px solid var(--line); border-radius:16px; background:var(--canvas); color:var(--ink); font-size:14px; text-align:left; cursor:pointer; }
 .goal-row:hover, .next-row:hover { border-color:var(--page-accent); }
 .goal-row.complete { background:color-mix(in srgb,#2fb573 14%,var(--panel-solid)); }
 .pips { display:flex; gap:5px; } .pips i { width:12px; height:12px; border-radius:50%; border:2px solid var(--soft); } .pips i.on { background:var(--page-accent); border-color:var(--page-accent); }

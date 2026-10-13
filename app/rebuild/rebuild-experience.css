@@ -6,11 +6,11 @@
 .rx-rebuild h2,.rx-rebuild h3,.rx-rebuild h4{overflow-wrap:anywhere}
 .rx-rebuild button:disabled{opacity:.5;cursor:not-allowed}
 .rx-rebuild :is(button,a,summary):focus-visible{outline:2px solid var(--accent);outline-offset:4px}
-.rx-focus{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:26px 28px;border:1px solid rgba(var(--accent-rgb),.22);border-radius:20px;background:linear-gradient(120deg,var(--accent-soft),var(--panel))}
+.rx-focus{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:26px 28px;border:1px solid rgba(var(--accent-rgb),.22);border-radius:24px;background:linear-gradient(120deg,var(--accent-soft),var(--panel))}
 .rx-focus h2{margin:8px 0;font-size:26px;line-height:1.25;letter-spacing:-.035em;font-weight:550}
 .rx-focus p,.rx-section-heading p,.rx-area p,.rx-content-card>p{font-size:14px;line-height:1.6;color:var(--muted);margin:6px 0 0}
 .rx-focus .rd-done-action{flex-shrink:0}
-.rx-area{display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-width:0;border:1px solid var(--line);border-radius:16px;padding:22px;background:var(--panel);color:var(--ink);transition:border-color .2s,background .2s}
+.rx-area{display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-width:0;border:1px solid var(--line);border-radius:16px;padding:22px;background:var(--panel);color:var(--ink);transition:border-color var(--t-fast),background var(--t-fast)}
 .rx-area:hover{border-color:rgba(var(--accent-rgb),.45);background:var(--panel-solid)}
 .rx-area h3{font-size:20px;letter-spacing:-.03em;margin:10px 0 0;font-weight:550}
 .rx-area p{margin-bottom:22px;overflow-wrap:anywhere}
@@ -23,7 +23,7 @@
 .rx-workspace-heading h1{font-size:30px;letter-spacing:-.04em;margin:6px 0;font-weight:550}
 .rx-workspace-title:focus,.rx-home-title:focus{outline:none}
 .rx-workspace-heading p{font-size:14px;line-height:1.5;color:var(--muted);margin:0}
-.rx-content-card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:26px}
+.rx-content-card{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:26px}
 .rx-content-card h3{font-size:20px;margin:0 0 10px;letter-spacing:-.025em;font-weight:550}
 .rx-content-card .rd-inline-copy{font-size:15px;line-height:1.65;margin:12px 0 22px}
 .rx-content-card hr{border:0;border-top:1px solid var(--line);margin:26px 0}
@@ -92,14 +92,14 @@
 .rx-rebuild .rn-quiz-start p{font-size:14px}
 /* Idea generation stays a contained dialog, with a clear primary action. */
 .rd-overlay-idea{background:rgba(9,8,14,.55);padding:24px}
-.rd-dialog-idea{max-width:840px;min-height:0;height:auto;max-height:calc(100dvh - 48px);background:var(--panel-solid);border:1px solid var(--line);border-radius:22px;padding:28px 32px;box-shadow:var(--shadow)}
+.rd-dialog-idea{max-width:840px;min-height:0;height:auto;max-height:calc(100dvh - 48px);background:var(--panel-solid);border:1px solid var(--line);border-radius:24px;padding:28px 32px;box-shadow:var(--shadow)}
 .rd-dialog-idea .rd-close{right:16px;top:15px}
 .rd-dialog-idea .rd-draw-brand{padding-right:35px;letter-spacing:.06em}
 .rd-dialog-idea .rd-idea-stage{padding:28px 0;min-height:160px}
 .rd-dialog-idea .rd-drawn-idea{max-width:none}
 .rd-dialog-idea .rd-drawn-idea h2{font-size:28px;margin:10px 0 16px;max-width:none}
 .rd-dialog-idea .rd-drawn-idea .rd-idea-description{font-size:17px;line-height:1.75;letter-spacing:0}
-.rd-dialog-idea .rd-prompt-stage textarea{font-size:14px;line-height:1.7;min-height:200px;max-height:46dvh;background:var(--panel);padding:16px;border:1px solid var(--line);border-radius:12px}
+.rd-dialog-idea .rd-prompt-stage textarea{font-size:14px;line-height:1.7;min-height:200px;max-height:46dvh;background:var(--panel);padding:16px;border:1px solid var(--line);border-radius:16px}
 .rd-dialog-idea .rd-idea-bottom{padding-top:18px;border-top:1px solid var(--line)}
 .rd-dialog-idea .rd-generation-history{margin:22px 0}
 .rd-dialog-idea .rd-generation-history h2{font-size:26px}
@@ -134,7 +134,7 @@
   .rx-word h3{margin-top:24px}
   .rx-word-answer .rd-detail-actions{gap:12px}
   .rd-overlay-idea{padding:12px}
-  .rd-dialog-idea{border-radius:18px;max-height:calc(100dvh - 24px);height:auto;min-height:0;padding:24px 20px}
+  .rd-dialog-idea{border-radius:16px;max-height:calc(100dvh - 24px);height:auto;min-height:0;padding:24px 20px}
   .rd-dialog-idea .rd-drawn-idea h2{font-size:24px}
   .rd-dialog-idea .rd-drawn-idea .rd-idea-description{font-size:16px}
 }

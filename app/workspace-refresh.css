@@ -2,9 +2,9 @@
 :root {
   --canvas:#f5f6f8; --panel:#fff; --panel-solid:#fff;
   --ink:#202830; --ink-2:#3e4954; --muted:#66727e; --soft:#7a8590;
-  --line:rgba(35,49,62,.12); --shadow:none; --inset:none; --radius:14px;
-  --workspace-text:13px; --workspace-description:12px; --workspace-caption:11px;
-  --workspace-label:11px; --workspace-heading:19px; --workspace-feature:28px;
+  --line:rgba(35,49,62,.12); --shadow:none; --inset:none; --radius:16px;
+  --workspace-text:13px; --workspace-description:12px; --workspace-caption:12px;
+  --workspace-label:12px; --workspace-heading:19px; --workspace-feature:28px;
   --workspace-panel:28px; --workspace-gap:22px; --workspace-control:44px;
 }
 html[data-theme=dark] {
@@ -27,29 +27,29 @@ html[data-theme] .app-shell .sidebar-upgrade { border:1px solid var(--line); bac
 .app-shell .topbar { height:76px; max-width:1480px; padding-inline:clamp(24px,4vw,64px); }
 .app-shell .content { width:min(1280px,100%); padding:28px clamp(24px,4vw,64px) 80px; }
 html[data-theme] .date-pill { border:0; background:transparent; box-shadow:none; padding:0; font-size:12px; color:var(--muted); }
-html[data-theme] .search-trigger,html[data-theme] .icon-button { background:var(--panel-solid); border:1px solid var(--line); box-shadow:none; border-radius:8px; }
+html[data-theme] .search-trigger,html[data-theme] .icon-button { background:var(--panel-solid); border:1px solid var(--line); box-shadow:none; border-radius:10px; }
 .top-actions .icon-button { width:40px; height:40px; }
 .app-shell .search-trigger { font-size:12px; height:40px; }
 html[data-theme] .surface { background:var(--panel-solid); border:1px solid var(--line); box-shadow:none; backdrop-filter:none; }
-html[data-theme] :is(.primary-button,.ghost-button) { box-shadow:none; border-radius:8px; min-height:44px; font-size:13px; }
+html[data-theme] :is(.primary-button,.ghost-button) { box-shadow:none; border-radius:10px; min-height:44px; font-size:13px; }
 html[data-theme] .primary-button { background:var(--ink); color:var(--canvas); }
 html[data-theme] .ghost-button { background:var(--panel-solid); border-color:var(--line); color:var(--ink); }
 html[data-theme] :is(.focus-mode-toggle,.focus-presets) { background:var(--canvas); border:1px solid var(--line); box-shadow:none; }
 html[data-theme] :is(.focus-mode-toggle button.active,.focus-presets button.active) { background:var(--panel-solid); box-shadow:none; }
 html[data-theme] .focus-timer { box-shadow:none; }
 html[data-theme] .focus-timer:after { background:var(--panel-solid); box-shadow:none; }
-html[data-theme] .focus-main-button { background:var(--ink); color:var(--canvas); box-shadow:none; border-radius:8px; }
-html[data-theme] .focus-reset-button { background:var(--canvas); color:var(--ink); border:1px solid var(--line); box-shadow:none; border-radius:8px; }
+html[data-theme] .focus-main-button { background:var(--ink); color:var(--canvas); box-shadow:none; border-radius:10px; }
+html[data-theme] .focus-reset-button { background:var(--canvas); color:var(--ink); border:1px solid var(--line); box-shadow:none; border-radius:10px; }
 .content .ambient-orb { display:none; }
 .app-shell .focus-mode-toggle button,.app-shell .focus-presets button { font-size:12px; min-height:38px; }
 .app-shell .focus-session-head strong { font-size:19px; font-weight:550; }
 .content :is(.task-item-copy>strong,.personal-subtask-toggle strong,.program-name h2) { font-size:14px; line-height:1.6; }
 .content :is(.personal-item-meta,.personal-item-meta small,.task-item-copy>small,.day-event small,.note-card small) { font-size:11px; line-height:1.6; color:var(--muted); }
 html[data-theme] :is(.modal-card,.command-palette,.quick-capture,.notification-panel) { background:var(--panel-solid); box-shadow:0 18px 70px rgba(0,0,0,.2); border-color:var(--line); }
-html[data-theme] .pp-dialog.px-creator { background:var(--panel-solid); border:1px solid var(--line); box-shadow:0 24px 80px rgba(0,0,0,.2); border-radius:14px; }
+html[data-theme] .pp-dialog.px-creator { background:var(--panel-solid); border:1px solid var(--line); box-shadow:0 24px 80px rgba(0,0,0,.2); border-radius:16px; }
 html[data-theme] .px-creator :is(.pp-rail,.pp-dialog-header,.pp-dialog-footer) { background:var(--panel-solid); border-color:var(--line); box-shadow:none; }
 html[data-theme] .px-creator :is(.pp-route-card,.pp-review-style,.pp-how,.pp-idea-input,.pp-field input,.pp-field select,.pp-options button) { background:var(--canvas); border-color:var(--line); box-shadow:none; border-radius:10px; }
-html[data-theme] .px-creator .pp-primary { background:var(--ink); color:var(--canvas); border-color:var(--ink); box-shadow:none; border-radius:8px; }
+html[data-theme] .px-creator .pp-primary { background:var(--ink); color:var(--canvas); border-color:var(--ink); box-shadow:none; border-radius:10px; }
 .page-title h1,.home-heading h1 { font-size:clamp(32px,4vw,48px); letter-spacing:-.045em; font-weight:550; }
 .content :is(.page-title p,.setting-row small,.settings-section>header p,.settings-profile p,.note-preview,.program-name small,.program-progress small,.category-grid summary small) { font-size:12px; color:var(--muted); line-height:1.6; }
 .content :is(.setting-row strong,.settings-section>header h3,.settings-nav button,.category-grid summary strong,.category-tasks>button,.program-task-row>button,.department-task-grid>button) { font-size:13px; }
@@ -76,9 +76,9 @@ html[data-theme] .bottom-nav { background:var(--panel-solid); border:0; border-t
   .app-shell .content { padding:18px 20px calc(96px + env(safe-area-inset-bottom)); }
   .app-shell .bottom-nav { left:0; right:0; bottom:0; height:calc(68px + env(safe-area-inset-bottom)); padding:4px 12px calc(4px + env(safe-area-inset-bottom)); }
   .app-shell .bottom-nav button { min-height:48px; }
-  .app-shell .bottom-nav button small { font-size:10px; }
+  .app-shell .bottom-nav button small { font-size:11px; }
   html[data-theme] .app-shell .bottom-nav button.active { background:transparent; color:var(--accent); box-shadow:none; }
-  html[data-theme] .app-shell .bottom-nav .quick-capture-trigger { background:var(--ink); color:var(--canvas); box-shadow:none; border-radius:12px; width:48px; min-width:48px; height:48px; margin-top:0; }
+  html[data-theme] .app-shell .bottom-nav .quick-capture-trigger { background:var(--ink); color:var(--canvas); box-shadow:none; border-radius:16px; width:48px; min-width:48px; height:48px; margin-top:0; }
   html[data-theme] .app-shell .bottom-nav .quick-capture-trigger small { color:var(--canvas); }
   html[data-theme] .app-shell .bottom-nav .capture-action { background:var(--panel-solid); color:var(--ink); border:1px solid var(--line); box-shadow:0 8px 30px #0002; }
   .app-shell .bottom-nav .capture-action svg { filter:none; }

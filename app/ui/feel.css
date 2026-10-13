@@ -1,0 +1,169 @@
+/* Paket E: one motion language, three corners, four elevations, one page skeleton. Loaded last. */
+:root {
+  --ease-out:cubic-bezier(.22,1,.36,1); --ease-in:cubic-bezier(.4,0,1,1); --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --t-press:90ms; --t-fast:160ms; --t-base:240ms; --t-sheet:320ms; --t-exit:220ms;
+  --r-s:10px; --r-m:16px; --r-l:24px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px); --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+  --e2:0 2px 12px rgba(20,24,30,.08); --e3:0 -8px 32px rgba(20,24,30,.16); --scrim:rgba(20,24,30,.5);
+  --ex:24px; --sheet-from:100%; --pop:1.18;
+  --radius:var(--r-m);
+}
+@media (prefers-reduced-motion:reduce) { :root { --ex:0px; --sheet-from:0%; --pop:1; } }
+html.reduce-motion { --ex:0px; --sheet-from:0%; --pop:1; }
+
+/* Type floor and label scale. */
+.eyebrow, .pp-kicker, .rd-kicker { font-size:12px; line-height:16px; font-weight:600; letter-spacing:.04em; }
+.tabular, .count-pill, .wp-hud-top span, .today-chips span, .wp-chips span { font-variant-numeric:tabular-nums; }
+
+/* Press feedback: the individual `scale` property never fights existing transforms. */
+:root :is(button,[role=button],a[href],summary,label.mentor-file-picker):not(:disabled) { transition:scale var(--t-press) var(--ease-out),color var(--t-fast) var(--ease-out),background-color var(--t-fast) var(--ease-out),border-color var(--t-fast) var(--ease-out),box-shadow var(--t-fast) var(--ease-out),opacity var(--t-fast) var(--ease-out),transform var(--t-fast) var(--ease-out); }
+:is(button,[role=button],a[href],summary):not(:disabled):active { scale:.97; }
+:is(.surface,.note-card,.project-card,.pp-card,.px-card,.today-card,.quick-card):active { scale:.985; }
+:is(.task-item-toggle,.time-row,.goal-row,.next-row,.setting-row,.notification-main,.command-results button):active { background-color:color-mix(in srgb,var(--ink) 6%,transparent); scale:1; }
+.bottom-nav .quick-capture-trigger:active { scale:.92; }
+@media (hover:none) { button:hover, a:hover { transform:none; } }
+.reduce-motion :is(button,[role=button],a[href],summary,.surface):active { scale:1; }
+
+/* Page transitions, direction aware. Only the entering page animates. */
+@keyframes enter-x { from { opacity:0; transform:translateX(var(--ex)); } }
+@keyframes enter-fade { from { opacity:0; } }
+@keyframes enter-y { from { opacity:0; transform:translateY(12px); } }
+.app-shell .content.enter-fwd, .app-shell .content.enter-back, .app-shell .content.enter-deep, .app-shell .content.enter-deep-back { animation:enter-x var(--t-base) var(--ease-out) backwards; }
+.app-shell .content.enter-fwd { --ex:24px; } .app-shell .content.enter-back { --ex:-24px; }
+.app-shell .content.enter-deep { --ex:32px; } .app-shell .content.enter-deep-back { --ex:-32px; }
+.app-shell .content.enter-fade { animation:enter-fade var(--t-fast) var(--ease-out) backwards; }
+.app-shell .content.enter-up { animation:enter-y var(--t-base) var(--ease-out) backwards; }
+
+/* List entrance: first eight items step by 30ms, the rest arrive together. */
+@keyframes item-in { from { opacity:0; transform:translateY(8px); } }
+[data-stagger] > * { animation:item-in var(--t-base) var(--ease-out) backwards; }
+[data-stagger] > :nth-child(2) { animation-delay:30ms; } [data-stagger] > :nth-child(3) { animation-delay:60ms; }
+[data-stagger] > :nth-child(4) { animation-delay:90ms; } [data-stagger] > :nth-child(5) { animation-delay:120ms; }
+[data-stagger] > :nth-child(6) { animation-delay:150ms; } [data-stagger] > :nth-child(7) { animation-delay:180ms; }
+[data-stagger] > :nth-child(n+8) { animation-delay:210ms; }
+.flip-leaving { pointer-events:none; opacity:0; transform:translateX(-24px); transition:opacity 200ms var(--ease-in),transform 200ms var(--ease-in); }
+.task-item.completed .personal-task-main { opacity:.55; }
+.personal-task-card.dragging { scale:1.02; box-shadow:var(--e2); position:relative; z-index:2; }
+@keyframes check-pop { 0% { transform:scale(1); } 45% { transform:scale(var(--pop)); } 100% { transform:scale(1); } }
+.task-item.completed .check-circle, .wp-task.done .wp-go { animation:check-pop var(--t-base) var(--ease-spring); }
+.task-item.completed .check-circle svg { animation:none; }
+
+/* Elevation: e0 canvas, e1 card (line, no shadow), e2 sticky bars, e3 sheets. */
+html[data-theme] .surface, .note-card, .project-card { border-radius:var(--r-m); box-shadow:none; }
+
+/* Page header skeleton: strip, title, one line, chips. */
+.ph { display:grid; gap:var(--sp-3); margin-bottom:var(--sp-5); }
+.ph-strip { display:block; height:3px; border-radius:99px; background:var(--page-accent); }
+.ph-main { display:flex; align-items:flex-end; justify-content:space-between; gap:var(--sp-4); flex-wrap:wrap; }
+.ph-text { display:grid; gap:var(--sp-1); min-width:0; flex:1 1 260px; }
+.ph-title { margin:0; font-size:clamp(28px,3.6vw,36px); line-height:1.14; font-weight:700; letter-spacing:-.03em; color:var(--ink); overflow-wrap:anywhere; }
+.ph-desc { margin:0; font-size:15px; line-height:22px; color:var(--muted); max-width:62ch; }
+.ph-action { display:flex; gap:var(--sp-2); align-items:center; flex-wrap:wrap; }
+.ph-chips { display:flex; gap:var(--sp-2); flex-wrap:wrap; align-items:center; }
+.ph-chips > span { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 12px; border-radius:99px; font-size:13px; font-weight:600; background:color-mix(in srgb,var(--page-accent) 14%,var(--panel-solid)); color:var(--ink); font-variant-numeric:tabular-nums; }
+.ph-chips > span.chip-streak { color:var(--streak-ink); background:color-mix(in srgb,var(--streak) 16%,var(--panel-solid)); }
+.app-shell .content > .page-title.minimal { display:none; }
+
+/* Top bar: 56px, one priority action, the rest in the sheet. */
+.top-more, .topbar-title { display:none; }
+@media (max-width:820px) {
+  html[data-theme] .app-shell .topbar { position:sticky; top:0; z-index:35; min-height:calc(56px + var(--sat)); height:auto; padding:var(--sat) max(16px,var(--sar)) 0 max(16px,var(--sal)); flex-wrap:nowrap; gap:var(--sp-2); background:var(--canvas); align-items:center; }
+  html[data-theme] .app-shell .topbar::after { content:""; position:absolute; inset:auto 0 -12px; height:12px; pointer-events:none; opacity:0; background:linear-gradient(var(--line),transparent); transition:opacity var(--t-fast) var(--ease-out); }
+  html[data-theme] .app-shell .topbar.is-scrolled::after { opacity:1; }
+  .app-shell .topbar .date-pill, .app-shell .top-secondary { display:none; }
+  .app-shell .top-more { display:inline-grid; }
+  .app-shell .topbar-title { display:block; flex:1; min-width:0; font-size:17px; line-height:24px; font-weight:600; opacity:0; transform:translateY(6px); transition:opacity var(--t-fast) var(--ease-out),transform var(--t-fast) var(--ease-out); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+  .app-shell .topbar.is-scrolled .topbar-title { opacity:1; transform:none; }
+  .app-shell .top-actions { margin-left:auto; flex-wrap:nowrap; gap:var(--sp-1); }
+  .app-shell .top-actions .icon-button, .app-shell .topbar .menu-trigger, .app-shell .top-actions .search-trigger { width:44px; height:44px; }
+  html[data-theme] .app-shell .content { padding:var(--sp-2) max(16px,var(--sar)) calc(104px + var(--sab)) max(16px,var(--sal)); }
+  .ph-chips { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin-inline:-16px; padding-inline:16px; }
+  .ph-chips::-webkit-scrollbar { display:none; }
+  .ph-chips > span { flex:none; }
+  .ph { margin-bottom:var(--sp-4); }
+}
+.more-sheet { display:grid; gap:var(--sp-1); }
+.more-sheet h2 { margin:0 0 var(--sp-2); font-size:17px; }
+.more-sheet button { display:flex; align-items:center; gap:var(--sp-3); min-height:52px; padding:0 var(--sp-3); border:0; border-radius:var(--r-m); background:transparent; color:var(--ink); font-size:15px; font-weight:550; text-align:left; width:100%; }
+.more-sheet button:hover { background:color-mix(in srgb,var(--ink) 6%,transparent); }
+.more-sheet button svg { color:var(--page-ink); flex:none; }
+.more-sheet form { display:contents; }
+
+/* Bottom bar: opaque e2, 24px corners, no blur, accent pill on the active tab. */
+@media (max-width:820px) {
+  html[data-theme] .app-shell .bottom-nav { left:max(12px,var(--sal)); right:max(12px,var(--sar)); bottom:max(12px,var(--sab)); height:68px; padding:0 var(--sp-1); border:1px solid var(--line); border-radius:var(--r-l); background:var(--panel-solid); box-shadow:var(--e2); }
+  html[data-theme] .app-shell .bottom-nav > button { border-radius:var(--r-m); height:52px; }
+  html[data-theme] .app-shell .bottom-nav button small { font-size:12px; font-weight:600; line-height:16px; }
+  html[data-theme] .app-shell .bottom-nav > button.active { background:color-mix(in srgb,var(--page-accent) 14%,transparent); color:var(--page-ink); box-shadow:none; }
+  html[data-theme] .app-shell .bottom-nav .quick-capture-trigger { background:var(--btn-bg); box-shadow:none; border-radius:var(--r-m); width:52px; height:52px; }
+  html[data-theme] .app-shell .bottom-nav .capture-action { background:var(--panel-solid); background-image:none; box-shadow:var(--e2); border:1px solid var(--line); color:var(--ink); }
+  .app-shell .bottom-nav .capture-action svg { filter:none; }
+}
+
+/* Sheets (mobile) and dialogs (desktop). */
+@keyframes scrim-in { from { opacity:0; } }
+@keyframes scrim-out { to { opacity:0; } }
+@keyframes dialog-in { from { opacity:0; transform:scale(.96); } }
+@keyframes dialog-out { to { opacity:0; transform:scale(.96); } }
+@keyframes sheet-up { from { transform:translateY(var(--sheet-from)); opacity:var(--sheet-op,1); } }
+@keyframes sheet-down { to { transform:translateY(var(--sheet-from)); opacity:var(--sheet-op,1); } }
+.sheet-layer { position:fixed; inset:0; z-index:100; display:grid; place-items:center; padding:var(--sp-4); background:transparent; animation:none; overscroll-behavior:contain; }
+.sheet-layer::before { content:""; position:absolute; inset:0; background:var(--scrim); opacity:var(--sheet-p,1); animation:scrim-in var(--t-base) var(--ease-out); }
+.sheet-layer.is-closing::before { animation:scrim-out var(--t-exit) var(--ease-in) forwards; }
+.sheet-layer .modal-card { position:relative; box-shadow:var(--e3); border-radius:var(--r-l); animation:dialog-in var(--t-base) var(--ease-out) backwards; }
+.sheet-layer .modal-card::before { display:none; }
+.sheet-layer.is-closing .modal-card { animation:dialog-out var(--t-exit) var(--ease-in) forwards; pointer-events:none; }
+.sheet-grip { display:none; }
+@media (max-width:820px) {
+  html[data-theme] .sheet-layer.is-sheet { align-items:end; justify-items:center; padding:var(--sat) 0 0; overflow:hidden; touch-action:none; }
+  html[data-theme] .sheet-layer.is-sheet .modal-card:not(.search) { width:min(560px,100%); max-height:calc(100dvh - var(--sat) - 16px); border-radius:var(--r-l) var(--r-l) 0 0; border-bottom:0; padding:0 var(--sp-4) calc(var(--sp-5) + var(--sab)); margin:0; transform:translateY(var(--sheet-y,0px)); animation:sheet-up var(--t-sheet) var(--ease-out) backwards; background:var(--panel-solid); touch-action:pan-y; }
+  html[data-theme] .sheet-layer.is-sheet.is-closing .modal-card:not(.search) { animation:sheet-down var(--t-exit) var(--ease-in) forwards; }
+  .sheet-layer.is-sheet.is-dragging .modal-card { transition:none; animation:none; }
+  .sheet-layer.is-sheet.is-settling .modal-card { transition:transform var(--t-fast) var(--ease-spring); }
+  .sheet-layer.is-sheet .modal-card:not(.search) .sheet-grip { display:flex; position:sticky; top:0; z-index:11; justify-content:center; align-items:center; height:28px; margin:0 calc(var(--sp-4) * -1) 0; background:var(--panel-solid); touch-action:none; cursor:grab; }
+  .sheet-grip i { width:36px; height:4px; border-radius:99px; background:var(--soft); opacity:.6; }
+  .sheet-layer.is-sheet .modal-card .modal-close { margin-top:0; }
+  .sheet-layer.is-sheet .modal-card:not(.search)>.primary-button.full { box-shadow:none; }
+}
+.sheet-layer .modal-card :is(.modal-card-body) { overscroll-behavior-y:contain; }
+@media (min-width:821px) { .sheet-grip { display:none !important; } }
+
+/* Empty states. */
+.empty-state { display:grid; justify-items:center; gap:var(--sp-2); padding:var(--sp-5) var(--sp-4); text-align:center; }
+.empty-state svg { width:160px; max-width:60%; height:auto; color:var(--page-accent); }
+.empty-state h3 { margin:var(--sp-2) 0 0; font-size:17px; line-height:24px; font-weight:600; }
+.empty-state p { margin:0; max-width:36ch; color:var(--muted); font-size:15px; line-height:22px; }
+.empty-state .primary-button, .empty-state .ghost-button { margin-top:var(--sp-2); }
+.empty-state.compact { grid-auto-flow:column; justify-content:start; text-align:left; padding:var(--sp-3) 0; }
+.empty-state.compact svg { width:72px; }
+.empty-state.compact h3 { margin:0; font-size:15px; }
+
+/* Page skeleton: appears only if loading outlasts 120ms. */
+@keyframes skeleton-wait { from { opacity:0; } to { opacity:0; } }
+.boot-skeleton > * { animation:skeleton-wait 120ms linear backwards; }
+.page-skeleton { display:grid; gap:var(--sp-3); animation:skeleton-wait 120ms linear backwards; }
+.page-skeleton > i { display:block; border-radius:var(--r-m); background:var(--line); height:120px; }
+.page-skeleton > i:first-child { height:56px; max-width:420px; }
+@media (prefers-reduced-motion:no-preference) { .page-skeleton > i { animation:boot-pulse 1.4s ease-in-out infinite; } }
+
+/* Celebration pieces. */
+.celebrate-layer svg { position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px; animation:burst .8s var(--ease-out) forwards; }
+.celebrate-banner { border-radius:var(--r-m); box-shadow:var(--e2); background:var(--btn-bg); }
+.celebrate-banner.level { grid-template-columns:auto 1fr; align-items:center; column-gap:var(--sp-3); text-align:left; }
+.celebrate-banner.level img { grid-row:span 2; width:48px; height:48px; }
+:root { --art-fill:#e4dacd; --art-line:#a09284; }
+.wp-slots { display:grid; gap:18px; }
+@media (max-width:820px) {
+  html[data-theme] .app-shell .bottom-nav > button { color:var(--muted); }
+  html[data-theme] .app-shell .bottom-nav > button small { color:inherit; }
+  html[data-theme] .app-shell .bottom-nav > button::before, html[data-theme] .app-shell .bottom-nav > button::after { display:none; }
+  html[data-theme] .app-shell .bottom-nav > button.active { color:var(--page-ink); }
+  .ph-main { flex-wrap:nowrap; align-items:flex-start; }
+  .ph-text { flex:1 1 0; }
+  .ph-action { flex:none; }
+}
+@media (max-width:820px) {
+  .ph-main { flex-wrap:wrap; }
+  .ph-text { flex:1 1 200px; }
+}

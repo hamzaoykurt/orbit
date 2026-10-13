@@ -26,7 +26,13 @@
       "purpose": "any"
     },
     {
-      "src": "/orbit-icon-v6-512.png",
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -43,6 +49,30 @@
     "lifestyle"
   ],
   "shortcuts": [
+    {
+      "name": "Yeni görev",
+      "short_name": "Yeni görev",
+      "url": "/?new=task",
+      "icons": [
+        {
+          "src": "/shortcuts/new-task-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Program",
+      "short_name": "Program",
+      "url": "/?view=weekplan",
+      "icons": [
+        {
+          "src": "/shortcuts/program-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
     {
       "name": "Personal",
       "short_name": "Personal",

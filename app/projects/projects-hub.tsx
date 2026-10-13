@@ -4,6 +4,7 @@ import { ArrowRight, Plus, Search, FolderOpen, ClipboardCopy } from 'lucide-reac
 import type { ProjectWorkspaceData } from './project-types';
 import { lifecycleFromStage, lifecycleLabels } from './planning-types';
 import type { ProjectLifecycle } from './planning-types';
+import { PageHeader } from '../ui/page-header';
 import './project-planning.css';
 import './project-experience.css';
 import './project-workbench.css';
@@ -23,7 +24,7 @@ export function ProjectsHub({ projects, workspaces, hasDraft, onNew, onOpen, onC
   const matchesFilter = (item: Metric, value: string) => value === 'current' ? !['completed', 'archived'].includes(lifecycle(item.project)) : value === 'all' || lifecycle(item.project) === value;
   const visible = projects.filter(item => matchesFilter(item, filter) && `${item.project.title} ${item.project.tags.join(' ')} ${workspaces[item.project.id]?.description || ''}`.toLocaleLowerCase('tr').includes(query.trim().toLocaleLowerCase('tr')));
   return <div className="pp-root px-hub pb-hub">
-    <header className="px-hub-heading"><div><span className="pp-kicker">FİKİRDEN UYGULAMAYA</span><h1>Projeler</h1><p>Bir proje seç, sıradaki işinden devam et.</p></div><button type="button" className="pp-button pp-primary" onClick={onNew}>{hasDraft ? <ArrowRight size={18}/> : <Plus size={18}/>} {hasDraft ? 'Taslağa devam et' : 'Yeni proje'}</button></header>
+    <PageHeader eyebrow="FİKİRDEN UYGULAMAYA" title="Projeler" description="Bir proje seç, sıradaki işinden devam et." chips={<><span>{projects.length} proje</span></>} action={<button type="button" className="pp-button pp-primary" onClick={onNew}>{hasDraft ? <ArrowRight size={18}/> : <Plus size={18}/>} {hasDraft ? 'Taslağa devam et' : 'Yeni proje'}</button>}/>
     <div className="px-hub-controls"><nav className="px-filters" aria-label="Proje görünümü">{[{ id: 'current', label: 'Devam eden' }, { id: 'completed', label: 'Tamamlanan' }, { id: 'all', label: 'Tümü' }].map(item => <button type="button" key={item.id} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}<span>{projects.filter(project => matchesFilter(project, item.id)).length}</span></button>)}</nav><label className="pp-search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Proje ara…" aria-label="Projelerde ara"/>{query && <button type="button" aria-label="Aramayı temizle" onClick={() => setQuery('')}>×</button>}</label></div>
     {groups.map(group => {
       const items = visible.filter(({ project }) => group.states.includes(lifecycle(project)));
