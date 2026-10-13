@@ -124,7 +124,7 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
             <span className="eyebrow">HAFTALIK HEDEFLER · REBUILD</span>
             {goalRows.map(row => <div key={row.id} className={`wp-goal ${row.complete ? 'complete' : ''}`}><span>{row.name}</span><span className="pips" role="img" aria-label={`${row.done}/${row.target}`}>{Array.from({ length: Math.min(row.target, 7) }, (_, i) => <i key={i} className={i < row.done ? 'on' : ''}/>)}</span></div>)}
             <p className="wp-note">Bu hedefler Rebuild ile ortaktır; bağlı bir görevi bitirince otomatik işaretlenir.</p>
-            <div className="wp-mini"><span>Tam gün <b>{daysDone}/7</b></span><span>Bonus <b>{bonusDone}/14</b></span><span>Mola <b>{week.breaks}</b></span></div>
+            <div className="wp-mini"><span>Tam gün <b>{daysDone}/7</b></span><span>Bonus <b>{bonusDone}/14</b></span><span>Mola <b>{Object.keys(week.breaks).length}</b></span></div>
           </section>
           <section className="wp-card surface" aria-label="Mola">
             <span className="eyebrow">MOLA</span>

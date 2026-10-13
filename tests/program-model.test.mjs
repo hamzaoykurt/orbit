@@ -35,7 +35,7 @@ test('normalizeProgram drops hostile or broken data but keeps valid progress', (
   assert.deepEqual(out.weeks[week].done, { '0:s': '2026-10-12T08:00' });
   assert.deepEqual(out.weeks[week].moved, { '1:s': 3 });
   assert.deepEqual(out.weeks[week].days, { 0: 'z' });
-  assert.equal(out.weeks[week].breaks, 0);
+  assert.deepEqual(out.weeks[week].breaks, {});
   assert.equal(out.profile.bankedXp, 0);
   assert.deepEqual(Object.keys(out.profile.badges), ['first']);
   assert.equal(out.profile.bestStreak, 5);
@@ -107,7 +107,7 @@ test('Rebuild bridge adds one deterministic mark per task, never twice, and undo
   const spor = key => deck.weeks[week]?.marks.body?.length ?? 0;
   let r = M.toggleTask(program, deck, week, '0:a1', monday); program = r.program; deck = r.deck;
   assert.equal(spor(), 1);
-  assert.equal(deck.weeks[week].marks.body[0].id, 'prog:0:a1');
+  assert.equal(deck.weeks[week].marks.body[0].id, 'prog:0:am-move');
   r = M.toggleTask(program, deck, week, '0:a1', monday); program = r.program; deck = r.deck;
   assert.equal(spor(), 0);
   // a manual Rebuild mark and the program mark are different ids; the goal target caps the total.
@@ -201,4 +201,49 @@ test('52 weeks of heavy use stay far below the 512 KB state limit, compaction ba
   assert.equal(M.currentStreak(compact, new Date(2026, 9, 11, 12)), streak);
   assert.ok(Buffer.byteLength(JSON.stringify(compact)) < bytes * 0.6);
   assert.deepEqual(M.normalizeProgram(compact), compact);
+});
+
+const S = await import(loadModuleUrl(new URL('../app/state-sync.ts', import.meta.url)));
+
+test('two devices each adding a break keep both after the rebase merge', () => {
+  const { program, deck } = fresh();
+  const base = M.normalizeProgram(program);
+  const a = M.addBreak(base, deck, week, new Date(2026, 9, 12, 10, 0)).program;
+  const b = M.addBreak(base, deck, week, new Date(2026, 9, 12, 10, 1)).program;
+  const merged = M.normalizeProgram(S.rebaseState(base, a, b));
+  assert.equal(Object.keys(merged.weeks[week].breaks).length, 2);
+  assert.equal(M.weekXp(merged.weeks[week]), 2 * M.XP_BREAK);
+});
+
+test('old numeric break counts migrate to stable ids and do not double when two devices migrate', () => {
+  const legacy = { weeks: { [week]: { done: {}, moved: {}, days: {}, breaks: 3 } } };
+  const one = M.normalizeProgram(legacy), two = M.normalizeProgram(legacy);
+  assert.equal(Object.keys(one.weeks[week].breaks).length, 3);
+  assert.deepEqual(one.weeks[week].breaks, two.weeks[week].breaks);
+  assert.equal(Object.keys(M.normalizeProgram(S.rebaseState(undefined, one, two)).weeks[week].breaks).length, 3);
+  assert.deepEqual(M.normalizeProgram(one), one);
+});
+
+test('a multi-step block counts once toward its Rebuild goal and keeps the mark until its last step is undone', () => {
+  let { program, deck } = fresh();
+  const count = () => deck.weeks[week]?.marks.body?.length ?? 0;
+  let r = M.toggleTask(program, deck, week, '0:a1', monday); program = r.program; deck = r.deck;
+  assert.equal(count(), 1);
+  r = M.toggleTask(program, deck, week, '0:a2', monday); program = r.program; deck = r.deck;
+  assert.equal(count(), 1, 'second step adds nothing');
+  r = M.toggleTask(program, deck, week, '0:a1', monday); program = r.program; deck = r.deck;
+  assert.equal(count(), 1, 'one step still done');
+  r = M.toggleTask(program, deck, week, '0:a2', monday); program = r.program; deck = r.deck;
+  assert.equal(count(), 0);
+  r = M.toggleTask(program, deck, week, '2:a1', monday); deck = r.deck;
+  assert.equal(count(), 1, 'another day is another workout');
+});
+
+test('rebaseState keeps list order for numeric-looking ids', () => {
+  const base = [{ id: '1' }, { id: '2' }, { id: '10' }];
+  const local = [{ id: '10' }, { id: '2' }, { id: '1' }];
+  const remote = [...base, { id: '3' }];
+  assert.deepEqual(S.rebaseState(base, local, remote).map(i => i.id), ['10', '2', '1', '3']);
+  assert.deepEqual(S.rebaseState(base, base, remote).map(i => i.id), ['1', '2', '10', '3']);
+  assert.deepEqual(S.rebaseState(base, [{ id: '2' }, { id: '10' }], remote).map(i => i.id), ['2', '10', '3']);
 });

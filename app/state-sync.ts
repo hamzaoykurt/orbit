@@ -42,7 +42,10 @@ export function rebaseState<T>(base: unknown, local: T, remote: unknown): T {
   if (identified(local) && identified(remote) && (identified(base) || base === undefined)) {
     const byId = (items: { id: string }[]) => Object.fromEntries(items.map(item => [item.id, item]));
     const merged = rebaseState(byId(base || []), byId(local), byId(remote));
-    return Object.values(merged) as T;
+    // Object key order would sort numeric-looking ids; keep this device's order, then other-device additions.
+    const mergedById = merged as Record<string, { id: string }>;
+    const order = [...local, ...remote, ...(base || [])].map(item => item.id);
+    return [...new Set(order)].filter(id => Object.hasOwn(mergedById, id)).map(id => mergedById[id]) as T;
   }
   return local;
 }
