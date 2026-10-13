@@ -2052,7 +2052,7 @@ export default function PersonalOS() {
         <div className="today-program-body">
           <div className="today-goals">
             <span className="eyebrow">HAFTALIK HEDEFLER · {goalsDone}/{goalRows.length}</span>
-            {goalRows.length ? goalRows.map(row => <button key={row.id} className={`goal-row ${row.complete ? 'complete' : ''}`} onClick={() => go('rebuild')}><span>{row.name}</span><span className="pips" role="img" aria-label={`${row.done}/${row.target}`}>{Array.from({ length: Math.min(row.target, 7) }, (_, index) => <i key={index} className={index < row.done ? 'on' : ''}/>)}</span></button>) : <p className="empty-line">Rebuild'de haftalık hedeflerini belirle.</p>}
+            {goalRows.length ? goalRows.map(row => <button key={row.id} className={`goal-row ${row.complete ? 'complete' : ''}`} onClick={() => go('rebuild')}><span>{row.name}</span><span className="pips" role="img" aria-label={`${row.done}/${row.target}`}>{Array.from({ length: Math.min(row.target, 7) }, (_, index) => <i key={index} className={index < row.done ? 'on' : ''}/>)}</span></button>) : <p className="empty-line">Rebuild sayfasında haftalık hedeflerini belirle.</p>}
           </div>
           <div className="today-next">
             <span className="eyebrow">SIRADAKİ</span>

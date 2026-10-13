@@ -10,16 +10,10 @@
 .rx-focus h2{margin:8px 0;font-size:26px;line-height:1.25;letter-spacing:-.035em;font-weight:550}
 .rx-focus p,.rx-section-heading p,.rx-area p,.rx-content-card>p{font-size:14px;line-height:1.6;color:var(--muted);margin:6px 0 0}
 .rx-focus .rd-done-action{flex-shrink:0}
-.rx-section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:30px 0 14px}
-.rx-section-heading h2{font-size:19px;font-weight:550;letter-spacing:-.025em;margin:0}
-.rx-area-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.rx-explore-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .rx-area{display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-width:0;border:1px solid var(--line);border-radius:16px;padding:22px;background:var(--panel);color:var(--ink);transition:border-color .2s,background .2s}
 .rx-area:hover{border-color:rgba(var(--accent-rgb),.45);background:var(--panel-solid)}
-.rx-area-status{font-size:12px;line-height:1.5;color:var(--accent);font-weight:550}
 .rx-area h3{font-size:20px;letter-spacing:-.03em;margin:10px 0 0;font-weight:550}
 .rx-area p{margin-bottom:22px;overflow-wrap:anywhere}
-.rx-area-link{display:flex;align-items:center;gap:9px;margin-top:auto;font-size:13px;font-weight:600}
 .rx-home-footer{display:flex;justify-content:center;gap:28px;margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
 .rx-custom-goal{display:flex;align-items:center;gap:15px;border-bottom:1px solid var(--line);padding:16px 0;font-size:14px}
 .rx-custom-goal strong{flex:1}
@@ -42,8 +36,6 @@
 .rx-options[open]>summary{color:var(--ink)}
 .rx-options>summary svg{vertical-align:middle;margin-right:6px}
 .rx-options .rd-idea-filter{margin:8px 0 18px}
-.rx-visual-paths{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.rx-visual-paths>.rd-text-button{grid-column:1/-1;justify-self:start}
 .rx-practice-tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:20px}
 .rx-practice-tabs button{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:10px;padding:11px 18px;font-size:14px;min-height:44px}
 .rx-practice-tabs button[aria-pressed=true]{color:var(--ink);background:var(--panel-solid);border-color:var(--line)}
@@ -118,12 +110,9 @@
   .rx-focus{padding:22px;display:block}
   .rx-focus h2{font-size:23px}
   .rx-focus .rd-done-action{margin-top:20px}
-  .rx-area-grid,.rx-explore-grid{grid-template-columns:1fr 1fr}
   .rx-area{padding:18px}
   .rx-area h3{font-size:18px}
   .rx-area p{font-size:13px;margin-bottom:18px}
-  .rx-section-heading{margin-top:24px;align-items:flex-start}
-  .rx-section-heading>.rd-text-button{font-size:12px}
   .rx-workspace-bar{gap:8px}
   .rx-workspace-bar button{font-size:12px}
   .rx-workspace-heading h1{font-size:26px}
@@ -144,10 +133,9 @@
   .rx-word-top{flex-wrap:wrap;font-size:11px}
   .rx-word h3{margin-top:24px}
   .rx-word-answer .rd-detail-actions{gap:12px}
-  .rx-visual-paths{grid-template-columns:1fr}
   .rd-overlay-idea{padding:12px}
   .rd-dialog-idea{border-radius:18px;max-height:calc(100dvh - 24px);height:auto;min-height:0;padding:24px 20px}
   .rd-dialog-idea .rd-drawn-idea h2{font-size:24px}
   .rd-dialog-idea .rd-drawn-idea .rd-idea-description{font-size:16px}
 }
-@media(max-width:430px){.rx-area-grid,.rx-explore-grid{grid-template-columns:1fr}.rx-area{padding:18px 20px}.rx-area p{margin-bottom:12px}.rx-home-footer{gap:18px}.rx-home-footer button{font-size:12px}}
+@media(max-width:430px){.rx-area{padding:18px 20px}.rx-area p{margin-bottom:12px}.rx-home-footer{gap:18px}.rx-home-footer button{font-size:12px}}

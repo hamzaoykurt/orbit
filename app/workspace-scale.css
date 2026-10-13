@@ -43,53 +43,20 @@
 
 /* Rebuild: real reading sizes instead of miniature labels inside each zone. */
 .page-rebuild :is(.rebuild-v2-body, .rebuild-v2-studio, .rebuild-v2-outside, .rebuild-v2-future, .rebuild-v2-evidence, .rebuild-v2-focus) { padding: var(--workspace-panel); min-width: 0; }
-.page-rebuild .rebuild-v2-world { gap: var(--workspace-gap); }
-.page-rebuild .rebuild-v2-week { grid-template-columns: 1fr; justify-items: center; gap: 14px; }
 .page-rebuild :is(.rebuild-v2-body h2, .rebuild-v2-studio h2, .rebuild-v2-outside h2, .rebuild-v2-future h2, .rebuild-v2-evidence h2, .rebuild-history-head h2, .roadmap-top h2) { font-size: var(--workspace-heading); line-height: 1.35; }
 .page-rebuild :is(.rebuild-v2-focus h2, .research-vault>header h2, .rebuild-review-card h2, .rebuild-proof-card h3) { font-size: var(--workspace-feature); line-height: 1.25; }
 .page-rebuild :is(.rebuild-v2-title p, .rebuild-v2-focus p, .rebuild-v2-studio-card p, .rebuild-v2-outside-route p, .rebuild-v2-bet p, .rebuild-v2-empty-evidence p, .research-vault>header p, .research-lane article p, .research-lane-empty p, .rebuild-review-card>p, .rebuild-proof-card>p, .review-summary p, .month-focus p) { font-size: var(--workspace-text); line-height: 1.65; }
 .page-rebuild :is(.rebuild-v2-phase small, .rebuild-v2-phase em, .rebuild-v2-week-ring small, .rebuild-v2-days i, .rebuild-v2-signal small, .rebuild-v2-workouts small, .rebuild-v2-studio-card>span, .rebuild-v2-voice small, .rebuild-v2-voice em, .rebuild-v2-social-pulse small, .rebuild-v2-social-pulse em, .rebuild-v2-bet small, .rebuild-v2-outside-route>span, .rebuild-v2-evidence article small, .rebuild-v2-evidence article em, .research-kind, .research-vault-count span, .research-vault-flow>span, .research-vault-flow>span i, .research-lane>header span, .research-lane>header b, .rebuild-week-strip span, .rebuild-week-strip small, .review-summary small, .review-summary>span, .rebuild-proof-card small, .roadmap-continuity, .roadmap-track small, .month-focus small, .roadmap-score span) { font-size: var(--workspace-caption); line-height: 1.5; }
 .page-rebuild :is(.rebuild-v2-workouts strong, .rebuild-v2-voice strong, .rebuild-v2-social-pulse strong, .rebuild-v2-bet strong, .rebuild-v2-evidence article strong, .rebuild-proof-card strong) { font-size: var(--workspace-text); line-height: 1.4; }
 .page-rebuild :is(.rebuild-v2-focus button, .rebuild-v2-signal button, .rebuild-v2-recovery>button, .rebuild-v2-studio>nav button, .rebuild-v2-studio-card button, .rebuild-v2-shuffle, .rebuild-v2-outside-route button, .research-card-action) { font-size: var(--workspace-text); min-height: var(--workspace-control); line-height: 1.4; }
-.page-rebuild .rebuild-v2-body>footer { flex-wrap: wrap; gap: 8px; font-size: var(--workspace-caption); }
-.page-rebuild .rebuild-v2-body>footer button { min-height: 36px; font-size: var(--workspace-description); }
-.page-rebuild .rebuild-v2-workouts { grid-template-columns: repeat(auto-fit,minmax(min(100%,160px),1fr)); gap: 9px; }
-.page-rebuild .rebuild-v2-workouts button { min-width: 0; min-height: 86px; padding: 14px; }
-.page-rebuild .rebuild-v2-workouts button>div { min-width: 0; overflow-wrap: anywhere; }
-.page-rebuild .rebuild-v2-workouts button>span { font-size: var(--workspace-description); }
-.page-rebuild .rebuild-v2-recovery { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
-.page-rebuild .rebuild-v2-recovery>div { grid-column: 1/-1; }
-.page-rebuild .rebuild-v2-studio>nav { flex-wrap: wrap; gap: 6px; }
-.page-rebuild .rebuild-v2-studio>nav button { padding: 9px 10px; }
-.page-rebuild .rebuild-v2-studio-card { min-height: 260px; gap: 12px; padding: 20px; }
-.page-rebuild .rebuild-v2-studio-card h3 { font-size: var(--workspace-heading); line-height: 1.4; margin: 0; }
-.page-rebuild .rebuild-v2-studio-card>div { gap: 7px; }
-.page-rebuild .rebuild-v2-studio-card button { padding: 9px 11px; }
-.page-rebuild .rebuild-v2-outside-route h3 { font-size: var(--workspace-heading); line-height: 1.4; }
 .page-rebuild :is(.rebuild-v2-voice, .rebuild-v2-social-pulse) { grid-template-columns: 40px minmax(0,1fr) 38px; gap: 11px; padding: 13px; }
 .page-rebuild :is(.rebuild-v2-voice, .rebuild-v2-social-pulse)>button { width: 38px; height: 38px; }
-.page-rebuild .rebuild-v2-bet { grid-template-columns: 44px minmax(0,1fr) 38px; padding: 17px; }
-.page-rebuild .rebuild-v2-bet>button { width: 38px; height: 38px; }
-.page-rebuild .rebuild-v2-evidence>header>span { font-size: var(--workspace-description); }
-.page-rebuild .rebuild-v2-evidence>div { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); gap: 10px; }
-.page-rebuild .rebuild-v2-evidence article { min-width: 0; padding: 12px; }
 .page-rebuild .research-vault>header { gap: 18px; }
 .page-rebuild .research-vault>header>div:first-child { min-width: 0; }
-.page-rebuild .research-vault-count { flex: none; }
-.page-rebuild .research-vault-flow { gap: 12px; margin-block: 22px 14px; }
-.page-rebuild .research-vault-lanes { gap: 12px; }
 .page-rebuild .research-lane { min-width: 0; padding: 14px; }
 .page-rebuild .research-lane article { padding: 16px; }
 .page-rebuild .research-lane article h3 { font-size: var(--workspace-heading); line-height: 1.4; overflow-wrap: anywhere; }
 .page-rebuild .research-lane article>div:first-child>button { width: 32px; height: 32px; }
-.page-rebuild .research-card-action { padding: 10px; }
-.page-rebuild .rebuild-history-head { align-items: start; gap: 20px; }
-.page-rebuild .rebuild-history-head>span { font-size: var(--workspace-caption); line-height: 1.5; }
-.page-rebuild .rebuild-week-strip { gap: 10px; }
-.page-rebuild .rebuild-week-strip article { padding: 14px; }
-.page-rebuild .rebuild-week-strip strong { font-size: var(--workspace-feature); }
-.page-rebuild .roadmap-track strong { font-size: var(--workspace-text); }
-.page-rebuild .month-focus strong { font-size: var(--workspace-heading); line-height: 1.4; }
 .page-rebuild .review-summary { grid-template-columns: 1fr; gap: 9px; }
 .page-rebuild .review-summary>div { padding: 13px; }
 
@@ -137,7 +104,6 @@
   .page-projects :is(.project-thesis small,.project-summary small,.project-meta small,.tag-row em) { font-size: var(--workspace-caption); }
   .page-projects .project-thesis { padding: 15px; gap: 12px; }
   .page-projects .inline-search input { font-size: var(--workspace-description); }
-  .page-projects .project-task-row { min-height: var(--workspace-row); }
   .page-kibleteyn :is(.department-task-row strong,.team-overview strong) { font-size: var(--workspace-text); }
   .page-kibleteyn :is(.department-task-row small,.department-tabs small,.operation-stats small) { font-size: var(--workspace-caption); }
   .page-programs .category-grid summary strong { font-size: var(--workspace-text); }
@@ -157,14 +123,8 @@
 html[data-density=compact] { --workspace-panel: 18px; --workspace-gap: 12px; --workspace-row: 44px; }
 
 @media(min-width:681px) and (max-width:1200px) {
-  .page-rebuild .rebuild-v2-now { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
-  .page-rebuild .rebuild-v2-week { grid-template-columns: 1fr; justify-items: center; }
-  .page-rebuild .rebuild-v2-signal { grid-column: 1/-1; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)) auto; gap: 12px; }
-  .page-rebuild .rebuild-v2-signal button { margin: 0; }
   .page-rebuild :is(.rebuild-v2-body,.rebuild-v2-studio,.rebuild-v2-outside,.rebuild-v2-future) { grid-column: 1/-1; }
-  .page-rebuild .research-vault-lanes { grid-template-columns: 1fr; }
   .page-rebuild .research-lane>div { grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); }
-  .page-rebuild .research-lane-empty { min-height: 100px; }
 }
 @media(min-width:821px) and (max-width:1200px) {
   .page-home .dashboard-grid { grid-template-columns: minmax(0,1fr); }
@@ -179,17 +139,8 @@ html[data-density=compact] { --workspace-panel: 18px; --workspace-gap: 12px; --w
   .page-settings .setting-row .theme-options { grid-column: 1/-1; flex-wrap: wrap; }
 }
 @media(max-width:680px) {
-  .page-rebuild .rebuild-v2-title { display: block; }
-  .page-rebuild .rebuild-v2-week { grid-template-columns: 76px minmax(0,1fr); }
-  .page-rebuild .rebuild-v2-recovery>button { width: 100%; }
-  .page-rebuild .rebuild-v2-workouts button { min-width: 230px; }
-  .page-rebuild .rebuild-v2-evidence article { min-width: 230px; }
   .page-rebuild .research-lane { min-width: min(300px,78vw); }
   .page-rebuild .research-vault>header { flex-wrap: wrap; }
-  .page-rebuild .research-vault-count { text-align: left; }
-  .page-rebuild .rebuild-history-head { flex-direction: column; gap: 8px; }
-  .page-rebuild .rebuild-week-strip { display: flex; overflow-x: auto; }
-  .page-rebuild .rebuild-week-strip article { min-width: 140px; }
 }
 @media(max-width:560px) {
   :root { --workspace-text: 12px; --workspace-description: 11px; --workspace-panel: 20px; --workspace-gap: 12px; --workspace-feature: 21px; }
