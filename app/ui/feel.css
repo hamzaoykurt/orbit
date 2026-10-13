@@ -191,3 +191,11 @@ html[data-theme] .sheet-layer .modal-card { box-shadow:var(--e3); }
   :is(.add-program-task,.inline-add,.text-button,.today-button,.settings-edit-button,.google-calendar-button,.hub-filter-trigger,.personal-subtask-add,summary) { min-height:44px; }
   :is(.add-program-task,.inline-add,.text-button,.today-button,.settings-edit-button,.google-calendar-button,.hub-filter-trigger,.personal-subtask-add) { display:inline-flex; align-items:center; }
 }
+
+/* AA contrast helpers: text that used the raw accent or the faintest grey. */
+:root { --soft:#6a5f54; --accent-text:color-mix(in srgb,var(--accent) 68%,#000); }
+html[data-theme=dark] { --soft:#9aa2ad; --accent-text:color-mix(in srgb,var(--accent) 62%,#fff); }
+:is(.text-button,.today-button,.personal-subtask-add,.add-department-task,.count-pill,.settings-nav button.active,.segmented-control button.active,.kibleteyn-nav nav button.active,.px-filters button[aria-pressed=true],.archive-tabs button.active,.pb-project-number,.px-status) { color:var(--accent-text); }
+:is(.settings-nav button,.segmented-control button,.px-filters button,.kibleteyn-nav nav button) { color:var(--muted); }
+:is(.settings-nav button.active,.segmented-control button.active,.kibleteyn-nav nav button.active,.px-filters button[aria-pressed=true]) { color:var(--accent-text); }
+:is(.calendar-weekdays span,.personal-item-meta small,.task-item-copy>small,.section-lead p) { color:var(--muted); }
