@@ -91,3 +91,5 @@ html[data-theme=dark] .chip-streak { color:#ffc489; }
 .empty-with-art { display:flex; align-items:center; gap:12px; }
 .empty-art { flex:none; }
 @media (max-width:820px) { .today-program-body { grid-template-columns:1fr; gap:18px; } }
+.next-row.is-done strong { color:var(--muted); text-decoration:line-through; text-decoration-thickness:1px; }
+.next-row .check-circle { flex:none; }

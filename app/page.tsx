@@ -31,8 +31,10 @@ import type { ActivityEntry } from './rebuild/activity-model';
 import { emptyJourney, normalizeJourney } from './rebuild/journey-model';
 import type { Journey } from './rebuild/journey-model';
 import { emptyDeck, normalizeDeck, weekView } from './rebuild/weekly-deck-model';
-import { activeStreak, greeting, weekGoalRows, weekXp, XP_PER_STEP } from './home-today';
+import { greeting, weekGoalRows, XP_PER_STEP } from './home-today';
 import { celebrateAt, celebrateBanner } from './ui/celebrate';
+import { currentStreak as programStreak, dayStats as programDayStats, dayTasks as programDayTasks, dayIndexOf, emptyProgram, normalizeProgram, totalXp as programXp, weekKeyOf } from './program/program-model';
+import type { Program as WeekProgram } from './program/program-model';
 import type { WeeklyDeck } from './rebuild/weekly-deck-model';
 import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
 import type { Practice } from './rebuild/practice-model';
@@ -45,12 +47,13 @@ import {
   Circle, Clock3, Command, Compass, Download, Dumbbell, Eye, Globe2,
   ExternalLink, Flag, Home as HomeIcon, Languages, LayoutGrid, Link2, ListTodo, Map, MapPin,
   LogOut, Menu, Mic, Monitor, Moon, MoreHorizontal, NotebookPen, PanelsTopLeft, Palette,
-  Pencil, Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
+  CalendarCheck, Pencil, Plane, Play, Plus, Rocket, RotateCcw, Route, Search, Settings, ShoppingBag,
   Smartphone, Sparkles, Square, StickyNote, Sun, Trash2, Undo2, UserRound, Users,
   Volume1, Volume2, X, Zap, GripVertical, RefreshCw, ClipboardCopy, FileInput,
 } from 'lucide-react';
 
 const NotesWorkspace = lazy(() => import('./notes/notes-workspace').then(module => ({ default: module.NotesWorkspace })));
+const WeekPlan = lazy(() => import('./program/program-workspace').then(module => ({ default: module.WeekPlan })));
 const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(module => ({ default: module.ProjectWorkspace })));
 const ProjectsHub = lazy(() => import('./projects/projects-hub').then(module => ({ default: module.ProjectsHub })));
 const ProjectCreator = lazy(() => import('./projects/project-creator').then(module => ({ default: module.ProjectCreator })));
@@ -127,6 +130,7 @@ type PersistedState = {
   customRebuildTasks: Record<string, string[]>;
   rebuildJourney: Journey;
   rebuildDeck: WeeklyDeck;
+  program: WeekProgram;
   rebuildPractice: Practice;
   rebuildActivities: RebuildActivity[];
   rebuildReviews: Record<string, RebuildReview>;
@@ -148,6 +152,7 @@ type PersistedState = {
 };
 const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: HomeIcon },
+  { id: 'weekplan', label: 'Program', icon: CalendarCheck },
   { id: 'personal', label: 'Personal', icon: UserRound },
   { id: 'rebuild', label: '6 Aylık Rebuild', icon: Route },
   { id: 'projects', label: 'Projeler', icon: PanelsTopLeft },
@@ -192,6 +197,7 @@ const defaultState: PersistedState = {
   customRebuildTasks: {},
   rebuildJourney: emptyJourney(),
   rebuildDeck: emptyDeck(),
+  program: emptyProgram(),
   rebuildPractice: emptyPractice(),
   rebuildActivities: [],
   rebuildReviews: {},
@@ -211,7 +217,7 @@ const defaultState: PersistedState = {
     { id: 'n3', title: 'Eylül turu', body: 'Seminer içeriğinde ilk 15 dakikayı daha görsel ve daha kısa tut. Transfer detaylarını tekrar kontrol et.', date: '21 Ağu · 16:05', tone: 'sand' },
   ]),
   hubLinks: [],
-  mobileNav: ['personal', 'projects', 'kibleteyn', 'calendar'],
+  mobileNav: ['personal', 'weekplan', 'projects', 'calendar'],
   profile: { name: 'Emir Güney', workspace: 'Kişisel çalışma alanı' },
   settings: { notifications: true, motion: true, sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4, autoArchive: true, accent: 'violet', theme: 'system', density: 'comfortable', showCompleted: true },
 };
@@ -222,7 +228,10 @@ function mergePersistedState(value: unknown): PersistedState {
   const savedSettings: Partial<PersistedState['settings']> = saved.settings ?? {};
   const needsFeedbackMigration = savedSettings.feedbackVersion !== 4;
   const savedMobileNav = Array.isArray(saved.mobileNav) && saved.mobileNav.length === 4 && saved.mobileNav.every((page): page is PageKey => typeof page === 'string' && nav.some((item) => item.id === page)) && new Set(saved.mobileNav).size === 4 ? saved.mobileNav : defaultState.mobileNav;
-  const migratedMobileNav = savedMobileNav.includes('home') ? defaultState.mobileNav : savedMobileNav;
+  const baseMobileNav = savedMobileNav.includes('home') ? defaultState.mobileNav : savedMobileNav;
+  // First load after Program shipped: give it one slot in the bottom bar (the user can change it in Settings).
+  const migratedMobileNav = saved.program || baseMobileNav.includes('weekplan') ? baseMobileNav
+    : baseMobileNav.map((page, index, all) => page === 'kibleteyn' || (!all.includes('kibleteyn') && index === all.length - 1) ? 'weekplan' as PageKey : page);
 
   return {
     completed: { ...defaultState.completed, ...(saved.completed ?? {}) },
@@ -255,6 +264,7 @@ function mergePersistedState(value: unknown): PersistedState {
     customRebuildTasks: saved.customRebuildTasks && typeof saved.customRebuildTasks === 'object' && !Array.isArray(saved.customRebuildTasks) ? saved.customRebuildTasks : defaultState.customRebuildTasks,
     rebuildJourney: normalizeJourney(saved.rebuildJourney),
     rebuildDeck: normalizeDeck(saved.rebuildDeck),
+    program: normalizeProgram(saved.program),
     rebuildPractice: normalizePractice(saved.rebuildPractice),
     rebuildActivities: Array.isArray(saved.rebuildActivities) ? saved.rebuildActivities : defaultState.rebuildActivities,
     rebuildReviews: saved.rebuildReviews && typeof saved.rebuildReviews === 'object' && !Array.isArray(saved.rebuildReviews) ? saved.rebuildReviews : defaultState.rebuildReviews,
@@ -2040,14 +2050,17 @@ export default function PersonalOS() {
     const weekKey = weekStartKey();
     const goalRows = weekGoalRows(weekView(state.rebuildDeck, weekKey));
     const goalsDone = goalRows.filter(row => row.complete).length;
-    const streak = activeStreak(state.rebuildDeck, now);
-    const openImportant = personalItemsFor('todo').filter(item => !state.completed[item.id]).sort((a, b) => Number(b.details.priority === 'important') - Number(a.details.priority === 'important')).slice(0, 3);
-    return (
+    const programWeek = weekKeyOf(now);
+    const programToday = programDayTasks(state.program, programWeek, dayIndexOf(now));
+    const programStats = programDayStats(state.program, programWeek, dayIndexOf(now));
+    const programOpen = [...programToday.filter(task => !task.done), ...programToday.filter(task => task.done)].slice(0, 4);
+    const streak = programStreak(state.program, now);
+        return (
     <>
       <section className="today-program surface" aria-labelledby="today-program-title">
         <div className="today-program-head">
-          <div><span className="eyebrow">{displayDate.toLocaleUpperCase('tr-TR')}</span><h2 id="today-program-title">{greeting(now, state.profile.name)}</h2><p>{goalRows.length && goalsDone === goalRows.length ? 'Bu haftanın hedeflerini bitirdin. Harikasın!' : todayEvents.length ? `Bugün ${todayEvents.length} planın var. Küçük bir adımla başla.` : 'Bugün sana kalmış. Küçük bir adım seç, gerisi gelir.'}</p></div>
-          <div className="today-chips" aria-label="Haftalık özet"><span className="chip-streak"><Zap size={14}/> {streak} gün seri</span><span className="chip-xp"><Sparkles size={14}/> {weekXp(goalRows)} XP</span></div>
+          <div><span className="eyebrow">{displayDate.toLocaleUpperCase('tr-TR')}</span><h2 id="today-program-title">{greeting(now, state.profile.name)}</h2><p>{goalRows.length && goalsDone === goalRows.length ? 'Bu haftanın hedeflerini bitirdin. Harikasın!' : programStats.total ? `Bugünün programında ${programStats.total - programStats.done} görev var. Küçük bir adımla başla.` : todayEvents.length ? `Bugün ${todayEvents.length} planın var. Küçük bir adımla başla.` : 'Bugün sana kalmış. Küçük bir adım seç, gerisi gelir.'}</p></div>
+          <div className="today-chips" aria-label="Haftalık özet"><span className="chip-streak"><Zap size={14}/> {streak} gün seri</span><span className="chip-xp"><Sparkles size={14}/> {programXp(state.program)} XP</span></div>
         </div>
         <div className="today-program-body">
           <div className="today-goals">
@@ -2055,9 +2068,9 @@ export default function PersonalOS() {
             {goalRows.length ? goalRows.map(row => <button key={row.id} className={`goal-row ${row.complete ? 'complete' : ''}`} onClick={() => go('rebuild')}><span>{row.name}</span><span className="pips" role="img" aria-label={`${row.done}/${row.target}`}>{Array.from({ length: Math.min(row.target, 7) }, (_, index) => <i key={index} className={index < row.done ? 'on' : ''}/>)}</span></button>) : <p className="empty-line">Rebuild sayfasında haftalık hedeflerini belirle.</p>}
           </div>
           <div className="today-next">
-            <span className="eyebrow">SIRADAKİ</span>
-            {openImportant.length ? openImportant.map(item => <button key={item.id} className="next-row" onClick={() => go('personal')}><span className="check-circle"/><strong>{item.title}</strong></button>) : <div className="empty-line empty-with-art"><EmptyArt/><span>Açık görev kalmadı. Yeni bir şey ekle ya da dinlen.</span></div>}
-            <button className="text-button" onClick={() => setModal('quick')}><Plus size={13}/> Hızlı görev ekle</button>
+            <span className="eyebrow">BUGÜNÜN PROGRAMI{programStats.total ? ` · ${programStats.done}/${programStats.total}` : ''}</span>
+            {programOpen.length ? programOpen.map(task => <button key={task.key} className={`next-row ${task.done ? 'is-done' : ''}`} onClick={() => go('weekplan')}><span className="check-circle">{task.done && <Check size={13}/>}</span><strong>{task.t ? `${task.t} · ` : ''}{task.text}</strong></button>) : <div className="empty-line empty-with-art"><EmptyArt/><span>Bugün için program yok. İstersen bir blok ata ya da dinlen.</span></div>}
+            <button className="text-button" onClick={() => go('weekplan')}><ArrowRight size={13}/> Programı aç</button>
           </div>
         </div>
       </section>
@@ -2095,6 +2108,14 @@ export default function PersonalOS() {
     </>
     );
   };
+
+  const renderWeekPlan = () => (
+    <Suspense fallback={<p role="status">Program açılıyor…</p>}>
+      <WeekPlan program={state.program} deck={state.rebuildDeck} now={now} motion={state.settings.motion}
+        onChange={(program, deck) => setState(current => ({ ...current, program, rebuildDeck: deck ?? current.rebuildDeck }))}
+        onFeedback={tone => playFeedback(tone, true)}/>
+    </Suspense>
+  );
 
   const renderPersonal = () => {
     const current = personalLists[personalTab];
@@ -2362,7 +2383,7 @@ export default function PersonalOS() {
     switch (active) {
       case 'personal': return renderPersonal(); case 'rebuild': return renderRebuild(); case 'projects': return renderProjects();
       case 'hub': return renderHub(); case 'kibleteyn': return renderKibleteyn(); case 'programs': return renderPrograms(); case 'calendar': return renderCalendar();
-      case 'notes': return renderNotes(); case 'archive': return renderArchive(); case 'settings': return renderSettings(); default: return renderHome();
+      case 'weekplan': return renderWeekPlan(); case 'notes': return renderNotes(); case 'archive': return renderArchive(); case 'settings': return renderSettings(); default: return renderHome();
     }
   };
 
