@@ -40,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(origin),
     title,
     description,
-    manifest: '/manifest.webmanifest?v=7',
+    manifest: '/manifest.webmanifest?v=8',
     icons: {
       icon: [{ url: '/orbit-favicon-v6.png', sizes: '64x64', type: 'image/png' }, { url: '/orbit-icon-v6-192.png', sizes: '192x192', type: 'image/png' }],
       shortcut: '/orbit-favicon-v6.png',
@@ -59,7 +59,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest?v=7"/><meta name="theme-color" content="#151a1f"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest?v=8"/><meta name="theme-color" content="#151a1f"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
         className={`${geistSans.variable} antialiased`}
       >

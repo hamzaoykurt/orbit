@@ -8,10 +8,11 @@ import { OrbitMark } from './orbit-mark';
 import { readStartupState } from './startup';
 import { useNavigation, useNavigationState } from './use-navigation';
 import type { PageKey } from './navigation';
-import { STATE_KEY, readPending, journalState, acknowledgeState, rebaseState } from './state-sync';
+import { journalState, acknowledgeState, rebaseState } from './state-sync';
+import { readBootSnapshot, reconcileServer } from './boot-state';
+import { createCoalescedWriter } from './coalesced-writer';
 import { buildProjectTasks, emptyTask, emptyWorkspace, normalizeWorkspace, removeProjectTaskState, visibleProjectTaskEntries } from './projects/project-types';
 import type { ProjectPhoto, ProjectTaskDetails, ProjectWorkspaceData } from './projects/project-types';
-import { NotesWorkspace } from './notes/notes-workspace';
 import { newNote, normalizeNotes } from './notes/note-model';
 import type { Note } from './notes/note-model';
 import { newCreationDraft, normalizeCreationDraft, normalizePlanning, lifecycleFromStage, stageFromLifecycle, lifecycleLabels } from './projects/planning-types';
@@ -47,6 +48,7 @@ import {
   Volume1, Volume2, X, Zap, GripVertical, RefreshCw, ClipboardCopy, FileInput,
 } from 'lucide-react';
 
+const NotesWorkspace = lazy(() => import('./notes/notes-workspace').then(module => ({ default: module.NotesWorkspace })));
 const ProjectWorkspace = lazy(() => import('./projects/project-workspace').then(module => ({ default: module.ProjectWorkspace })));
 const ProjectsHub = lazy(() => import('./projects/projects-hub').then(module => ({ default: module.ProjectsHub })));
 const ProjectCreator = lazy(() => import('./projects/project-creator').then(module => ({ default: module.ProjectCreator })));
@@ -407,6 +409,7 @@ export default function PersonalOS() {
   const pageContentRef = useRef<HTMLElement>(null);
   const [state, setState] = useState<PersistedState>(defaultState);
   const [hydrated, setHydrated] = useState(false);
+  const [syncReady, setSyncReady] = useState(false);
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
   const lastSyncedState = useRef('');
   const serverRevision = useRef<number | null>(null);
@@ -507,37 +510,39 @@ export default function PersonalOS() {
     let cancelled = false;
 
     async function hydrate() {
-      let resolvedState = defaultState;
       // If a first visit starts offline, defaults are a baseline, not user edits.
       lastSyncedState.current = JSON.stringify(defaultState);
+      let boot: { merged: PersistedState; raw: unknown; base: string } | null = null;
 
-      try {
-        const pending = readPending(localStorage);
-        const saved = pending?.state || localStorage.getItem(STATE_KEY);
-        if (pending) lastSyncedState.current = pending.base;
-        if (saved) {
-          resolvedState = mergePersistedState(JSON.parse(saved));
-          if (!pending) lastSyncedState.current = JSON.stringify(resolvedState);
-        }
-        localStorage.removeItem('orbit-active-page');
-      } catch { /* corrupted local data falls back safely */ }
+      const snapshot = readBootSnapshot(localStorage);
+      if (snapshot) {
+        const merged = mergePersistedState(snapshot.state);
+        const base = snapshot.pending ? snapshot.base : JSON.stringify(merged);
+        lastSyncedState.current = base;
+        boot = { merged, raw: snapshot.pending ? snapshot.state : merged, base };
+        // The device copy paints at once; the server answer is merged in below.
+        if (!cancelled) { setState(merged); setHydrated(true); }
+      }
+      try { localStorage.removeItem('orbit-active-page'); } catch { /* storage unavailable */ }
 
       try {
         const payload = await readStartupState();
         if (payload && Number.isSafeInteger(payload.revision)) {
           const serverState = mergePersistedState(payload.state || defaultState);
-          let pending = null;
-          try { pending = readPending(localStorage); } catch { /* Device storage unavailable. */ }
-          resolvedState = pending ? mergePersistedState(rebaseState(pending.base ? JSON.parse(pending.base) : undefined, JSON.parse(pending.state), serverState)) : serverState;
-          lastSyncedState.current = JSON.stringify(serverState);
+          const serverJson = JSON.stringify(serverState);
+          if (cancelled) return;
+          adoptingServer.current = true;
+          if (boot) {
+            const { merged, raw, base } = boot;
+            // Unedited device copy: replay exactly like a reload. Edited: keep the live edits.
+            setState(current => mergePersistedState(reconcileServer(base, current === merged ? raw : current, serverState)));
+          } else setState(serverState);
+          lastSyncedState.current = serverJson;
           serverRevision.current = payload.revision!;
         }
       } catch { /* D1 unavailable: local state remains active */ }
 
-      if (!cancelled) {
-        setState(resolvedState);
-        setHydrated(true);
-      }
+      if (!cancelled) { setHydrated(true); setSyncReady(true); }
     }
 
     void hydrate();
@@ -588,21 +593,53 @@ export default function PersonalOS() {
     return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('focus', focus); };
   }, [active, hydrated]);
 
+  // Serializing the whole workspace is the costly part of every edit. Bursts
+  // (typing) coalesce into one serialize + journal write; pagehide flushes it.
+  const latestState = useRef(state);
+  // True between adopting a server baseline and the render that follows it; a journal write in that gap would pair the old state with the new baseline.
+  const adoptingServer = useRef(false);
+  const [journalWriter] = useState(() => createCoalescedWriter<string>({
+      delay: 300, maxWait: 1200,
+      run: () => {
+        const serialized = JSON.stringify(latestState.current);
+        if (adoptingServer.current) return serialized;
+        try { journalState(localStorage, serialized, lastSyncedState.current); } catch { /* Server persistence still runs if browser storage is full. */ }
+        return serialized;
+      },
+    }));
   useEffect(() => {
     if (!hydrated) return;
-    const serializedState = JSON.stringify(state);
-    try { journalState(localStorage, serializedState, lastSyncedState.current); } catch { /* Server persistence still runs if browser storage is full. */ }
+    const flush = () => { journalWriter.flush(); };
+    const hidden = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', hidden); flush(); };
+  }, [hydrated, journalWriter]);
+  useEffect(() => {
+    if (!hydrated) return;
     document.documentElement.dataset.accent = state.settings.accent;
     document.documentElement.dataset.density = state.settings.density;
     document.documentElement.classList.toggle('reduce-motion', !state.settings.motion);
+  }, [hydrated, state.settings.accent, state.settings.density, state.settings.motion]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    latestState.current = state;
+    adoptingServer.current = false;
+    const writer = journalWriter;
+    writer.schedule();
+    // The server copy is still on its way: the journal protects edits meanwhile.
+    if (!syncReady) return;
 
     const version = ++syncVersion.current;
-    if (serverRevision.current !== null && serializedState === lastSyncedState.current && pendingSaves.current === 0) {
-      try { acknowledgeState(localStorage, serializedState); } catch { /* Retry on next save. */ }
-      setSyncStatus('saved'); return;
-    }
     setSyncStatus('saving');
     const saveTimer = window.setTimeout(() => {
+      const serializedState = writer.flush();
+      if (serverRevision.current !== null && serializedState === lastSyncedState.current && pendingSaves.current === 0) {
+        try { acknowledgeState(localStorage, serializedState); } catch { /* Retry on next save. */ }
+        if (version === syncVersion.current) setSyncStatus('saved');
+        return;
+      }
       pendingSaves.current += 1;
       syncQueue.current = syncQueue.current.then(async () => {
         try {
@@ -614,20 +651,20 @@ export default function PersonalOS() {
             if (!Number.isSafeInteger(payload.revision)) throw new Error('Invalid revision');
             const remote = mergePersistedState(payload.state || defaultState);
             const base = lastSyncedState.current ? JSON.parse(lastSyncedState.current) : undefined;
-            lastSyncedState.current = JSON.stringify(remote); serverRevision.current = payload.revision;
+            adoptingServer.current = true; lastSyncedState.current = JSON.stringify(remote); serverRevision.current = payload.revision;
             setState(current => mergePersistedState(rebaseState(base, current, remote)));
             setSyncRetry(value => value + 1); return;
           }
           const response = await fetch('/api/state', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state, revision: serverRevision.current }), signal: AbortSignal.timeout(20000),
+            body: `{"state":${serializedState},"revision":${serverRevision.current}}`, signal: AbortSignal.timeout(20000),
           });
           if (response.status === 409) {
             const payload = await response.json() as { state: unknown; revision: number };
             if (!Number.isSafeInteger(payload.revision)) throw new Error('Invalid revision');
             const remote = mergePersistedState(payload.state || defaultState);
             const base = JSON.parse(lastSyncedState.current);
-            lastSyncedState.current = JSON.stringify(remote); serverRevision.current = payload.revision;
+            adoptingServer.current = true; lastSyncedState.current = JSON.stringify(remote); serverRevision.current = payload.revision;
             setState(current => mergePersistedState(rebaseState(base, current, remote)));
             setSyncRetry(value => value + 1); return;
           }
@@ -644,7 +681,35 @@ export default function PersonalOS() {
     }, 650);
 
     return () => window.clearTimeout(saveTimer);
-  }, [state, hydrated, syncRetry]);
+  }, [state, hydrated, syncReady, syncRetry, journalWriter]);
+
+  // A second device may have saved while this one sat in the background.
+  useEffect(() => {
+    if (!hydrated || !syncReady) return;
+    let lastCheck = Date.now();
+    let busy = false;
+    const check = async () => {
+      if (document.visibilityState !== 'visible' || busy || serverRevision.current === null || pendingSaves.current > 0 || Date.now() - lastCheck < 15000) return;
+      busy = true; lastCheck = Date.now();
+      const knownRevision = serverRevision.current;
+      try {
+        const response = await fetch(`/api/state?rev=${knownRevision}`, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+        if (!response.ok) return;
+        const payload = await response.json() as { unchanged?: boolean; state?: unknown; revision?: number };
+        if (payload.unchanged || !Number.isSafeInteger(payload.revision) || payload.revision === serverRevision.current) return;
+        // A save finished while we were asking: its receipt is newer than this answer.
+        if (pendingSaves.current > 0 || serverRevision.current !== knownRevision) return;
+        const remote = mergePersistedState(payload.state || defaultState);
+        const base = lastSyncedState.current ? JSON.parse(lastSyncedState.current) : undefined;
+        adoptingServer.current = true; lastSyncedState.current = JSON.stringify(remote); serverRevision.current = payload.revision!;
+        setState(current => mergePersistedState(rebaseState(base, current, remote)));
+      } catch { /* Offline: the next focus tries again. */ }
+      finally { busy = false; }
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); };
+  }, [hydrated, syncReady]);
 
   useEffect(() => {
     const retry = () => setSyncRetry(value => value + 1);
@@ -2128,7 +2193,7 @@ export default function PersonalOS() {
   const renderNotes = () => {
     return <>
       <PageTitle eyebrow="NOTLAR" title="Düşünceyi doğru biçimde yakala." description="Hızlı not, fikir, günlük ve referanslar için birbirinden farklı başlangıçlar."/>
-      <NotesWorkspace notes={state.notes} onChange={notes=>setState(current=>({...current,notes}))} onArchive={archiveNote}/>
+      <Suspense fallback={<p role="status">Notlar açılıyor…</p>}><NotesWorkspace notes={state.notes} onChange={notes=>setState(current=>({...current,notes}))} onArchive={archiveNote}/></Suspense>
     </>;
   };
 
@@ -2259,7 +2324,7 @@ export default function PersonalOS() {
   const searchResults = useMemo(() => nav.filter((item)=>item.label.toLocaleLowerCase('tr').includes(searchText.toLocaleLowerCase('tr'))),[searchText]);
   const personalSearchResults = searchText.trim().length < 2 ? [] : (Object.keys(personalLists) as PersonalListKey[]).flatMap((list) => personalItemsFor(list).filter((item) => `${item.title} ${item.details.note ?? ''}`.toLocaleLowerCase('tr').includes(searchText.toLocaleLowerCase('tr'))).map((item) => ({ ...item, list }))).slice(0, 6);
 
-  if (!hydrated) return <div className="app-shell"><main className="content" aria-busy="true"><p role="status">Kayıtların yükleniyor…</p></main></div>;
+  if (!hydrated) return <div className="app-shell"><main className="content boot-skeleton" aria-busy="true"><p role="status" className="boot-label">Kayıtların yükleniyor…</p><div className="boot-bar wide" aria-hidden="true"/><div className="boot-grid" aria-hidden="true"><div/><div/><div/></div></main></div>;
   return <div className="app-shell">
     <div className="ambient-background" aria-hidden="true"><i/><i/><i/></div>
     <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><OrbitMark /></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item)=>{const NavIcon=item.icon;const isNested=Boolean(item.parent);const isSectionActive=item.id==='kibleteyn'&&active==='programs';return <button key={item.id} className={`${active===item.id?'active ':''}${isNested?'nav-child ':''}${isSectionActive?'section-active':''}`.trim()} onClick={()=>go(item.id)} aria-label={item.label} aria-current={active===item.id?'page':undefined}><span><NavIcon size={isNested?15:17}/></span>{item.label}{item.id==='programs'&&<em>{metricPrograms.length}</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>beginCapture('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli kayıt ekle</small></span><ArrowUpRight size={14}/></button><button className="sidebar-profile" onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}><div className="avatar">{profileInitials}</div><span><strong>{state.profile.name}</strong><small>{state.profile.workspace}</small></span><MoreHorizontal size={16}/></button></aside>

@@ -19,8 +19,10 @@ function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
-export async function GET() {
+export async function GET(request?: Request) {
   if (!authenticatedUser()) return unauthorized();
+  // `?rev=N` lets a returning tab ask "anything new?" without downloading the workspace.
+  const knownRevision = request ? Number(new URL(request.url).searchParams.get('rev')) : Number.NaN;
   try {
     const database = await ensureOrbitSchema();
     const row = await database
@@ -29,6 +31,7 @@ export async function GET() {
       .first<StateRow>();
 
     if (!row) return json({ state: null, revision: 0, updatedAt: null });
+    if (Number.isSafeInteger(knownRevision) && knownRevision > 0 && row.revision === knownRevision) return json({ unchanged: true, revision: row.revision });
 
     return json({
       state: JSON.parse(row.state_json),

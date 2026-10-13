@@ -52,9 +52,11 @@ export function safeNext(value: string | null) {
   if (url.origin !== 'https://orbit.invalid' || /^\/(?:login|auth)(?:\/|$)/.test(url.pathname)) return '/';
   return `${url.pathname}${url.search}${url.hash}`;
 }
-function secureResponse(response: Response, setCookie?: string) {
+function secureResponse(response: Response, setCookie?: string, immutableAsset = false) {
   const secured = new Response(response.body, response);
-  secured.headers.set('Cache-Control', 'private, no-store');
+  // Content-hashed bundles are application code, not user data. They still need a
+  // session on first fetch, but the browser may reuse them (never a shared cache).
+  secured.headers.set('Cache-Control', immutableAsset ? 'private, max-age=31536000, immutable' : 'private, no-store');
   secured.headers.set('X-Content-Type-Options', 'nosniff');
   secured.headers.set('X-Frame-Options', 'DENY');
   // Native form submissions need their same-origin Origin header for CSRF checks.
@@ -172,7 +174,8 @@ export async function withAuthentication(request: Request, env: Cloudflare.Env, 
     const response = url.pathname === '/auth/session'
       ? Response.json({ authenticated: true, remembered: Boolean(session.remembered) })
       : await authenticatedRequest.run({ username: env.ORBIT_AUTH_USERNAME }, next);
-    return secureResponse(response, refreshedCookie);
+    const hashedAsset = request.method === 'GET' && response.status === 200 && url.pathname.startsWith('/_next/static/') && !refreshedCookie;
+    return secureResponse(response, refreshedCookie, hashedAsset);
   } catch (error) {
     // Never fall through to the app if credentials, hashing or D1 are unavailable.
     console.error('Authentication service unavailable', error instanceof Error ? error.message : 'unknown error');
