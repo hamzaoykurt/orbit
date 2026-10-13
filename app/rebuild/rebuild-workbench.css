@@ -54,7 +54,7 @@ html[data-theme] .rebuild-deck.rb-workbench{background:transparent;border:0;box-
 .rb-visual textarea{width:100%;padding:18px;border:1px solid var(--line);border-radius:10px;color:var(--ink);background:var(--panel-solid);font-size:14px;line-height:1.7;resize:vertical;min-height:130px}
 .rb-visual-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:20px 0}
 .rb-visual .rb-visual-note{font-size:12px;max-width:540px;margin:0}
-html[data-theme] .rd-dialog{background:var(--panel-solid);box-shadow:0 24px 80px rgba(0,0,0,.25);border:1px solid var(--line);border-radius:16px}
+html[data-theme] .rd-dialog{background:var(--panel-solid);box-shadow:var(--e2);border:1px solid var(--line);border-radius:16px}
 .rd-dialog :is(button,input,textarea,select){box-shadow:none}
 .rd-dialog .rd-drawn-idea textarea{background:var(--canvas);border-color:var(--line);font-size:14px;line-height:1.8}
 @media(max-width:760px){

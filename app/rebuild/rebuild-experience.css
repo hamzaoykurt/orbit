@@ -92,7 +92,7 @@
 .rx-rebuild .rn-quiz-start p{font-size:14px}
 /* Idea generation stays a contained dialog, with a clear primary action. */
 .rd-overlay-idea{background:rgba(9,8,14,.55);padding:24px}
-.rd-dialog-idea{max-width:840px;min-height:0;height:auto;max-height:calc(100dvh - 48px);background:var(--panel-solid);border:1px solid var(--line);border-radius:24px;padding:28px 32px;box-shadow:var(--shadow)}
+.rd-dialog-idea{max-width:840px;min-height:0;height:auto;max-height:calc(100dvh - 48px);background:var(--panel-solid);border:1px solid var(--line);border-radius:24px;padding:28px 32px;box-shadow:var(--e2)}
 .rd-dialog-idea .rd-close{right:16px;top:15px}
 .rd-dialog-idea .rd-draw-brand{padding-right:35px;letter-spacing:.06em}
 .rd-dialog-idea .rd-idea-stage{padding:28px 0;min-height:160px}

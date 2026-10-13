@@ -18,7 +18,7 @@ html body { background:var(--canvas); color:var(--ink); }
 html[data-theme] .app-shell .sidebar { background:var(--panel-solid); border-color:var(--line); box-shadow:none; }
 .app-shell .workspace { padding-left:224px; }
 .app-shell .side-nav { gap:5px; }
-.app-shell .side-nav button { min-height:44px; font-size:13px; border-radius:7px; box-shadow:none; }
+.app-shell .side-nav button { min-height:44px; font-size:13px; border-radius:10px; box-shadow:none; }
 html[data-theme] .app-shell .side-nav button:hover { background:var(--canvas); color:var(--ink); transform:none; }
 html[data-theme] .app-shell .side-nav button.active { background:var(--accent-soft); box-shadow:none; color:var(--ink); }
 .app-shell .sidebar-profile strong,.app-shell .sidebar-upgrade strong { font-size:12px; }
@@ -45,8 +45,8 @@ html[data-theme] .focus-reset-button { background:var(--canvas); color:var(--ink
 .app-shell .focus-session-head strong { font-size:19px; font-weight:550; }
 .content :is(.task-item-copy>strong,.personal-subtask-toggle strong,.program-name h2) { font-size:14px; line-height:1.6; }
 .content :is(.personal-item-meta,.personal-item-meta small,.task-item-copy>small,.day-event small,.note-card small) { font-size:11px; line-height:1.6; color:var(--muted); }
-html[data-theme] :is(.modal-card,.command-palette,.quick-capture,.notification-panel) { background:var(--panel-solid); box-shadow:0 18px 70px rgba(0,0,0,.2); border-color:var(--line); }
-html[data-theme] .pp-dialog.px-creator { background:var(--panel-solid); border:1px solid var(--line); box-shadow:0 24px 80px rgba(0,0,0,.2); border-radius:16px; }
+html[data-theme] :is(.modal-card,.command-palette,.quick-capture,.notification-panel) { background:var(--panel-solid); box-shadow:var(--e2); border-color:var(--line); }
+html[data-theme] .pp-dialog.px-creator { background:var(--panel-solid); border:1px solid var(--line); box-shadow:var(--e2); border-radius:16px; }
 html[data-theme] .px-creator :is(.pp-rail,.pp-dialog-header,.pp-dialog-footer) { background:var(--panel-solid); border-color:var(--line); box-shadow:none; }
 html[data-theme] .px-creator :is(.pp-route-card,.pp-review-style,.pp-how,.pp-idea-input,.pp-field input,.pp-field select,.pp-options button) { background:var(--canvas); border-color:var(--line); box-shadow:none; border-radius:10px; }
 html[data-theme] .px-creator .pp-primary { background:var(--ink); color:var(--canvas); border-color:var(--ink); box-shadow:none; border-radius:10px; }
@@ -80,7 +80,7 @@ html[data-theme] .bottom-nav { background:var(--panel-solid); border:0; border-t
   html[data-theme] .app-shell .bottom-nav button.active { background:transparent; color:var(--accent); box-shadow:none; }
   html[data-theme] .app-shell .bottom-nav .quick-capture-trigger { background:var(--ink); color:var(--canvas); box-shadow:none; border-radius:16px; width:48px; min-width:48px; height:48px; margin-top:0; }
   html[data-theme] .app-shell .bottom-nav .quick-capture-trigger small { color:var(--canvas); }
-  html[data-theme] .app-shell .bottom-nav .capture-action { background:var(--panel-solid); color:var(--ink); border:1px solid var(--line); box-shadow:0 8px 30px #0002; }
+  html[data-theme] .app-shell .bottom-nav .capture-action { background:var(--panel-solid); color:var(--ink); border:1px solid var(--line); box-shadow:var(--e2); }
   .app-shell .bottom-nav .capture-action svg { filter:none; }
   .content :is(input,textarea,select),.modal-card :is(input,textarea,select) { font-size:16px; }
   .content .page-title { flex-wrap:wrap; gap:16px; }

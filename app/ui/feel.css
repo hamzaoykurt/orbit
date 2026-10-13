@@ -182,3 +182,12 @@ html[data-theme] .surface, .note-card, .project-card { border-radius:var(--r-m);
 @media (orientation:landscape) and (max-height:500px) {
   html[data-theme] .app-shell .bottom-nav { left:max(12px,var(--sal)); right:max(12px,var(--sar)); }
 }
+html[data-theme] .sheet-layer .modal-card { box-shadow:var(--e3); }
+
+/* Touch targets: 44px hit areas without changing the layout. */
+@media (pointer:coarse) {
+  :is(.copy-action,.schedule-action,.task-edit-button,.task-remove-button,.personal-drag-handle,.personal-subtask-drag,.icon-button,.personal-item-actions button,.personal-item-actions a) { position:relative; }
+  :is(.copy-action,.schedule-action,.task-edit-button,.task-remove-button,.personal-drag-handle,.personal-subtask-drag,.icon-button,.personal-item-actions button,.personal-item-actions a)::after { content:""; position:absolute; inset:-8px; }
+  :is(.add-program-task,.inline-add,.text-button,.today-button,.settings-edit-button,.google-calendar-button,.hub-filter-trigger,.personal-subtask-add,summary) { min-height:44px; }
+  :is(.add-program-task,.inline-add,.text-button,.today-button,.settings-edit-button,.google-calendar-button,.hub-filter-trigger,.personal-subtask-add) { display:inline-flex; align-items:center; }
+}

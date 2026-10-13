@@ -35,7 +35,7 @@ html[data-theme] .primary-button, html[data-theme] .focus-main-button { backgrou
 html[data-theme] .primary-button:hover, html[data-theme] .focus-main-button:hover { background:color-mix(in srgb,var(--accent) 66%,black); }
 html[data-theme] .app-shell .bottom-nav .quick-capture-trigger, html[data-theme] .bottom-nav .quick-capture-trigger { background:var(--btn-bg); color:var(--btn-ink); }
 html[data-theme] .bottom-nav .quick-capture-trigger small { color:var(--btn-ink); }
-html[data-theme] .app-shell .side-nav button.active { box-shadow:inset 3px 0 0 var(--page-accent); background:color-mix(in srgb,var(--page-accent) 12%,var(--panel-solid)); }
+html[data-theme] .app-shell .side-nav button.active { box-shadow:none; background:color-mix(in srgb,var(--page-accent) 12%,var(--panel-solid)); }
 html[data-theme] .app-shell .bottom-nav button.active { color:var(--page-ink); }
 
 /* Cards lift a little on hover (pointer devices only). */
@@ -61,7 +61,7 @@ html[data-theme] .app-shell .bottom-nav button.active { color:var(--page-ink); }
 .celebrate-layer b { position:absolute; transform:translate(-50%,-10px); font-size:15px; font-weight:700; color:var(--page-ink); text-shadow:0 1px 0 var(--canvas),0 0 8px var(--canvas); animation:xp-rise .95s ease-out forwards; }
 @keyframes burst { to { transform:translate(var(--dx),var(--dy)) scale(.4); opacity:0; } }
 @keyframes xp-rise { 0% { opacity:0; transform:translate(-50%,0); } 15% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-46px); } }
-.celebrate-banner { position:fixed; z-index:310; left:50%; top:max(18px,env(safe-area-inset-top)); transform:translateX(-50%); display:grid; gap:2px; padding:12px 22px; border-radius:16px; background:var(--btn-bg); color:#fff; text-align:center; box-shadow:0 12px 34px rgba(0,0,0,.25); animation:banner-in .4s cubic-bezier(.2,1.2,.3,1) both,banner-out .3s ease-in 2.2s forwards; pointer-events:none; }
+.celebrate-banner { position:fixed; z-index:310; left:50%; top:max(18px,env(safe-area-inset-top)); transform:translateX(-50%); display:grid; gap:2px; padding:12px 22px; border-radius:16px; background:var(--btn-bg); color:#fff; text-align:center; box-shadow:var(--e2); animation:banner-in .4s cubic-bezier(.2,1.2,.3,1) both,banner-out .3s ease-in 2.2s forwards; pointer-events:none; }
 .celebrate-banner strong { font-size:18px; } .celebrate-banner span { font-size:13px; opacity:.92; }
 .celebrate-banner.still { animation:none; }
 @keyframes banner-in { from { opacity:0; transform:translate(-50%,-24px) scale(.9); } }
@@ -103,5 +103,5 @@ html[data-theme=light] { --canvas:color-mix(in srgb,var(--page-accent) 4%,#fbf7f
 .wp-level { background:linear-gradient(145deg,var(--page-accent),color-mix(in srgb,var(--page-accent) 55%,#000)); color:#111; }
 .wp-days button.active, .goal-row:hover { box-shadow:0 0 0 2px color-mix(in srgb,var(--page-accent) 55%,transparent); }
 .wp-slot h3 { padding-left:10px; border-left:4px solid var(--page-accent); }
-.pips i.on, .wp-goal .pips i.on { background:var(--page-accent); border-color:var(--page-accent); box-shadow:0 0 8px color-mix(in srgb,var(--page-accent) 60%,transparent); }
+.pips i.on, .wp-goal .pips i.on { background:var(--page-accent); border-color:var(--page-accent); box-shadow:var(--e2); }
 .wp-badges li.got { background:color-mix(in srgb,#e8ab1f 14%,transparent); border-radius:10px; padding:4px 6px; }

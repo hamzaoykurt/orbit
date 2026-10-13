@@ -12,7 +12,7 @@
 .px-hub-controls .pp-search{width:240px;background:transparent}
 .px-projects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .px-project{min-width:0;background:var(--pp-bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;transition:border-color var(--t-fast),box-shadow var(--t-fast)}
-.px-project:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:0 7px 22px #00000006}
+.px-project:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:var(--e2)}
 .px-status{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--muted)}
 .px-status::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
 .px-status-active,.px-status-mvp{color:var(--accent)}
@@ -28,7 +28,7 @@
 .project-workspace .pw-topbar>button{border:0;background:transparent;padding-left:0;color:var(--muted)}
 .project-workspace .pw-tabs{gap:22px;margin:24px 0 28px;padding:0;flex-wrap:nowrap}
 .project-workspace .pw-tabs button{padding:13px 3px;border:0;border-radius:0;background:transparent;color:var(--muted);min-height:48px;white-space:nowrap}
-.project-workspace .pw-tabs button[aria-current=page]{color:var(--accent);box-shadow:0 2px var(--accent);font-weight:650}
+.project-workspace .pw-tabs button[aria-current=page]{color:var(--accent);box-shadow:var(--e2);font-weight:650}
 .project-workspace .pw-tabs button span{background:none;padding:0;font-size:11px}
 .px-focus{display:flex;align-items:center;justify-content:space-between;gap:30px;margin-bottom:32px;padding:26px 28px;border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line));border-radius:16px;background:color-mix(in srgb,var(--accent) 6%,var(--panel-solid,#fff))}
 .px-eyebrow{font-size:11px;letter-spacing:1.5px;color:var(--accent);font-weight:700;display:block;margin-bottom:10px}
