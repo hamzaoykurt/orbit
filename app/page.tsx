@@ -79,7 +79,7 @@ type ArchiveItem = { id: string; title: string; type: 'project' | 'program' | 'n
 type ThemePreference = 'light' | 'dark' | 'system';
 type CapturePage = 'personal' | 'rebuild' | 'projects' | 'kibleteyn' | 'programs' | 'calendar' | 'notes';
 type CaptureMethod = 'text' | 'voice' | 'ai';
-type CaptureStage = 'compose' | 'listening' | 'destination' | 'processing';
+type CaptureStage = 'compose' | 'listening' | 'destination' | 'processing' | 'preview' | 'error';
 type CaptureExtras = { price: string; link: string; locationUrl: string; priority: 'normal' | 'important'; date: string; time: string; duration: string };
 type AiCaptureItem = {
   kind: 'todo' | 'buy' | 'visit' | 'project' | 'project_task' | 'rebuild_task' | 'department_task' | 'program_task' | 'calendar_event' | 'note';
@@ -91,9 +91,13 @@ type BrowserSpeechRecognition = {
   interimResults: boolean;
   continuous: boolean;
   start: () => void;
-  onresult: (event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void;
-  onerror: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: (event: { resultIndex: number; results: { length: number; [index: number]: { isFinal: boolean; [index: number]: { transcript: string } } } }) => void;
+  onerror: (event: { error?: string }) => void;
   onend: () => void;
+  onspeechstart: () => void;
+  onspeechend: () => void;
 };
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 type RebuildActivity = { id: string; areaId: string; title: string; date: string; duration: number; note: string; rating: number; createdAt: string; details?: ActivityEntry['details'] };
@@ -519,6 +523,14 @@ export default function PersonalOS() {
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('text');
   const [captureStage, setCaptureStage] = useState<CaptureStage>('compose');
   const [captureListening, setCaptureListening] = useState(false);
+  const [captureError, setCaptureError] = useState('');
+  const [captureSeconds, setCaptureSeconds] = useState(0);
+  const [captureSpeaking, setCaptureSpeaking] = useState(false);
+  const [captureInterim, setCaptureInterim] = useState('');
+  const [captureAiItems, setCaptureAiItems] = useState<AiCaptureItem[]>([]);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const [captureMore, setCaptureMore] = useState(false);
+  const [captureRound, setCaptureRound] = useState(0);
   const [captureTitle, setCaptureTitle] = useState('');
   const [captureDetails, setCaptureDetails] = useState('');
   const [captureExtras, setCaptureExtras] = useState<CaptureExtras>({ price: '', link: '', locationUrl: '', priority: 'normal', date: todayKey(), time: '10:00', duration: '60 dk' });
@@ -1600,8 +1612,20 @@ export default function PersonalOS() {
     setCaptureTitle('');
     setCaptureDetails('');
     setCaptureExtras({ price: '', link: '', locationUrl: '', priority: 'normal', date: todayKey(), time: '10:00', duration: '60 dk' });
-    setCapturePage('personal');
-    setCaptureArea('todo');
+    setCaptureError(''); setCaptureMore(false);
+    // Smart target: the page being viewed, otherwise the last one used.
+    let last: { page?: CapturePage; area?: string } = {};
+    try { last = JSON.parse(localStorage.getItem('orbit-capture-last') || '{}'); } catch { /* storage may be blocked */ }
+    const viewMap: Partial<Record<PageKey, CapturePage>> = { personal: 'personal', rebuild: 'rebuild', projects: 'projects', kibleteyn: 'kibleteyn', programs: 'programs', calendar: 'calendar', notes: 'notes' };
+    const page: CapturePage = viewMap[active] ?? last.page ?? 'personal';
+    const areaOptions = captureAreasFor(page);
+    let area = areaOptions[0]?.value ?? '';
+    if (page === 'personal' && active === 'personal') area = personalTab;
+    else if (page === 'projects' && activeProjectId && areaOptions.some((option) => option.value === activeProjectId)) area = activeProjectId;
+    else if (last.page === page && last.area && areaOptions.some((option) => option.value === last.area)) area = last.area;
+    setCapturePage(page);
+    setCaptureArea(area);
+    if (page === 'calendar') setCaptureExtras((current) => ({ ...current, date: selectedCalendarDate }));
     setCaptureStage(method === 'voice' ? 'listening' : 'compose');
     setModal('capture');
     if (method === 'voice') startCaptureVoice();
@@ -1617,28 +1641,56 @@ export default function PersonalOS() {
     });
   };
 
+  function stopCaptureVoice() { recognitionRef.current?.stop(); }
+  function cancelCaptureVoice() { try { recognitionRef.current?.abort(); } catch { /* already stopped */ } recognitionRef.current = null; setCaptureListening(false); setCaptureSpeaking(false); setModal(null); }
   function startCaptureVoice() {
     const recognitionWindow = window as Window & { SpeechRecognition?: BrowserSpeechRecognitionConstructor; webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor };
     const Recognition = recognitionWindow.SpeechRecognition ?? recognitionWindow.webkitSpeechRecognition;
-    if (!Recognition) { setCaptureMethod('text'); setCaptureStage('compose'); notify('Bu tarayıcı sesli yazmayı desteklemiyor; kaydı yazılı olarak girebilirsin.'); return; }
+    if (!Recognition) { setCaptureMethod('text'); setCaptureStage('compose'); notify('Bu tarayıcı sesli yazmayı desteklemiyor; kaydı yazarak ekleyebilirsin.'); return; }
+    try { recognitionRef.current?.abort(); } catch { /* previous session already ended */ }
     const recognition = new Recognition();
-    recognition.lang = 'tr-TR'; recognition.interimResults = false; recognition.continuous = false;
-    let heardSpeech = false;
+    recognitionRef.current = recognition;
+    recognition.lang = 'tr-TR'; recognition.interimResults = true; recognition.continuous = true;
+    let finalText = '';
+    let failed = false;
     recognition.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript?.trim() ?? '';
-      if (transcript) {
-        heardSpeech = true;
-        setCaptureTitle(transcript.slice(0, 140));
-        setCaptureDetails(transcript);
-        setCaptureStage('destination');
+      let interim = '';
+      for (let index = event.resultIndex ?? 0; index < event.results.length; index++) {
+        const result = event.results[index];
+        const text = result[0]?.transcript ?? '';
+        if (result.isFinal) finalText += `${text} `; else interim += text;
       }
-      setCaptureListening(false);
+      setCaptureInterim((finalText + interim).trim());
     };
-    recognition.onerror = () => { setCaptureListening(false); setCaptureStage('listening'); notify('Ses kaydı alınamadı; tekrar dokunarak deneyebilirsin.'); };
-    recognition.onend = () => { setCaptureListening(false); if (!heardSpeech) setCaptureStage('listening'); };
-    setCaptureStage('listening');
-    setCaptureListening(true); recognition.start();
+    recognition.onspeechstart = () => setCaptureSpeaking(true);
+    recognition.onspeechend = () => setCaptureSpeaking(false);
+    recognition.onerror = (event) => {
+      const reason = event?.error;
+      if (reason === 'aborted') return;
+      failed = true;
+      const message = reason === 'not-allowed' || reason === 'service-not-allowed' ? 'Mikrofon izni verilmedi. Adres çubuğundaki kilit simgesinden mikrofona izin ver, sonra tekrar dene.'
+        : reason === 'no-speech' ? 'Ses duyulmadı. Mikrofona biraz yaklaşıp tekrar dene.'
+        : reason === 'audio-capture' ? 'Mikrofon bulunamadı veya başka bir uygulama kullanıyor.'
+        : reason === 'network' ? 'Ses tanıma için internet bağlantısı gerekiyor.'
+        : 'Ses kaydı alınamadı. Tekrar deneyebilir ya da yazarak ekleyebilirsin.';
+      setCaptureError(message);
+    };
+    recognition.onend = () => {
+      setCaptureListening(false); setCaptureSpeaking(false);
+      if (recognitionRef.current === recognition) recognitionRef.current = null;
+      const text = finalText.trim();
+      if (text) { setCaptureTitle(text.split(/\n|[.!?]/)[0].slice(0, 140)); setCaptureDetails(text); setCaptureInterim(''); setCaptureError(''); setCaptureStage('destination'); }
+      else { setCaptureStage('listening'); if (!failed) setCaptureError('Ses duyulmadı. Mikrofona biraz yaklaşıp tekrar dene.'); }
+    };
+    setCaptureStage('listening'); setCaptureError(''); setCaptureInterim(''); setCaptureSeconds(0);
+    try { recognition.start(); setCaptureListening(true); } catch { setCaptureListening(false); setCaptureError('Ses tanıma başlatılamadı; birkaç saniye sonra tekrar dene.'); }
   }
+
+  useEffect(() => {
+    if (!captureListening) return;
+    const timer = window.setInterval(() => setCaptureSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [captureListening]);
 
   const pageForAiKind = (kind: AiCaptureItem['kind']): CapturePage => {
     if (['todo', 'buy', 'visit'].includes(kind)) return 'personal';
@@ -1715,7 +1767,7 @@ export default function PersonalOS() {
   const organizeCapture = async () => {
     const text = (captureDetails.trim() || captureTitle.trim());
     if (!text) { notify('AI’nin düzenlemesi için bir metin yaz veya konuş.'); return; }
-    setCaptureStage('processing');
+    setCaptureError(''); setCaptureStage('processing');
     try {
       const response = await fetch('/api/organize', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1723,16 +1775,17 @@ export default function PersonalOS() {
       });
       const payload = await response.json() as { items?: AiCaptureItem[]; error?: string };
       if (!response.ok || !payload.items?.length) throw new Error(payload.error || 'AI kayıt planı oluşturamadı.');
-      applyAiCaptureItems(payload.items);
+      setCaptureAiItems(payload.items);
+      setCaptureStage('preview');
     } catch (error) {
-      setCaptureStage(captureMethod === 'voice' ? 'destination' : 'compose');
-      notify(error instanceof Error ? error.message : 'AI şu anda kullanılamıyor.');
+      setCaptureError(error instanceof Error ? error.message : 'AI şu anda kullanılamıyor.');
+      setCaptureStage('error');
     }
   };
 
-  const saveCapture = () => {
+  const saveCapture = (again = false) => {
     const title = captureTitle.trim() || captureDetails.trim().split(/\n|[.!?]/)[0]?.trim();
-    if (!title) { notify('Kaydetmeden önce bir başlık gir.'); return; }
+    if (!title) { notify('Kaydetmeden önce bir başlık yaz.'); return; }
     if (capturePage === 'personal') {
       const list = captureArea as PersonalListKey;
       setState((current) => {
@@ -1764,7 +1817,14 @@ export default function PersonalOS() {
       if (googleConfig.connected) void createGoogleCalendarEvent(event, date).then((googleEvent) => { if (googleEvent) setState((current) => ({ ...current, calendarEvents: { ...current.calendarEvents, [date]: (current.calendarEvents[date] ?? []).map((item) => item.id === event.id ? { ...item, googleEventId: googleEvent.id, htmlLink: googleEvent.htmlLink } : item) } })); }).catch(() => notify('Kayıt Orbit’e eklendi; Google aktarımı başarısız oldu.'));
     }
     if (capturePage === 'notes') setState((current) => ({ ...current, notes: [{ ...newNote('quick', title), body: captureDetails.trim() || 'Hızlı kayıt', tone: captureMethod === 'voice' ? 'blue' : 'violet' }, ...current.notes] }));
-    setModal(null); if (capturePage === 'projects') openProjectDetail(captureArea); else go(capturePage); notify('Kayıt seçtiğin alana eklendi.');
+    try { localStorage.setItem('orbit-capture-last', JSON.stringify({ page: capturePage, area: captureArea })); } catch { /* optional */ }
+    if (again) {
+      setCaptureTitle(''); setCaptureDetails(''); setCaptureRound((value) => value + 1);
+      setCaptureExtras((current) => ({ ...current, price: '', link: '', locationUrl: '' }));
+      notify(`Eklendi: ${title}`);
+      return;
+    }
+    setModal(null); if (capturePage === 'projects') openProjectDetail(captureArea); else go(capturePage); notify(`Eklendi: ${title}`);
   };
 
   const removeProgramTask = (programId: string, category: string, currentTitle: string, taskIndex: number) => {
@@ -2388,30 +2448,64 @@ export default function PersonalOS() {
     const isBuy = capturePage === 'personal' && captureArea === 'buy';
     const isVisit = capturePage === 'personal' && captureArea === 'visit';
     const acceptsDetails = capturePage === 'personal' || capturePage === 'projects' || capturePage === 'calendar' || capturePage === 'notes';
+    const pageOptions: { value: CapturePage; label: string }[] = [{ value: 'personal', label: 'Personal' }, { value: 'rebuild', label: 'Rebuild' }, { value: 'projects', label: 'Projeler' }, { value: 'kibleteyn', label: 'Kıbleteyn' }, { value: 'programs', label: 'Turlar' }, { value: 'calendar', label: 'Takvim' }, { value: 'notes', label: 'Notlar' }];
     const changeCapturePage = (page: CapturePage) => {
       const firstArea = captureAreasFor(page)[0]?.value ?? '';
       setCapturePage(page); setCaptureArea(firstArea);
       if (page === 'calendar') setCaptureExtras((current) => ({ ...current, date: selectedCalendarDate }));
     };
-
-    return <>
-      <div className="capture-destination compact"><strong>Nereye kaydedilsin?</strong><div className="capture-route-grid"><label>Sayfa<select value={capturePage} onChange={(event)=>changeCapturePage(event.target.value as CapturePage)}>{[{value:'personal',label:'Personal'},{value:'rebuild',label:'6 Aylık Rebuild'},{value:'projects',label:'Projeler'},{value:'kibleteyn',label:'Kıbleteyn'},{value:'programs',label:'Programlar'},{value:'calendar',label:'Takvim'},{value:'notes',label:'Notlar'}].map((item)=><option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{capturePage!=='calendar'&&capturePage!=='notes'&&<label>Alan<select value={captureArea} onChange={(event)=>setCaptureArea(event.target.value)}>{areas.map((area)=><option key={area.value} value={area.value}>{area.label}</option>)}</select></label>}</div></div>
-      <label>{capturePage==='projects'?'Görev başlığı':capturePage==='calendar'?'Etkinlik adı':capturePage==='notes'?'Not başlığı':'Başlık'}<input required autoFocus={captureMethod==='text'} value={captureTitle} onChange={(event)=>setCaptureTitle(event.target.value)} placeholder={isBuy?'Örn. Monitör kolu':isVisit?'Örn. Efes Antik Kenti':capturePage==='projects'?'Projeye eklenecek görev':'Kaydetmek istediğin şey'}/></label>
-      {isBuy&&<div className="form-row"><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={captureExtras.price} onChange={(event)=>setCaptureExtras({...captureExtras,price:event.target.value})} placeholder="1250"/></label><label>Ürün bağlantısı<input type="url" value={captureExtras.link} onChange={(event)=>setCaptureExtras({...captureExtras,link:event.target.value})} placeholder="https://..."/></label></div>}
-      {isVisit&&<label>Google Haritalar konumu<input type="url" value={captureExtras.locationUrl} onChange={(event)=>setCaptureExtras({...captureExtras,locationUrl:event.target.value})} placeholder="https://maps.google.com/..."/></label>}
-      {capturePage==='personal'&&<label>Öncelik<select value={captureExtras.priority} onChange={(event)=>setCaptureExtras({...captureExtras,priority:event.target.value as 'normal'|'important'})}><option value="normal">Normal</option><option value="important">Önemli</option></select></label>}
-      {capturePage==='calendar'&&<><div className="form-row"><label>Tarih<input required type="date" value={captureExtras.date} onChange={(event)=>setCaptureExtras({...captureExtras,date:event.target.value})}/></label><label>Saat <small>İsteğe bağlı</small><input type="time" value={captureExtras.time} onChange={(event)=>setCaptureExtras({...captureExtras,time:event.target.value})}/></label></div><label>Süre<select value={captureExtras.duration} onChange={(event)=>setCaptureExtras({...captureExtras,duration:event.target.value})}>{['15 dk','30 dk','45 dk','60 dk','90 dk','2 saat'].map((duration)=><option key={duration}>{duration}</option>)}</select></label></>}
-      {acceptsDetails&&<label>{capturePage==='projects'?'Alt görevler':capturePage==='notes'?'Not':'Açıklama'} <small>İsteğe bağlı</small><textarea value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder={capturePage==='projects'?'Her satıra bir alt görev':capturePage==='notes'?'Düşünceni ayrıntılı yaz...':'Kısa bir ayrıntı ekle...'}/></label>}
-      <button className="primary-button full" disabled={!captureTitle.trim()&&!captureDetails.trim()} onClick={saveCapture}>Bu alana kaydet <ArrowRight size={15}/></button>
-    </>;
+    const chipAreas = capturePage !== 'calendar' && areas.length > 1 && areas.length <= 6;
+    const dayKey = (offset: number) => { const date = new Date(); date.setDate(date.getDate() + offset); return localDateKey(date); };
+    const titleLabel = capturePage === 'projects' ? 'Görev başlığı' : capturePage === 'calendar' ? 'Etkinlik adı' : capturePage === 'notes' ? 'Not başlığı' : 'Başlık';
+    const canSave = Boolean(captureTitle.trim() || captureDetails.trim());
+    return <form className="capture-form" onSubmit={(event) => { event.preventDefault(); saveCapture(false); }}>
+      <label className="capture-title"><span>{titleLabel}</span><input key={captureRound} autoFocus={captureMethod === 'text' || captureStage !== 'listening'} enterKeyHint="done" autoComplete="off" value={captureTitle} onChange={(event) => setCaptureTitle(event.target.value)} placeholder={isBuy ? 'Örn. Monitör kolu' : isVisit ? 'Örn. Efes Antik Kenti' : capturePage === 'calendar' ? 'Örn. Fatih ile toplantı' : capturePage === 'projects' ? 'Projeye eklenecek görev' : 'Aklındaki şey…'}/></label>
+      <div className="capture-field"><span className="capture-label">Nereye?</span><div className="capture-chips" role="group" aria-label="Sayfa">{pageOptions.map((item) => <button type="button" key={item.value} aria-pressed={capturePage === item.value} onClick={() => changeCapturePage(item.value)}>{item.label}</button>)}</div></div>
+      {chipAreas && <div className="capture-field"><span className="capture-label">Alan</span><div className="capture-chips sub" role="group" aria-label="Alan">{areas.map((area) => <button type="button" key={area.value} aria-pressed={captureArea === area.value} onClick={() => setCaptureArea(area.value)}>{area.label}</button>)}</div></div>}
+      {capturePage !== 'calendar' && areas.length > 6 && <label className="capture-field capture-select"><span className="capture-label">{capturePage === 'projects' ? 'Proje' : 'Alan'}</span><select value={captureArea} onChange={(event) => setCaptureArea(event.target.value)}>{areas.map((area) => <option key={area.value} value={area.value}>{area.label}</option>)}</select></label>}
+      {capturePage === 'calendar' && <div className="capture-field"><span className="capture-label">Ne zaman?</span><div className="capture-chips sub" role="group" aria-label="Gün">{[{ key: dayKey(0), label: 'Bugün' }, { key: dayKey(1), label: 'Yarın' }, { key: selectedCalendarDate, label: 'Takvimde seçili gün' }].filter((item, index, all) => all.findIndex((other) => other.key === item.key) === index).map((item) => <button type="button" key={item.key} aria-pressed={captureExtras.date === item.key} onClick={() => setCaptureExtras({ ...captureExtras, date: item.key })}>{item.label}</button>)}</div></div>}
+      <button type="button" className="capture-more-toggle" aria-expanded={captureMore} onClick={() => setCaptureMore((value) => !value)}>{captureMore ? <ChevronDown size={16}/> : <Plus size={16}/>} {captureMore ? 'Ayrıntıyı gizle' : 'Ayrıntı ekle'}</button>
+      {captureMore && <div className="capture-more">
+        {isBuy && <div className="form-row"><label>Fiyat <small>TL</small><input type="number" inputMode="decimal" min="0" value={captureExtras.price} onChange={(event) => setCaptureExtras({ ...captureExtras, price: event.target.value })} placeholder="1250"/></label><label>Ürün bağlantısı<input type="url" value={captureExtras.link} onChange={(event) => setCaptureExtras({ ...captureExtras, link: event.target.value })} placeholder="https://..."/></label></div>}
+        {isVisit && <label>Google Haritalar konumu<input type="url" value={captureExtras.locationUrl} onChange={(event) => setCaptureExtras({ ...captureExtras, locationUrl: event.target.value })} placeholder="https://maps.google.com/..."/></label>}
+        {capturePage === 'personal' && <div className="capture-field"><span className="capture-label">Öncelik</span><div className="capture-chips sub" role="group" aria-label="Öncelik">{[{ v: 'normal', l: 'Normal' }, { v: 'important', l: 'Önemli' }].map((item) => <button type="button" key={item.v} aria-pressed={captureExtras.priority === item.v} onClick={() => setCaptureExtras({ ...captureExtras, priority: item.v as 'normal' | 'important' })}>{item.l}</button>)}</div></div>}
+        {capturePage === 'calendar' && <><div className="form-row"><label>Tarih<input required type="date" value={captureExtras.date} onChange={(event) => setCaptureExtras({ ...captureExtras, date: event.target.value })}/></label><label>Saat <small>İsteğe bağlı</small><input type="time" value={captureExtras.time} onChange={(event) => setCaptureExtras({ ...captureExtras, time: event.target.value })}/></label></div><div className="capture-field"><span className="capture-label">Süre</span><div className="capture-chips sub" role="group" aria-label="Süre">{['15 dk', '30 dk', '60 dk', '90 dk', '2 saat'].map((duration) => <button type="button" key={duration} aria-pressed={captureExtras.duration === duration} onClick={() => setCaptureExtras({ ...captureExtras, duration })}>{duration}</button>)}</div></div></>}
+        {acceptsDetails && <label>{capturePage === 'projects' ? 'Alt görevler' : capturePage === 'notes' ? 'Not' : 'Açıklama'} <small>İsteğe bağlı</small><textarea rows={3} value={captureDetails} onChange={(event) => setCaptureDetails(event.target.value)} placeholder={capturePage === 'projects' ? 'Her satıra bir alt görev' : capturePage === 'notes' ? 'Düşünceni ayrıntılı yaz...' : 'Kısa bir ayrıntı ekle...'}/></label>}
+      </div>}
+      <div className="capture-actions"><button type="submit" className="primary-button" disabled={!canSave}>Kaydet <ArrowRight size={16}/></button><button type="button" className="ghost-button" disabled={!canSave} onClick={() => saveCapture(true)}>Kaydet, bir tane daha</button></div>
+    </form>;
   };
 
+  const aiItemDestination = (item: AiCaptureItem) => {
+    const projectTitle = allCaptureProjects.find((project) => project.id === item.targetId)?.title ?? allCaptureProjects[0]?.title ?? 'Proje';
+    switch (item.kind) {
+      case 'todo': return 'Personal · Yapılacaklar';
+      case 'buy': return 'Personal · Alınacaklar';
+      case 'visit': return 'Personal · Gezilecekler';
+      case 'project': return 'Projeler · yeni proje';
+      case 'project_task': return `Projeler · ${projectTitle}`;
+      case 'rebuild_task': return `Rebuild · ${rebuildAreas.some((area) => area.title === item.targetId) ? item.targetId : rebuildAreas[0].title}`;
+      case 'department_task': return `Kıbleteyn · ${departments.find((department) => department.id === item.targetId)?.title ?? departments[0].title}`;
+      case 'program_task': return `Turlar · ${allCapturePrograms.find((program) => program.id === item.targetId)?.title ?? allCapturePrograms[0]?.title ?? 'Tur'}`;
+      case 'calendar_event': return `Takvim · ${/^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date.split('-').reverse().join('.') : 'bugün'}${item.time ? ` ${item.time}` : ''}`;
+      default: return 'Notlar';
+    }
+  };
+  const timerText = `${Math.floor(captureSeconds / 60)}:${String(captureSeconds % 60).padStart(2, '0')}`;
+  const aiExamples = ['Yarın 14:00 Fatih ile toplantı', 'Monitör kolu al, 1250 TL', 'İzmir gezisi için Efes’i kaydet', 'Yeni portfolyo uygulaması için araştırma ve tasarım görevleri'];
   const renderCaptureModal = () => {
-    if (captureStage === 'processing') return <div className="capture-processing"><span className="ai-orbit"><Sparkles size={24}/></span><span className="eyebrow">ORBIT AI</span><h2>Metni düzenliyorum.</h2><p>Kayıtları ayırıyor ve doğru alanlarla eşleştiriyorum…</p></div>;
-    if (captureMethod === 'ai') return <><span className="modal-icon ai"><Sparkles size={20}/></span><span className="eyebrow">ORBIT AI</span><h2>Aklındakileri olduğu gibi bırak.</h2><p>Uzun metni görev, proje, not, alışveriş, konum veya takvim kaydına dönüştürüp doğru yerlere yerleştiririm.</p><label>Metnin<textarea required className="ai-capture-input" autoFocus value={captureDetails} onChange={(event)=>setCaptureDetails(event.target.value)} placeholder={'Örn. Yarın 14:00’te Fatih ile toplantı yap. Monitör kolu al, fiyatı 1.250 TL. İzmir gezisi için Efes’i kaydet. Yeni portfolyo uygulamasının araştırma ve tasarım görevlerini oluştur.'}/></label><button className="primary-button full ai-submit" disabled={!captureDetails.trim()} onClick={()=>void organizeCapture()}><Sparkles size={16}/> AI ile düzenle ve yerleştir</button></>;
-    if (captureMethod === 'voice' && captureStage === 'listening') return <div className="voice-command"><span className="eyebrow">SESLİ KOMUT</span><h2>{captureListening?'Dinliyorum…':'Seni duyamadım.'}</h2><p>{captureListening?'Ne eklemek istediğini doğal biçimde anlat. Konuşman bitince hedef ekranı açılacak.':'Mikrofona dokunup tekrar konuş.'}</p><button className={`voice-command-orb ${captureListening?'listening':''}`} onClick={startCaptureVoice} aria-label="Sesli komutu yeniden başlat"><Mic size={28}/><i/><i/><i/></button><small>{captureListening?'Konuşman bittiğinde otomatik durur':'Tekrar dinle'}</small></div>;
-    if (captureMethod === 'voice') return <><span className="modal-icon voice"><Mic size={20}/></span><span className="eyebrow">SESLİ KOMUT ALINDI</span><h2>Nereye kaydedelim?</h2><div className="voice-transcript"><Mic size={15}/><p>{captureDetails}</p><button onClick={startCaptureVoice} aria-label="Yeniden konuş"><RefreshCw size={14}/></button></div><button className="capture-ai-auto" onClick={()=>void organizeCapture()}><Sparkles size={17}/><span><strong>AI otomatik yerleştirsin</strong><small>Metni anlayıp uygun alanlara kendisi kaydeder</small></span><ArrowRight size={15}/></button><div className="capture-choice-separator"><span>veya kendin seç</span></div>{renderCaptureDestination()}</>;
-    return <><span className="modal-icon"><StickyNote size={20}/></span><span className="eyebrow">YAZILI KAYIT</span><h2>Doğru biçimde kaydet.</h2><p>Önce hedefi seç; form o alanın ihtiyaçlarına göre değişsin.</p>{renderCaptureDestination()}</>;
+    if (captureStage === 'processing') return <div className="cap-panel"><div className="cap-head"><span className="cap-icon ai"><Sparkles size={22}/></span><div><span className="eyebrow">ORBIT AI</span><h2>Düşünüyorum…</h2></div></div><p className="cap-hint">Metni parçalara ayırıp doğru alanlarla eşleştiriyorum.</p><div className="cap-skeleton" aria-hidden="true"><i/><i/><i/></div></div>;
+    if (captureStage === 'preview') return <div className="cap-panel"><div className="cap-head"><span className="cap-icon ai"><Sparkles size={22}/></span><div><span className="eyebrow">ORBIT AI</span><h2>{captureAiItems.length} kayıt hazır</h2></div></div><p className="cap-hint">Neyin nereye kaydedileceğini kontrol et. İstemediğini çıkarabilirsin.</p><ul className="cap-preview">{captureAiItems.map((item, index) => <li key={`${item.title}-${index}`}><span><strong>{item.title}</strong><small>{aiItemDestination(item)}</small></span><button type="button" aria-label={`${item.title} kaydını çıkar`} onClick={() => setCaptureAiItems((items) => items.filter((_, position) => position !== index))}><X size={16}/></button></li>)}</ul><div className="capture-actions"><button className="primary-button" disabled={!captureAiItems.length} onClick={() => applyAiCaptureItems(captureAiItems)}>Hepsini kaydet ({captureAiItems.length}) <Check size={17}/></button><button className="ghost-button" onClick={() => setCaptureStage('compose')}><Pencil size={16}/> Metni düzenle</button><button className="text-button" onClick={() => setModal(null)}>Vazgeç</button></div></div>;
+    if (captureStage === 'error') return <div className="cap-panel"><div className="cap-head"><span className="cap-icon warn"><RefreshCw size={22}/></span><div><span className="eyebrow">ORBIT AI</span><h2>Düzenleyemedim</h2></div></div><p className="capture-error" role="alert">{captureError || 'AI şu anda kullanılamıyor.'}</p><div className="capture-actions"><button className="primary-button" onClick={() => void organizeCapture()}><RefreshCw size={17}/> Tekrar dene</button><button className="ghost-button" onClick={() => { setCaptureMethod('text'); setCaptureStage('compose'); }}><StickyNote size={16}/> Yazarak ekle</button></div></div>;
+    if (captureMethod === 'ai') return <div className="cap-panel"><div className="cap-head"><span className="cap-icon ai"><Sparkles size={22}/></span><div><span className="eyebrow">ORBIT AI</span><h2>Aklındakini yaz</h2></div></div><p className="cap-hint">Birden fazla şeyi tek seferde yazabilirsin; görev, alışveriş, takvim ve notlara ayırırım.</p><label className="cap-text"><span className="sr-only">Metnin</span><textarea required className="ai-capture-input" autoFocus rows={5} value={captureDetails} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && captureDetails.trim()) { event.preventDefault(); void organizeCapture(); } }} onChange={(event) => setCaptureDetails(event.target.value)} placeholder="Örn. Yarın 14:00 Fatih ile toplantı. Monitör kolu al, 1250 TL."/></label><div className="capture-chips sub" role="group" aria-label="Örnekler">{aiExamples.map((example) => <button type="button" key={example} onClick={() => setCaptureDetails((current) => current.trim() ? `${current.trim()}\n${example}` : example)}>{example}</button>)}</div><div className="capture-actions"><button className="primary-button ai-submit" disabled={!captureDetails.trim()} onClick={() => void organizeCapture()}><Sparkles size={17}/> AI ile düzenle</button><button className="text-button" onClick={() => setModal(null)}>Vazgeç</button></div></div>;
+    if (captureMethod === 'voice' && captureStage === 'listening') return <div className="cap-panel voice-panel"><div className="cap-head"><span className="cap-icon voice"><Mic size={22}/></span><div><span className="eyebrow">SESLİ KAYIT</span><h2>{captureError ? 'Kayıt alınamadı' : captureListening ? (captureSpeaking ? 'Seni dinliyorum…' : 'Konuşabilirsin') : 'Hazır'}</h2></div></div>
+      <div className={`voice-stage ${captureListening ? 'on' : ''} ${captureSpeaking ? 'speaking' : ''}`}><button className="voice-record" onClick={captureListening ? stopCaptureVoice : startCaptureVoice} aria-label={captureListening ? 'Kaydı bitir' : 'Kaydı başlat'}>{captureListening ? <Square size={30} fill="currentColor"/> : <Mic size={32}/>}</button><div className="voice-wave" aria-hidden="true">{Array.from({ length: 13 }, (_, index) => <i key={index} style={{ animationDelay: `${(index % 7) * 90}ms` }}/>)}</div></div>
+      <div className="voice-timer" aria-live="off">{timerText}</div>
+      <p className="voice-live" aria-live="polite">{captureInterim || (captureListening ? 'Ne eklemek istediğini doğal biçimde anlat.' : 'Mikrofon düğmesine dokunup konuş.')}</p>
+      {captureError && <p className="capture-error" role="alert">{captureError}</p>}
+      <div className="capture-actions">{captureListening ? <button className="primary-button" onClick={stopCaptureVoice}>Bitir ve kontrol et</button> : <button className="primary-button" onClick={startCaptureVoice}><Mic size={17}/> {captureError ? 'Tekrar dene' : 'Kaydı başlat'}</button>}<button className="ghost-button" onClick={() => { try { recognitionRef.current?.abort(); } catch { /* ended */ } setCaptureMethod('text'); setCaptureStage('compose'); }}><StickyNote size={16}/> Yazarak ekle</button><button className="text-button" onClick={cancelCaptureVoice}>İptal</button></div></div>;
+    if (captureMethod === 'voice') return <div className="cap-panel"><div className="cap-head"><span className="cap-icon voice"><Mic size={22}/></span><div><span className="eyebrow">SESLİ KAYIT</span><h2>Duyduğum bu mu?</h2></div></div><label className="cap-text"><span className="sr-only">Metin</span><textarea rows={3} value={captureDetails} onChange={(event) => { setCaptureDetails(event.target.value); setCaptureTitle(event.target.value.split(/\n|[.!?]/)[0].slice(0, 140)); }}/></label><div className="cap-row"><button className="ghost-button" onClick={startCaptureVoice}><RefreshCw size={15}/> Yeniden konuş</button><button className="capture-ai-auto" onClick={() => void organizeCapture()}><Sparkles size={17}/><span><strong>AI yerleştirsin</strong><small>Önizleyip onaylarsın</small></span><ArrowRight size={15}/></button></div>{renderCaptureDestination()}</div>;
+    return <div className="cap-panel"><div className="cap-head"><span className="cap-icon"><StickyNote size={22}/></span><div><span className="eyebrow">HIZLI KAYIT</span><h2>Ne kaydedelim?</h2></div></div>{renderCaptureDestination()}</div>;
   };
 
   const renderPage = () => {
@@ -2430,7 +2524,8 @@ export default function PersonalOS() {
     <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><OrbitMark /></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item)=>{const NavIcon=item.icon;const isNested=Boolean(item.parent);const isSectionActive=item.id==='kibleteyn'&&active==='programs';return <button key={item.id} data-p={item.id} className={`${active===item.id?'active ':''}${isNested?'nav-child ':''}${isSectionActive?'section-active':''}`.trim()} onClick={()=>go(item.id)} aria-label={item.label} aria-current={active===item.id?'page':undefined}><span><NavIcon size={isNested?15:17}/></span>{item.label}{item.id==='programs'&&<em>{metricPrograms.length}</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>beginCapture('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli kayıt ekle</small></span><ArrowUpRight size={14}/></button><button className="sidebar-profile" onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}><div className="avatar">{profileInitials}</div><span><strong>{state.profile.name}</strong><small>{state.profile.workspace}</small></span><MoreHorizontal size={16}/></button></aside>
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
     <section className="workspace"><header className={`topbar${topScrolled?' is-scrolled':''}`}><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><span className="topbar-title" aria-hidden="true">{nav.find(item=>item.id===active)?.label??'Orbit'}</span><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><form className="top-secondary" action="/auth/logout" method="post" onSubmit={logout}><button type="submit" className="icon-button" aria-label={loggingOut?"Çıkış yapılıyor":"Çıkış yap"} title="Çıkış yap" disabled={loggingOut}><LogOut size={16}/></button></form><button aria-label="Sitede ara" className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Mentor Sync" className="top-secondary" onClick={()=>{setMentorError('');setMentorParsed(null);setMentorDuplicate(null);setMentorFileName('');setModal('mentor');}}><FileInput size={16}/></IconButton><IconButton label="Sesli kayıt" className="top-secondary" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label={unreadNotificationCount?`${unreadNotificationCount} okunmamış bildirim`:'Bildirimler'} className={unreadNotificationCount?'has-notifications':''} onClick={()=>setModal('notifications')}><Bell size={16}/>{unreadNotificationCount>0&&<span className="notification-badge" aria-hidden="true">{unreadNotificationCount>9?'9+':unreadNotificationCount}</span>}</IconButton><IconButton label="Diğer işlemler" className="top-more" onClick={()=>setModal('more')}><MoreHorizontal size={18}/></IconButton></div></header><main ref={pageContentRef} tabIndex={-1} key={`${active}:${activeProjectId ?? ''}`} className={`content page-${active} ${enter.cls}`}>{renderPage()}</main></section>
-    <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} data-p={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={19}/></button><button className="capture-action ai" aria-label="AI ile akıllı kayıt ekle" onClick={()=>beginCapture('ai')}><Sparkles size={19}/></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={19}/></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} data-p={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
+    {captureMenuOpen&&<button className="capture-scrim" aria-label="Hızlı eylemleri kapat" onClick={()=>setCaptureMenuOpen(false)}/>}
+    <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} data-p={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={20}/><span>Yaz</span></button><button className="capture-action ai" aria-label="AI ile akıllı kayıt ekle" onClick={()=>beginCapture('ai')}><Sparkles size={20}/><span>AI ile</span></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={20}/><span>Konuş</span></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} data-p={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
     {projectCreatorOpen && state.projectCreationDraft && <Suspense fallback={<p role="status">Proje atölyesi açılıyor…</p>}><ProjectCreator draft={state.projectCreationDraft} onChange={draft => setState(current => ({ ...current, projectCreationDraft: draft }))} onClose={() => setProjectCreatorOpen(false)} onDiscard={() => { setState(current => ({ ...current, projectCreationDraft: null })); setProjectCreatorOpen(false); }} onSave={saveProjectPlan}/></Suspense>}
     <Sheet open={Boolean(modal)} onClose={()=>setModal(null)} onBackdrop={()=>playFeedback('tap',true)} label="Orbit penceresi" cardClassName={modal??''} cardProps={{onKeyDownCapture:handleModalKeyDown,onChangeCapture:handleModalChange,onFocusCapture:handleModalFocus}}>
       <IconButton label="Kapat" className="modal-close" onClick={()=>setModal(null)}><X size={17}/></IconButton>

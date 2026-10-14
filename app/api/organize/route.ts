@@ -26,6 +26,12 @@ function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
+// Relative day words resolve against Istanbul time (the Worker clock is UTC).
+function istanbulDate(offsetDays: number) {
+  const base = new Date(Date.now() + offsetDays * 86_400_000);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(base);
+}
+
 function localPlan(text: string): OrbitTarget[] {
   const normalized = text.replace(/\r/g, '').trim();
   const parts = normalized.split(/\n+|(?<=[.!?])\s+(?=[A-ZÇĞİÖŞÜ0-9])/).map((part) => part.replace(/^[-•*\d.)\s]+/, '').trim()).filter(Boolean);
@@ -35,7 +41,7 @@ function localPlan(text: string): OrbitTarget[] {
     const lower = part.toLocaleLowerCase('tr');
     const price = part.match(/(?:₺|tl\s*)?(\d[\d.,]*)\s*(?:₺|tl)/i)?.[1] ?? '';
     const url = part.match(/https?:\/\/\S+/i)?.[0] ?? '';
-    const date = part.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0] ?? '';
+    const date = part.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0] ?? (/yarın/i.test(lower) ? istanbulDate(1) : /bugün/i.test(lower) ? istanbulDate(0) : '');
     const time = part.match(/\b(?:[01]?\d|2[0-3])[:.]([0-5]\d)\b/)?.[0]?.replace('.', ':') ?? '';
     let kind: OrbitTarget['kind'] = 'note';
     if (/(satın|alınacak|alacağım|sipariş|fiyat|\btl\b|₺)/i.test(lower)) kind = 'buy';

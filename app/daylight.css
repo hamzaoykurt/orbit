@@ -443,3 +443,108 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 /* Project workspace filters: keep active pill filled so on-solid text stays readable */
 :root[data-theme] .project-workspace.pw-redesign .pb-filters button[aria-pressed=true] { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
 :root[data-theme] .project-workspace .pb-task-row:first-child { background:color-mix(in srgb,var(--pg-fill) 8%,var(--panel)); }
+
+/* ======================================================================
+   Hızlı kayıt: fast capture form, labelled quick actions, tour cards
+   ====================================================================== */
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+/* Quick actions: labelled pills stacked above the bar, scrim behind, never over the bar itself */
+.capture-scrim { position:fixed; inset:0; z-index:39; border:0; padding:0; background:rgba(27,16,53,.42); animation:scrim-in 160ms ease-out; }
+@media (max-width:820px) {
+  :root[data-theme] .app-shell .bottom-nav .quick-capture-menu { position:fixed; left:0; right:0; margin-inline:auto; width:max-content !important; bottom:calc(68px + var(--sab,0px) + 16px); display:flex; flex-direction:column; gap:12px; align-items:stretch; justify-content:flex-start; z-index:45; }
+  :root[data-theme] .app-shell .bottom-nav .capture-action { width:auto !important; min-width:190px !important; height:56px !important; padding:0 24px; border-radius:999px; display:flex; align-items:center; justify-content:flex-start; gap:12px; background:var(--panel); color:var(--ink); border:0; box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 4px 0 color-mix(in srgb,var(--pg-fill) 35%,var(--canvas)),0 14px 20px -12px color-mix(in srgb,var(--pg-fill) 60%,transparent); }
+  :root[data-theme] .app-shell .bottom-nav .capture-action span { font-size:16px; font-weight:600; }
+  :root[data-theme] .app-shell .bottom-nav .capture-action svg { width:22px; height:22px; color:var(--pg-ink); }
+  :root[data-theme] .app-shell .bottom-nav .capture-action.ai { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+  :root[data-theme] .app-shell .bottom-nav .capture-action.ai svg { color:var(--pg-on-solid); }
+}
+
+/* Capture sheet form */
+.capture-form { display:grid; gap:16px; margin-top:12px; }
+.capture-title > span { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+:root[data-theme] .capture-title input { height:58px; font-size:18px; font-weight:600; padding:0 16px; width:100%; }
+.capture-field { display:grid; gap:8px; }
+.capture-label { font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+.capture-chips { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; margin-inline:-4px; padding:2px 4px 6px; }
+.capture-chips::-webkit-scrollbar { display:none; }
+.capture-chips.sub { flex-wrap:wrap; overflow:visible; }
+:root[data-theme] .capture-chips button { flex:none; min-height:44px; padding:0 16px; border:0; border-radius:999px; background:var(--panel-2); color:var(--ink-2); font-size:15px; font-weight:600; box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 0 color-mix(in srgb,var(--pg-fill) 20%,var(--canvas)); }
+:root[data-theme] .capture-chips button[aria-pressed=true] { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+@media (min-width:821px) { .capture-chips { flex-wrap:wrap; overflow:visible; } }
+.capture-select select { width:100%; min-height:48px; padding:0 12px; }
+:root[data-theme] .capture-more-toggle { justify-self:start; min-height:44px; display:inline-flex; align-items:center; gap:8px; padding:0 4px; border:0; background:none; color:var(--pg-ink); font-weight:600; font-size:15px; box-shadow:none; }
+.capture-more { display:grid; gap:14px; padding:16px; border-radius:var(--r-l); background:var(--panel-2); }
+.capture-more label { display:grid; gap:6px; font-size:13px; font-weight:600; color:var(--ink-2); }
+.capture-more textarea { min-height:84px; padding:12px; }
+.capture-actions { position:sticky; bottom:0; z-index:2; display:grid; gap:10px; padding:14px 0 calc(6px + var(--sab,0px)); background:linear-gradient(180deg,transparent,var(--panel) 28%); }
+.capture-actions .primary-button { min-height:56px; font-size:17px; }
+.capture-error { margin:8px 0 0; padding:12px 14px; border-radius:var(--r-m); background:color-mix(in srgb,var(--danger) 10%,var(--panel)); color:#8F1233; font-size:14px; line-height:1.5; }
+.voice-command { display:grid; gap:12px; justify-items:center; text-align:center; padding-bottom:12px; }
+
+/* Tour cards: name first, dates as a tidy chip, progress on its own row */
+:root[data-theme] .page-programs .program-head { display:grid; grid-template-columns:auto minmax(0,1fr) minmax(150px,210px) 44px; grid-template-areas:"date name prog chev"; align-items:center; gap:16px; padding:18px 20px; min-height:0; }
+:root[data-theme] .page-programs .program-date { grid-area:date; position:static; width:auto; height:auto; display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:var(--r-m); background:var(--pg-tint); color:var(--ink); }
+:root[data-theme] .page-programs .program-date-point { display:inline-flex; align-items:baseline; gap:6px; white-space:nowrap; text-align:left; }
+:root[data-theme] .page-programs .program-date-point i { font-style:normal; font-size:12px; font-weight:700; letter-spacing:.06em; color:var(--muted); }
+:root[data-theme] .page-programs .program-date-point strong { font-family:var(--font-head); font-size:22px; font-weight:800; line-height:1; color:var(--ink); }
+:root[data-theme] .page-programs .program-date-point small { font-size:13px; font-weight:700; color:var(--pg-ink); }
+:root[data-theme] .page-programs .program-date-divider { display:inline-grid; place-items:center; color:var(--pg-ink); }
+:root[data-theme] .page-programs .program-date>b { font-size:12px; color:var(--muted); }
+:root[data-theme] .page-programs .program-name { grid-area:name; display:grid; gap:6px; min-width:0; }
+:root[data-theme] .page-programs .program-name h2 { font-size:20px; line-height:1.25; margin:0; }
+:root[data-theme] .page-programs .program-progress { grid-area:prog; display:grid; gap:6px; align-self:center; }
+:root[data-theme] .page-programs .program-chevron { grid-area:chev; }
+@media (max-width:820px) {
+  :root[data-theme] .page-programs .program-head { grid-template-columns:minmax(0,1fr) 44px; grid-template-areas:"name chev" "date date" "prog prog"; gap:12px 12px; padding:18px; }
+  :root[data-theme] .page-programs .program-date { flex-wrap:wrap; gap:6px 12px; }
+}
+
+/* Shared capture panel pattern: icon bubble + eyebrow/title, hint, content, actions */
+:root[data-theme] .modal-card:has(.cap-panel) { width:min(520px,100%); }
+.cap-panel { display:grid; gap:16px; }
+.cap-head { display:flex; align-items:center; gap:14px; padding-right:52px; }
+.cap-head h2 { margin:2px 0 0; font-size:26px; line-height:1.15; }
+.cap-icon { flex:none; display:grid; place-items:center; width:52px; height:52px; border-radius:18px; background:color-mix(in srgb,var(--pg-fill) 18%,var(--panel)); color:var(--pg-ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 3px 0 color-mix(in srgb,var(--pg-fill) 30%,var(--canvas)); }
+.cap-icon.ai { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+.cap-icon.warn { background:color-mix(in srgb,var(--danger) 14%,var(--panel)); color:var(--danger); }
+.cap-hint { margin:0; color:var(--muted); font-size:15px; line-height:1.55; }
+.cap-text textarea { width:100%; min-height:120px; padding:14px 16px; font-size:16px; line-height:1.5; resize:vertical; }
+.cap-row { display:grid; gap:10px; }
+.cap-skeleton { display:grid; gap:10px; }
+.cap-skeleton i { display:block; height:64px; border-radius:var(--r-l); background:var(--panel-2); animation:boot-pulse 1.2s ease-in-out infinite; }
+.cap-skeleton i:nth-child(2) { animation-delay:150ms; } .cap-skeleton i:nth-child(3) { animation-delay:300ms; }
+.cap-preview { list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+.cap-preview li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-radius:var(--r-l); background:var(--card-bg); box-shadow:var(--shadow); }
+.cap-preview li span { display:grid; gap:2px; min-width:0; }
+.cap-preview li strong { font-size:16px; font-weight:600; overflow-wrap:anywhere; }
+.cap-preview li small { color:var(--pg-ink); font-weight:600; font-size:13px; }
+.cap-preview li button { flex:none; width:44px; height:44px; border:0; border-radius:50%; background:var(--panel-2); color:var(--ink-2); display:grid; place-items:center; }
+
+/* Voice */
+.voice-panel { justify-items:stretch; }
+.voice-stage { position:relative; display:grid; place-items:center; gap:18px; padding:8px 0 0; }
+:root[data-theme] .voice-record { width:104px; height:104px; border:0; border-radius:50%; display:grid; place-items:center; background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); position:relative; }
+:root[data-theme] .voice-record:active { transform:translateY(3px); box-shadow:var(--raise-down); }
+.voice-stage.on .voice-record::after { content:""; position:absolute; inset:-10px; border-radius:50%; border:3px solid var(--pg-fill); opacity:.5; animation:ring-wave 1.4s ease-out infinite; }
+.voice-stage.speaking .voice-record::after { animation-duration:.8s; opacity:.8; }
+.voice-wave { display:flex; align-items:center; justify-content:center; gap:5px; height:48px; }
+.voice-wave i { width:6px; height:36px; border-radius:99px; background:color-mix(in srgb,var(--pg-fill) 70%,var(--panel)); transform:scaleY(.18); transform-origin:center; }
+.voice-stage.on .voice-wave i { animation:voice-bar 900ms ease-in-out infinite alternate; }
+.voice-stage.on.speaking .voice-wave i { animation-duration:420ms; background:var(--pg-fill); }
+@keyframes voice-bar { from { transform:scaleY(.2); } to { transform:scaleY(.7); } }
+.voice-stage.on.speaking .voice-wave i { --amp:1; }
+.voice-timer { text-align:center; font-family:var(--font-head); font-weight:800; font-size:30px; font-variant-numeric:tabular-nums; }
+.voice-live { margin:0; min-height:3.2em; text-align:center; color:var(--ink-2); font-size:16px; line-height:1.55; }
+.capture-ai-auto { display:flex; align-items:center; gap:12px; width:100%; min-height:56px; padding:8px 16px; border:0; border-radius:var(--r-l); background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); text-align:left; box-shadow:var(--raise); }
+.capture-ai-auto span { display:grid; flex:1; } .capture-ai-auto small { opacity:.9; }
+@media (prefers-reduced-motion:reduce) { .voice-wave i { transform:scaleY(.5) !important; } }
+
+/* Fixes: quick action pills are rows; tour date block is a row */
+@media (max-width:820px) {
+  :root[data-theme] .app-shell .bottom-nav .capture-action { flex-direction:row !important; }
+  :root[data-theme] .app-shell .bottom-nav .capture-action svg { position:static !important; margin:0 !important; flex:none; }
+}
+:root[data-theme] .page-programs .program-date { flex-direction:row !important; flex-wrap:wrap; justify-content:flex-start; }
+:root[data-theme] .page-programs .program-date-point { flex-direction:row !important; grid-template-columns:none; }
+:root[data-theme] .capture-actions .text-button { justify-self:center; min-height:44px; padding:0 16px; }
