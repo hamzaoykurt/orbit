@@ -579,3 +579,10 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 }
 :root[data-theme] .program-hub .rebuild-deck { max-width:none; width:100%; margin:0; }
 :root[data-theme] .program-hub .rx-home, :root[data-theme] .program-hub .rb-lanes { max-width:none; }
+
+/* Boot skeleton: cream, brand mark, calm blocks (shown the moment the HTML paints) */
+:root[data-theme] .boot-skeleton { max-width:1100px; margin:0 auto; padding:max(28px,calc(var(--sat,0px) + 20px)) 16px 24px; }
+.boot-brand { display:flex; align-items:center; gap:12px; font-family:var(--font-head); font-weight:800; font-size:22px; }
+.boot-brand .brand-mark { width:44px; height:44px; border-radius:14px; display:grid; place-items:center; overflow:hidden; box-shadow:var(--shadow); }
+:root[data-theme] .boot-bar.wide { height:150px; max-width:none; border-radius:var(--r-xl); background:var(--pg-tint); }
+:root[data-theme] .boot-grid > div { height:110px; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); }
