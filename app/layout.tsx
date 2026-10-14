@@ -29,7 +29,7 @@ const displayFont = Bricolage_Grotesque({
 const title = 'Orbit — Personal OS';
 const description = 'Hayatın, projelerin, programların ve hedeflerin için sakin bir çalışma alanı.';
 // One theme only (Gun Isigi). Stored preference is left untouched but no longer read.
-const themeBootScript = `(function(){var d=document.documentElement;d.dataset.theme='light';d.style.colorScheme='light';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#FFF7EA')})();`;
+const themeBootScript = `(function(){var d=document.documentElement;d.dataset.theme='light';d.style.colorScheme='light';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#F5EADA')})();`;
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -71,7 +71,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" data-theme="light" suppressHydrationWarning>
-      <head><link rel="manifest" href="/manifest.webmanifest?v=9"/><meta name="theme-color" content="#FFF7EA"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+      <head><link rel="manifest" href="/manifest.webmanifest?v=9"/><meta name="theme-color" content="#F5EADA"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
         className={`${geistSans.variable} ${displayFont.variable} antialiased`}
       >

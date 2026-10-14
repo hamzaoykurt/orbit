@@ -6,8 +6,8 @@ export function loginPage({ error = '', next = '/', status = 200, configured = t
   error?: string; next?: string; status?: number; configured?: boolean; retryAfter?: number; remembered?: boolean;
 } = {}) {
   const nonce = crypto.randomUUID().replaceAll('-', '');
-  return new Response(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#FFF7EA"><meta name="robots" content="noindex,nofollow"><title>Giriş yap · Orbit</title><link rel="icon" type="image/png" href="/orbit-favicon-v3.png"><style nonce="${nonce}">
-:root{--canvas:#FFF7EA;--panel:#fff;--panel-2:#FFEFD6;--ink:#1B1035;--muted:#5C5672;--soft:#6B6580;--ctrl:#8E8799;--btn:#D63A1F;--ink-btn:#C2331A;--sun:#FFD23F;--danger:#D6204A}
+  return new Response(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#F5EADA"><meta name="robots" content="noindex,nofollow"><title>Giriş yap · Orbit</title><link rel="icon" type="image/png" href="/orbit-favicon-v3.png"><style nonce="${nonce}">
+:root{--canvas:#F5EADA;--panel:#FDF8EF;--panel-2:#F9E6CB;--ink:#1B1035;--muted:#5C5672;--soft:#645E78;--ctrl:#837C90;--btn:#D63A1F;--ink-btn:#B82F17;--sun:#FFD23F;--danger:#D6204A}
 *{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:24px 24px 40px;background:var(--canvas);color:var(--ink);font-family:"Segoe UI",Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
 main{width:min(100%,440px)}
 .scene{position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;min-height:176px;padding:22px 24px 48px;border-radius:28px;margin-bottom:20px;background:linear-gradient(180deg,var(--top),var(--bottom));color:var(--sc)}

@@ -2,26 +2,32 @@
    Surfaces are borderless white on a warm canvas; colour is concentrated in small focal points. */
 :root {
   /* Surface and text */
-  --canvas:#FFF7EA; --panel:#FFFFFF; --panel-solid:#FFFFFF; --panel-2:#FFEFD6;
-  --ink:#1B1035; --ink-2:#3A3354; --muted:#5C5672; --soft:#6B6580;
-  --line:rgba(27,16,53,.10); --ctrl-edge:#8E8799;
+  --canvas:#F5EADA; --panel:#FDF8EF; --panel-solid:#FDF8EF; --panel-2:#F9E6CB;
+  --ink:#1B1035; --ink-2:#3A3354; --muted:#5C5672; --soft:#645E78;
+  --line:rgba(27,16,53,.10); --ctrl-edge:#837C90;
   /* Decorative only (confetti, scene, icon bubbles, illustration). Never behind text. */
   --sun:#FFD23F; --pink:#FF5C8A; --mint:#3DDC97; --sky:#5B86FF; --lav:#A78BFA; --tang:#FF8A3D;
   /* Status colours with fixed meaning */
-  --ink-red:#C2331A; --ink-pink:#B5155F; --ink-violet:#5A2FD6; --ink-blue:#1B4ED1; --ink-green:#00704F; --ink-gold:#7A5200;
+  --ink-red:#B82F17; --ink-pink:#B5155F; --ink-violet:#5A2FD6; --ink-blue:#1B4ED1; --ink-green:#00704F; --ink-gold:#7A5200;
   --ok:#00B37E; --ok-ink:#00704F; --streak:#FF8A1F; --streak-ink:#8A4200; --gold:#FFB400; --gold-ink:#7A5200; --danger:#D6204A;
   /* Page identity (Bugün by default): fill = decoration, ink = coloured text, btn = button (white text), tint = fill 14% on panel */
-  --pg-fill:#FF5A3C; --pg-ink:#C2331A; --pg-btn:#D63A1F; --pg-rgb:255,90,60;
+  --pg-fill:#FF5A3C; --pg-ink:#B82F17; --pg-btn:#D63A1F; --pg-rgb:255,90,60;
   --pg-tint:color-mix(in srgb,var(--pg-fill) 14%,var(--panel));
   /* Legacy names stay as aliases so older rules follow the page identity */
   --accent:var(--pg-ink); --accent-rgb:var(--pg-rgb); --accent-soft:var(--pg-tint);
   --page-accent:var(--pg-fill); --page-ink:var(--pg-ink); --btn-bg:var(--pg-btn); --btn-ink:#fff;
   /* Elevation: soft and page coloured, never a hard offset */
-  --shadow:0 10px 28px -14px color-mix(in srgb,var(--pg-fill) 55%,transparent),0 1px 2px rgba(27,16,53,.06);
+  --shadow:inset 0 1px 0 rgba(255,255,255,.65),0 8px 18px -10px color-mix(in srgb,var(--pg-fill) 60%,transparent),0 1px 2px rgba(27,16,53,.06);
   --inset:0 0 0 0 transparent;
   --e2:0 10px 28px -14px color-mix(in srgb,var(--pg-fill) 45%,transparent),0 1px 2px rgba(27,16,53,.06);
   --e3:0 -12px 40px -18px rgba(27,16,53,.38); --scrim:rgba(27,16,53,.38);
   /* Shape */
+  /* Focus surfaces: page colour as fill. Ink text where ink passes on the fill, white on the darker button shade. */
+  --pg-solid:var(--pg-fill); --pg-on-solid:var(--ink); --pg-solid-a:color-mix(in srgb,var(--pg-solid) 84%,#fff); --pg-solid-b:var(--pg-solid);
+  --pg-lip:color-mix(in srgb,var(--pg-solid) 58%,#000);
+  --raise:inset 0 1px 0 rgba(255,255,255,.5),0 4px 0 var(--pg-lip),0 12px 18px -10px color-mix(in srgb,var(--pg-solid) 60%,transparent);
+  --raise-down:inset 0 1px 0 rgba(255,255,255,.35),0 1px 0 var(--pg-lip);
+  --card-bg:linear-gradient(160deg,color-mix(in srgb,var(--pg-fill) 8%,var(--panel)),var(--panel) 72%);
   --r-s:12px; --r-m:18px; --r-l:24px; --r-xl:28px; --radius:24px;
   /* Illustration fills */
   --art-fill:color-mix(in srgb,var(--pg-fill) 16%,var(--panel)); --art-line:color-mix(in srgb,var(--pg-ink) 70%,var(--ink));
@@ -29,13 +35,13 @@
   --font-head:var(--font-display),var(--font-geist-sans),Arial,sans-serif;
 }
 /* One identity colour per page. */
-html[data-page=personal] { --pg-fill:#FF5A3C; --pg-ink:#C2331A; --pg-btn:#D63A1F; --pg-rgb:255,90,60; }
-html[data-page=weekplan] { --pg-fill:#7C4DFF; --pg-ink:#5A2FD6; --pg-btn:#6A3DF0; --pg-rgb:124,77,255; }
+html[data-page=personal] { --pg-fill:#FF5A3C; --pg-ink:#B82F17; --pg-btn:#D63A1F; --pg-rgb:255,90,60; }
+html[data-page=weekplan] { --pg-fill:#7C4DFF; --pg-ink:#5A2FD6; --pg-btn:#6A3DF0; --pg-rgb:124,77,255;  --pg-solid:var(--pg-btn); --pg-on-solid:#fff; --pg-solid-a:var(--pg-btn); --pg-solid-b:color-mix(in srgb,var(--pg-btn) 84%,#000); }
 html[data-page=rebuild] { --pg-fill:#00B37E; --pg-ink:#00704F; --pg-btn:#007F59; --pg-rgb:0,179,126; }
-html[data-page=projects], html[data-page=hub], html[data-page=kibleteyn], html[data-page=programs] { --pg-fill:#2F6BFF; --pg-ink:#1B4ED1; --pg-btn:#1F5BF0; --pg-rgb:47,107,255; }
+html[data-page=projects], html[data-page=hub], html[data-page=kibleteyn], html[data-page=programs] { --pg-fill:#2F6BFF; --pg-ink:#1B4ED1; --pg-btn:#1F5BF0; --pg-rgb:47,107,255;  --pg-solid:var(--pg-btn); --pg-on-solid:#fff; --pg-solid-a:var(--pg-btn); --pg-solid-b:color-mix(in srgb,var(--pg-btn) 84%,#000); }
 html[data-page=notes], html[data-page=archive] { --pg-fill:#FFB400; --pg-ink:#7A5200; --pg-btn:#9A6500; --pg-rgb:255,180,0; }
 html[data-page=calendar], html[data-page=fitness] { --pg-fill:#EC3F8E; --pg-ink:#B5155F; --pg-btn:#C21A6A; --pg-rgb:236,63,142; }
-html[data-page=settings] { --pg-fill:#3A3354; --pg-ink:#1B1035; --pg-btn:#1B1035; --pg-rgb:58,51,84; --pg-tint:color-mix(in srgb,var(--pg-fill) 9%,var(--panel)); }
+html[data-page=settings] { --pg-fill:#3A3354; --pg-ink:#1B1035; --pg-btn:#1B1035; --pg-rgb:58,51,84; --pg-tint:color-mix(in srgb,var(--pg-fill) 9%,var(--panel));  --pg-solid:#5C5672; --pg-on-solid:#fff; --pg-solid-a:#6A647F; --pg-solid-b:#58526E; }
 
 @keyframes rise { from { opacity:0; transform:translateY(8px); } }
 @keyframes pop { 0% { transform:scale(.4); } 60% { transform:scale(1.25); } 100% { transform:scale(1); } }

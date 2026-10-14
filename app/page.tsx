@@ -759,7 +759,7 @@ export default function PersonalOS() {
     // Single light theme (Gün Işığı); the stored preference is kept but ignored.
     document.documentElement.dataset.theme = 'light';
     document.documentElement.style.colorScheme = 'light';
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#FFF7EA');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#F5EADA');
     document.documentElement.classList.add('theme-ready');
   }, [hydrated]);
 

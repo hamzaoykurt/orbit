@@ -14,7 +14,7 @@
 :root[data-theme] :is(button,input,textarea,select,summary,a[href]):focus-visible { outline:2px solid var(--pg-ink); outline-offset:2px; }
 
 /* ---- Surfaces ---- */
-:root[data-theme] .app-shell .surface, :root[data-theme] .app-shell :is(.note-card,.project-card,.pp-card,.px-card,.program-card) { background:var(--panel); border:0; border-radius:var(--r-l); box-shadow:var(--shadow); }
+:root[data-theme] .app-shell .surface, :root[data-theme] .app-shell :is(.note-card,.project-card,.pp-card,.px-card,.program-card) { background:var(--card-bg); border:0; border-radius:var(--r-l); box-shadow:var(--shadow); }
 :root[data-theme] .app-shell .surface.tint, :root[data-theme] .tint-card { background:linear-gradient(135deg,var(--pg-tint),var(--panel)); }
 :root[data-theme] hr, :root[data-theme] .divider { border:0; height:1px; background:var(--line); }
 
@@ -53,7 +53,7 @@
 :root[data-theme] :is(.task-item.completed,.next-row.is-done) { background:color-mix(in srgb,var(--ok) 10%,var(--panel)); }
 
 /* ---- Sidebar and nav ---- */
-:root[data-theme] .sidebar { background:var(--panel); border:0; border-radius:var(--r-l); box-shadow:var(--shadow); }
+:root[data-theme] .sidebar { background:var(--card-bg); border:0; border-radius:var(--r-l); box-shadow:var(--shadow); }
 :root[data-theme] .brand-mark { background:var(--pg-tint); border:0; box-shadow:none; }
 :root[data-theme] .brand-mark::before, :root[data-theme] .brand-mark::after { display:none; }
 :root[data-theme] .brand strong, :root[data-theme] .brand>span:last-child { font-family:var(--font-head); font-weight:800; color:var(--ink); }
@@ -104,7 +104,7 @@
 html.reduce-motion .scene-cloud.drift { animation:none; }
 
 /* ---- HUD pill ---- */
-.hud { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 18px; align-items:center; padding:16px 22px 16px 16px; margin-bottom:var(--sp-4,16px); border-radius:var(--r-xl); background:var(--panel); box-shadow:var(--shadow); }
+.hud { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 18px; align-items:center; padding:16px 22px 16px 16px; margin-bottom:var(--sp-4,16px); border-radius:var(--r-xl); background:var(--card-bg); box-shadow:var(--shadow); }
 .hud-ring { --p:0%; position:relative; display:grid; place-items:center; width:72px; height:72px; border-radius:50%; background:conic-gradient(var(--pg-fill) var(--p),var(--panel-2) 0); }
 .hud-ring::before { content:""; position:absolute; inset:6px; border-radius:50%; background:var(--panel); }
 .hud-ring b { position:relative; font-family:var(--font-head); font-weight:800; font-size:28px; line-height:1; color:var(--ink); }
@@ -142,7 +142,7 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .wp-days i { background:var(--panel-2); } :root[data-theme] .wp-days u { background:var(--pg-fill); }
 :root[data-theme] .wp-dayhead h2 { color:var(--ink); }
 :root[data-theme] .wp-slot h3 { padding-left:0; border-left:0; color:var(--pg-ink); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
-:root[data-theme] .wp-task { border:0; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); padding:16px 18px; }
+:root[data-theme] .wp-task { border:0; border-radius:var(--r-l); background:var(--card-bg); box-shadow:var(--shadow); padding:16px 18px; }
 :root[data-theme] .wp-task.bonus { border:0; background:color-mix(in srgb,var(--gold) 14%,var(--panel)); }
 :root[data-theme] .wp-task.done { border:0; background:color-mix(in srgb,var(--ok) 10%,var(--panel)); }
 :root[data-theme] .wp-time { background:var(--pg-tint); color:var(--pg-ink); }
@@ -163,7 +163,6 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 
 /* ---- Page header: soft tint band + big title ---- */
 
-:root[data-theme] .app-shell .content { background:linear-gradient(var(--pg-tint),transparent) top/100% 72px no-repeat; }
 :root[data-theme] .ph { gap:var(--sp-3,12px); margin-bottom:var(--sp-5,24px); }
 :root[data-theme] .ph-title { font-family:var(--font-head); font-size:clamp(34px,6vw,52px); line-height:1.05; font-weight:800; letter-spacing:-.03em; color:var(--ink); }
 :root[data-theme] .ph-desc { font-size:15px; line-height:1.55; color:var(--muted); }
@@ -207,13 +206,13 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .rd-text-button { color:var(--pg-ink); }
 :root[data-theme] .rb-lanes { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:var(--workspace-gap); }
 :root[data-theme] .rb-routes { display:grid; grid-template-columns:1fr; gap:12px; border:0; }
-:root[data-theme] .rb-route { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:14px; padding:16px 18px; border:0; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); color:var(--ink); text-align:left; width:100%; }
+:root[data-theme] .rb-route { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:14px; padding:16px 18px; border:0; border-radius:var(--r-l); background:var(--card-bg); box-shadow:var(--shadow); color:var(--ink); text-align:left; width:100%; }
 :root[data-theme] .rb-route-copy { display:grid; gap:6px; min-width:0; }
 :root[data-theme] .rb-route strong { font-size:18px; font-weight:600; }
 :root[data-theme] .rb-route small { color:var(--muted); font-size:13px; }
 :root[data-theme] .rb-route .progress-bar { height:10px; }
 @media (hover:hover) { :root[data-theme] :is(.rb-route,.note-card,.pb-project-entry,.hub-link-card,.archive-item,.program-card):hover { transform:translateY(-2px); } }
-:root[data-theme] .rx-content-card { padding:24px; border:0; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); }
+:root[data-theme] .rx-content-card { padding:24px; border:0; border-radius:var(--r-l); background:var(--card-bg); box-shadow:var(--shadow); }
 :root[data-theme] .rd-notice { border-radius:999px; }
 :root[data-theme] .rd-week-index { border:0; background:var(--pg-tint); border-radius:var(--r-l); padding:12px 16px; }
 :root[data-theme] .rd-week-index b { font-family:var(--font-head); font-weight:800; color:var(--ink); }
@@ -222,7 +221,7 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .px-hub-controls { border:0; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
 :root[data-theme] .pb-project-group>header h2 { color:var(--ink); font-size:24px; }
 :root[data-theme] .pb-project-index { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr)); gap:var(--workspace-gap); border:0; }
-:root[data-theme] .pb-project-entry { position:relative; display:flex; flex-direction:column; gap:12px; padding:20px; border:0; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); }
+:root[data-theme] .pb-project-entry { position:relative; display:flex; flex-direction:column; gap:12px; padding:20px; border:0; border-radius:var(--r-l); background:var(--card-bg); box-shadow:var(--shadow); }
 :root[data-theme] .pb-project-open { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"icon copy arrow" "meter meter meter"; align-items:start; gap:12px 14px; padding:0; border:0; background:transparent; text-align:left; }
 :root[data-theme] .pb-project-open .bubble { grid-area:icon; }
 :root[data-theme] .pb-project-copy { grid-area:copy; display:grid; gap:4px; min-width:0; }
@@ -241,7 +240,7 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 
 /* ---- Hub ---- */
 :root[data-theme] .hub-empty { border:2px dashed color-mix(in srgb,var(--pg-fill) 35%,transparent); border-radius:var(--r-l); background:var(--panel); }
-:root[data-theme] .hub-link-card { border:0; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); overflow:hidden; }
+:root[data-theme] .hub-link-card { border:0; border-radius:var(--r-l); background:var(--card-bg); box-shadow:var(--shadow); overflow:hidden; }
 :root[data-theme] .platform-badge { background:var(--pg-tint); color:var(--pg-ink); border-radius:999px; }
 :root[data-theme] .hub-tags span { background:var(--panel-2); color:var(--ink-2); border-radius:999px; }
 
@@ -359,7 +358,7 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .project-workspace.pw-redesign .pw-tabs button[aria-current=page] { color:var(--pg-ink); box-shadow:0 2px var(--pg-ink); }
 :root[data-theme] .project-workspace.pw-redesign .pw-tabs button>span { background:var(--pg-tint); color:var(--pg-ink); border-radius:999px; padding:0 8px; }
 :root[data-theme] .project-workspace.pw-redesign .pb-filters button[aria-pressed=true] { background:var(--panel); color:var(--pg-ink); box-shadow:0 1px 2px rgba(27,16,53,.12); }
-:root[data-theme] .project-workspace .pb-task-list, :root[data-theme] .project-workspace .pw-task, :root[data-theme] .project-workspace .pw-resource { border:0; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); overflow:hidden; }
+:root[data-theme] .project-workspace .pb-task-list, :root[data-theme] .project-workspace .pw-task, :root[data-theme] .project-workspace .pw-resource { border:0; border-radius:var(--r-l); background:var(--card-bg); box-shadow:var(--shadow); overflow:hidden; }
 :root[data-theme] .project-workspace .pb-task-row { border-color:var(--line); min-height:56px; }
 :root[data-theme] .project-workspace .pb-task-row.is-next, :root[data-theme] .project-workspace .pb-task-row:first-child { background:color-mix(in srgb,var(--pg-fill) 6%,var(--panel)); }
 :root[data-theme] .project-workspace .pw-check { border:2px solid var(--ctrl-edge); border-radius:50%; background:transparent; }
@@ -375,3 +374,76 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .department-tabs :is(span,small,em) { font-size:14px; }
 :root[data-theme] .department-detail :is(h2,h3) { font-size:22px; }
 :root[data-theme] .department-detail p { font-size:14px; }
+
+/* ---- Soft page header (one rule for every page): large rounded card whose tint melts into the canvas ---- */
+:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading) { position:relative; padding:24px 28px; margin-bottom:var(--sp-5,24px); border:0; border-radius:var(--r-xl); box-shadow:none; background:linear-gradient(115deg,color-mix(in srgb,var(--pg-fill) 20%,var(--panel)) 0%,color-mix(in srgb,var(--pg-fill) 9%,var(--canvas)) 55%,var(--canvas) 100%); }
+@media (max-width:820px) { :root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading) { padding:20px 20px 18px; } }
+:root[data-theme] .px-hub-heading { margin-bottom:var(--sp-4,16px); }
+
+/* ---- Depth for flat surfaces: faint page tint instead of dead white ---- */
+:root[data-theme] :is(.wp-card,.rx-content-card,.settings-section,.settings-nav,.calendar-card,.day-panel,.archive-item,.note-card,.nh-start) { background-image:linear-gradient(160deg,color-mix(in srgb,var(--pg-fill) 7%,transparent),transparent 70%); }
+:root[data-theme] .sidebar { background:linear-gradient(180deg,color-mix(in srgb,var(--pg-fill) 7%,var(--panel)),var(--panel) 60%); }
+:root[data-theme] .app-shell .bottom-nav { background:linear-gradient(180deg,color-mix(in srgb,var(--pg-fill) 6%,var(--panel)),var(--panel)); }
+:root[data-theme] .modal-card { background:var(--card-bg); }
+:root[data-theme] :is(.hud,.next-step,.today-program) { background-image:none; }
+:root[data-theme] .hud { background:var(--card-bg); }
+:root[data-theme] .icon-button, :root[data-theme] .date-pill, :root[data-theme] .search-trigger { background:color-mix(in srgb,var(--pg-fill) 5%,var(--panel)); }
+
+/* ======================================================================
+   Two surface languages: calm = faint tint + soft coloured shadow,
+   focus = page colour as fill, raised (3D) with a soft inner highlight and a
+   coloured lip. No blur, no backdrop-filter, no hard outlines.
+   ====================================================================== */
+/* Focus surfaces: header band, HUD, next step, Rebuild focus, progress card */
+:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.hud,.next-step,.rx-focus,.week-card.surface) {
+  background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b));
+  border:0; border-radius:var(--r-xl); box-shadow:var(--raise); color:var(--pg-on-solid); margin-bottom:calc(var(--sp-5,24px) + 4px);
+}
+:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.hud,.next-step,.rx-focus,.week-card.surface) :is(h1,h2,h3,p,.eyebrow,.rd-kicker,.ph-title,.ph-desc,.hud-top strong,.hud-top span,.next-step-copy strong,.next-step-copy small,.next-step-copy .eyebrow,.card-title-row span,.progress-meta p,.rd-week-index span,.rd-week-index b,.rd-week-index i) { color:var(--pg-on-solid); }
+:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.next-step,.rx-focus) :is(.ghost-button,.primary-button,.rd-done-action,.pp-button,.pp-primary,.text-button,.rd-text-button) { background:var(--panel); color:var(--pg-ink); box-shadow:0 3px 0 color-mix(in srgb,var(--pg-lip) 55%,transparent); }
+:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading) :is(.ph-chips>span,.chip) { background:var(--panel); }
+:root[data-theme] .hud .hud-ring { background:conic-gradient(var(--pg-on-solid) var(--p),color-mix(in srgb,var(--pg-on-solid) 25%,transparent) 0); }
+:root[data-theme] .hud .hud-ring::before { background:var(--panel); }
+:root[data-theme] .hud .hud-ring b { color:var(--ink); }
+:root[data-theme] .hud .hud-bar { background:color-mix(in srgb,var(--pg-on-solid) 22%,transparent); }
+:root[data-theme] .hud .hud-bar>i { background:var(--pg-on-solid); }
+:root[data-theme] .week-card .progress-ring { background:conic-gradient(var(--pg-on-solid) var(--progress,0deg),color-mix(in srgb,var(--pg-on-solid) 25%,transparent) 0); }
+:root[data-theme] .week-card .progress-ring>div { background:var(--panel); }
+:root[data-theme] .week-card .progress-ring :is(strong,span) { color:var(--ink); }
+:root[data-theme] .week-card .icon-button { background:var(--panel); color:var(--pg-ink); }
+:root[data-theme] .week-card .progress-meta button { color:var(--pg-on-solid); }
+:root[data-theme] .week-card .dot { background:var(--pg-on-solid); }
+:root[data-theme] .rd-week-index { background:var(--panel); }
+:root[data-theme] .rd-week-index :is(span,b,i) { color:var(--pg-ink); }
+
+/* Raised primary controls */
+:root[data-theme] :is(.primary-button,.focus-main-button,.rd-done-action,.pp-root .pp-button.pp-primary,.project-workspace.pw-redesign .pb-action) {
+  background:var(--pg-btn); color:#fff; border:0; box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 0 color-mix(in srgb,var(--pg-btn) 62%,#000),0 10px 14px -8px color-mix(in srgb,var(--pg-btn) 55%,transparent);
+}
+:root[data-theme] :is(.primary-button,.focus-main-button,.rd-done-action,.pp-root .pp-button.pp-primary,.project-workspace.pw-redesign .pb-action):active:not(:disabled) { transform:translateY(3px); box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 1px 0 color-mix(in srgb,var(--pg-btn) 62%,#000); scale:1; }
+:root[data-theme] :is(.ghost-button,.quick-actions button,.wp-picker button) { box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 3px 0 color-mix(in srgb,var(--pg-fill) 28%,var(--canvas)); }
+:root[data-theme] :is(.ghost-button,.quick-actions button):active:not(:disabled) { transform:translateY(2px); box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 0 color-mix(in srgb,var(--pg-fill) 28%,var(--canvas)); scale:1; }
+
+/* Active day / tab pills: filled and raised */
+:root[data-theme] .wp-days button { box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 3px 0 color-mix(in srgb,var(--pg-fill) 20%,var(--canvas)); }
+:root[data-theme] .wp-days button.active { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); box-shadow:var(--raise); }
+:root[data-theme] :is(.segmented-control,.hub-tabs,.px-filters,.archive-tabs,.pb-filters,.focus-mode-toggle,.focus-presets) button:is(.active,.selected,[aria-pressed=true],[aria-current=page]) { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+:root[data-theme] :is(.segmented-control,.hub-tabs,.px-filters,.archive-tabs,.pb-filters,.focus-mode-toggle,.focus-presets) button:is(.active,.selected,[aria-pressed=true],[aria-current=page]) :is(span,svg) { color:var(--pg-on-solid); background:transparent; }
+:root[data-theme] .side-nav button.active, :root[data-theme] .app-shell .side-nav button.active { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+:root[data-theme] .side-nav button.active>span:first-child, :root[data-theme] .side-nav button.active em { color:var(--pg-on-solid); }
+:root[data-theme] .app-shell .bottom-nav>button.active { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+
+/* Rewards: XP, streak and badges are solid and raised */
+:root[data-theme] .chip-streak { background:linear-gradient(180deg,color-mix(in srgb,var(--streak) 55%,#fff),var(--streak)); color:var(--ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 color-mix(in srgb,var(--streak) 60%,#000); }
+:root[data-theme] .chip-xp { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 0 var(--pg-lip); }
+:root[data-theme] .chip-gold { background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 60%,#fff),var(--gold)); color:var(--ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 color-mix(in srgb,var(--gold) 60%,#000); }
+:root[data-theme] .hud .chip-xp { background:var(--panel); color:var(--pg-ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 0 color-mix(in srgb,var(--pg-lip) 60%,transparent); }
+:root[data-theme] .wp-badges li.got>svg { background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 60%,#fff),var(--gold)); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 3px 0 color-mix(in srgb,var(--gold) 60%,#000); }
+:root[data-theme] .wp-time.bonus-tag { box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 color-mix(in srgb,var(--gold) 60%,#000); }
+:root[data-theme] .goal-row.complete { background:linear-gradient(180deg,color-mix(in srgb,var(--ok) 70%,#fff),var(--ok)); color:var(--ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 3px 0 color-mix(in srgb,var(--ok) 60%,#000); }
+:root[data-theme] .goal-row.complete .bubble { background:var(--panel); }
+
+/* Calm surfaces: soft raised card with a page-tinted shadow, no hard line */
+:root[data-theme] .app-shell :is(.surface,.note-card,.project-card,.wp-task,.rb-route,.pb-project-entry,.hub-link-card,.archive-item,.program-card,.rx-content-card,.pb-task-list,.pw-task) { box-shadow:var(--shadow); border-radius:var(--r-l); }
+:root[data-theme] .app-shell .week-card.surface { box-shadow:var(--raise); }
+:root[data-theme] :is(.goal-row,.next-row,.time-row,.program-task-row,.department-task-row) { box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 0 color-mix(in srgb,var(--pg-fill) 14%,var(--canvas)); border-radius:var(--r-m); }
