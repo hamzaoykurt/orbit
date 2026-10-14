@@ -2,12 +2,9 @@
 :root {
   --ease-out:cubic-bezier(.22,1,.36,1); --ease-in:cubic-bezier(.4,0,1,1); --ease-spring:cubic-bezier(.34,1.56,.64,1);
   --t-press:90ms; --t-fast:160ms; --t-base:240ms; --t-sheet:320ms; --t-exit:220ms;
-  --r-s:10px; --r-m:16px; --r-l:24px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
   --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px); --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
-  --e2:0 2px 12px rgba(20,24,30,.08); --e3:0 -8px 32px rgba(20,24,30,.16); --scrim:rgba(20,24,30,.5);
   --ex:24px; --sheet-from:100%; --pop:1.18;
-  --radius:var(--r-m);
 }
 @media (prefers-reduced-motion:reduce) { :root { --ex:0px; --sheet-from:0%; --pop:1; } }
 html.reduce-motion { --ex:0px; --sheet-from:0%; --pop:1; }
@@ -152,7 +149,6 @@ html[data-theme] .surface, .note-card, .project-card { border-radius:var(--r-m);
 .celebrate-banner { border-radius:var(--r-m); box-shadow:var(--e2); background:var(--btn-bg); }
 .celebrate-banner.level { grid-template-columns:auto 1fr; align-items:center; column-gap:var(--sp-3); text-align:left; }
 .celebrate-banner.level img { grid-row:span 2; width:48px; height:48px; }
-:root { --art-fill:#e4dacd; --art-line:#a09284; }
 .wp-slots { display:grid; gap:18px; }
 @media (max-width:820px) {
   html[data-theme] .app-shell .bottom-nav > button { color:var(--muted); }

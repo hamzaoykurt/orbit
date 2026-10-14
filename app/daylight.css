@@ -12,7 +12,6 @@
 :root[data-theme] .tabular, :root[data-theme] :is(.hud-top span,.chip,.wp-time,.pips) { font-variant-numeric:tabular-nums; }
 :root[data-theme] ::selection { background:color-mix(in srgb,var(--pg-fill) 28%,transparent); }
 :root[data-theme] :is(button,input,textarea,select,summary,a[href]):focus-visible { outline:2px solid var(--pg-ink); outline-offset:2px; }
-:root[data-theme] .ambient-background { display:none; }
 
 /* ---- Surfaces ---- */
 :root[data-theme] .app-shell .surface, :root[data-theme] .app-shell :is(.note-card,.project-card,.pp-card,.px-card,.program-card) { background:var(--panel); border:0; border-radius:var(--r-l); box-shadow:var(--shadow); }
@@ -304,3 +303,75 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 .fitness-help-card a { color:var(--pg-ink); font-weight:600; }
 
 .celebrate-layer svg { animation-duration:.9s; }
+
+/* ---- Batch 5: contrast, motion, leftovers ---- */
+.operation-visual { position:relative; min-height:170px; display:grid; place-items:center; }
+.operation-visual .core { width:76px; height:76px; border-radius:var(--r-l); background:var(--pg-fill); box-shadow:var(--shadow); display:grid; place-items:center; color:var(--ink); }
+.operation-visual .orbit { position:absolute; border:2px solid color-mix(in srgb,var(--pg-fill) 35%,transparent); border-radius:50%; transform:rotate(-24deg); }
+.operation-visual .o1 { width:190px; height:92px; }
+.operation-visual .o2 { width:245px; height:125px; transform:rotate(28deg); }
+.operation-visual .node { position:absolute; width:14px; height:14px; border-radius:50%; background:var(--pg-fill); }
+.operation-visual .n1 { top:34px; left:31%; } .operation-visual .n2 { right:15%; top:52%; } .operation-visual .n3 { bottom:21px; left:23%; background:var(--ok); }
+
+/* Old ambient motion: only transform/opacity, short, and never infinite except the slow cloud. */
+@keyframes wave { 50% { transform:scaleY(.55); opacity:.5; } }
+@keyframes pulse-voice { 50% { transform:scale(1.06); } }
+@keyframes focus-breathe { 50% { transform:scale(1.02); } }
+@keyframes ai-orbit { 50% { transform:translateY(-4px); } }
+:root[data-theme] .ai-orbit { background:var(--pg-tint); color:var(--pg-ink); box-shadow:none; }
+:root[data-theme] .voice-visual>i { height:15px; background:var(--pg-fill); }
+:root[data-theme] .focus-card.is-focusing .focus-timer { animation:focus-breathe 3s ease-in-out infinite; }
+@media (prefers-reduced-motion:reduce) {
+  *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+}
+:root.reduce-motion *, :root.reduce-motion *::before, :root.reduce-motion *::after { animation:none !important; transition:none !important; }
+
+/* ---- Mobile: titles keep distance from the top bar, header actions never overlap ---- */
+@media (max-width:820px) {
+  :root[data-theme] .app-shell .content { padding-top:var(--sp-5,24px); }
+  :root[data-theme] .ph-main { flex-wrap:wrap; align-items:flex-start; gap:var(--sp-3,12px); }
+  :root[data-theme] .ph-text { flex:1 1 100%; }
+  :root[data-theme] .ph-action { flex:none; }
+  :root[data-theme] .ph-title { overflow-wrap:anywhere; }
+}
+
+/* ---- Projects cards: bottom row aligned left, no stray gap ---- */
+:root[data-theme] .pb-project-entry-meta { display:flex; align-items:center; justify-content:flex-start; gap:10px; margin-top:auto; }
+:root[data-theme] .pb-project-entry-meta button { margin-left:auto; }
+:root[data-theme] .pb-project-meter { margin:0; }
+
+/* ---- Kibleteyn: calmer, larger type ---- */
+:root[data-theme] .department-detail, :root[data-theme] .operation-hero { padding:var(--workspace-panel); }
+:root[data-theme] .department-task-row, :root[data-theme] .program-task-row { font-size:15px; min-height:52px; }
+:root[data-theme] :is(.department-task-row,.program-task-row) small { font-size:13px; }
+:root[data-theme] .progress-ring.small { width:64px; height:64px; display:grid; place-items:center; flex:none; }
+:root[data-theme] .progress-ring.small>div { width:calc(100% - 12px); height:calc(100% - 12px); display:flex; align-items:baseline; justify-content:center; padding-top:0; place-content:center; }
+:root[data-theme] .progress-ring.small strong { font-size:18px; line-height:1; }
+:root[data-theme] .progress-ring.small span { font-size:12px; margin-left:1px; }
+
+/* ---- Fitness help: arrow stays with its label ---- */
+.fitness-help-card a { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+
+/* ---- Project workspace ---- */
+:root[data-theme] .project-workspace.pw-redesign .pb-action, :root[data-theme] .project-workspace .px-primary { background:var(--pg-btn); color:#fff; border:0; border-radius:999px; min-height:48px; padding:0 20px; box-shadow:none; }
+:root[data-theme] .project-workspace.pw-redesign .pb-action:hover { background:color-mix(in srgb,var(--pg-btn) 94%,#000); color:#fff; border:0; }
+:root[data-theme] .project-workspace.pw-redesign .pw-tabs { border-bottom:1px solid var(--line); }
+:root[data-theme] .project-workspace.pw-redesign .pw-tabs button[aria-current=page] { color:var(--pg-ink); box-shadow:0 2px var(--pg-ink); }
+:root[data-theme] .project-workspace.pw-redesign .pw-tabs button>span { background:var(--pg-tint); color:var(--pg-ink); border-radius:999px; padding:0 8px; }
+:root[data-theme] .project-workspace.pw-redesign .pb-filters button[aria-pressed=true] { background:var(--panel); color:var(--pg-ink); box-shadow:0 1px 2px rgba(27,16,53,.12); }
+:root[data-theme] .project-workspace .pb-task-list, :root[data-theme] .project-workspace .pw-task, :root[data-theme] .project-workspace .pw-resource { border:0; border-radius:var(--r-l); background:var(--panel); box-shadow:var(--shadow); overflow:hidden; }
+:root[data-theme] .project-workspace .pb-task-row { border-color:var(--line); min-height:56px; }
+:root[data-theme] .project-workspace .pb-task-row.is-next, :root[data-theme] .project-workspace .pb-task-row:first-child { background:color-mix(in srgb,var(--pg-fill) 6%,var(--panel)); }
+:root[data-theme] .project-workspace .pw-check { border:2px solid var(--ctrl-edge); border-radius:50%; background:transparent; }
+:root[data-theme] .project-workspace .pw-check.checked { background:var(--ok); border-color:var(--ok); color:var(--ink); }
+:root[data-theme] .project-workspace .pb-subtle { color:var(--pg-ink); }
+:root[data-theme] .project-workspace .pb-project-title h1 { font-family:var(--font-head); font-weight:800; font-size:clamp(30px,5vw,44px); letter-spacing:-.03em; }
+:root[data-theme] .project-workspace button { border-color:transparent; background:transparent; }
+:root[data-theme] .project-workspace .pw-add-line { border:2px dashed color-mix(in srgb,var(--pg-fill) 45%,transparent); background:var(--pg-tint); }
+:root[data-theme] .progress-ring.small { position:relative; }
+:root[data-theme] .progress-ring.small>div { position:absolute; inset:6px; width:auto; height:auto; display:flex; align-items:center; justify-content:center; gap:1px; padding:0; border-radius:50%; }
+:root[data-theme] .department-tabs button { min-height:72px; }
+:root[data-theme] .department-tabs :is(strong,b) { font-size:15px; font-weight:600; }
+:root[data-theme] .department-tabs :is(span,small,em) { font-size:14px; }
+:root[data-theme] .department-detail :is(h2,h3) { font-size:22px; }
+:root[data-theme] .department-detail p { font-size:14px; }
