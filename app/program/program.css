@@ -10,7 +10,6 @@
 .wp-chips { display:flex; gap:8px; flex-wrap:wrap; }
 .wp-chips span { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:0 11px; border-radius:99px; font-size:13px; font-weight:600; background:var(--canvas); border:1px solid var(--line); }
 .wp-chips .chip-streak { background:color-mix(in srgb,#f08a24 16%,var(--panel-solid)); color:#8a4200; border-color:transparent; }
-html[data-theme=dark] .wp-chips .chip-streak { color:#ffc489; }
 .wp-days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px; }
 .wp-days button { position:relative; min-height:64px; display:grid; gap:6px; align-content:center; justify-items:center; padding:8px 4px; border:1px solid var(--line); border-radius:16px; background:var(--panel-solid); color:var(--ink); font-size:13px; font-weight:600; cursor:pointer; }
 .wp-days button.active { border-color:var(--page-accent); background:color-mix(in srgb,var(--page-accent) 14%,var(--panel-solid)); box-shadow:0 0 0 2px color-mix(in srgb,var(--page-accent) 40%,transparent); }
@@ -56,7 +55,7 @@ html[data-theme=dark] .wp-chips .chip-streak { color:#ffc489; }
 .wp-step-edit { display:grid; grid-template-columns:84px minmax(0,1fr) auto; gap:8px; align-items:center; }
 .wp-matrix { display:grid; gap:6px; } .wp-matrix > div { display:grid; grid-template-columns:96px repeat(3,minmax(0,1fr)); gap:6px; align-items:center; font-size:13px; }
 .wp-matrix-head { color:var(--muted); font-weight:600; }
-.danger { color:#b3261e; } html[data-theme=dark] .danger { color:#ff9c94; }
+.danger { color:#b3261e; }
 @media (max-width:640px) {
   .wp-hud { grid-template-columns:auto minmax(0,1fr); } .wp-edit { grid-column:1/-1; justify-self:start; }
   .wp-task { grid-template-columns:1fr; } .wp-task-actions { justify-content:flex-start; }
