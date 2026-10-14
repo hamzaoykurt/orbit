@@ -20,8 +20,8 @@ const VARIANTS = {
   // b: one ribbon, sunset-to-rainbow gradient, on a deep ink tile
   b: { tile: ['#3A2573', '#2A1A55', '#1B1035'], ribbon: ['#FF4F8B', '#FF5A3C', '#FFB400', '#00D08E', '#4C8BFF', '#8F63FF'], shadow: '#0E0620', glyph: '#FFB400' },
   // c: colourful knot on a coral -> violet tile
-  // dark: variant a on a deep night-violet tile, rings lifted one step for contrast
-  dark: { tile: ['#2F2362', '#241A4E', '#1B1035'], lobes: ['#FF6F52', '#9B78FF', '#FFC72E', '#1FD39B'], shadow: '#2A1670', glyph: '#FFF7EA', edge: '#5A49A8' },
+  // dark: variant a on a near-black neutral tile, rings lifted one step for contrast
+  dark: { tile: ['#17151C', '#100E14', '#08070B'], lobes: ['#FF6A4D', '#9F82FF', '#FFC62E', '#22D49B'], shadow: '#000000', glyph: '#FFF7EA', edge: '#3A3840', rim: 0.28, gloss: 0.05 },
   c: { tile: ['#FF7A59', '#FF5A3C', '#7C4DFF'], lobes: ['#FFF7EA', '#FFD84A', '#52E8B4', '#FFA7D1'], shadow: '#5B2BC0', glyph: '#FFF7EA' },
 };
 
@@ -57,11 +57,11 @@ function knotSvg(v, { size = 512, mode = 'any', scale = 1, glyph = null } = {}) 
        <rect x="24" y="24" width="464" height="464" rx="120" fill="url(#tile)" filter="url(#lift)"/>
        <rect x="27" y="27" width="458" height="458" rx="117" fill="none" stroke="url(#rim)" stroke-width="6"/>
        ${c.edge ? `<rect x="24.5" y="24.5" width="463" height="463" rx="119.5" fill="none" stroke="${c.edge}" stroke-width="2"/>` : ''}`;
-  const gloss = full ? '' : `<ellipse cx="190" cy="78" rx="160" ry="46" fill="#fff" opacity=".16"/>`;
+  const gloss = full ? '' : `<ellipse cx="190" cy="78" rx="160" ry="46" fill="#fff" opacity="${c.gloss ?? 0.16}"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c.tile[0]}"/><stop offset=".5" stop-color="${c.tile[1]}"/><stop offset="1" stop-color="${c.tile[2]}"/></linearGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="${c.rim ?? 0.6}"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
     ${c.ribbon ? `<linearGradient id="rib" gradientUnits="userSpaceOnUse" x1="100" y1="400" x2="412" y2="112">${c.ribbon.map((col, i) => `<stop offset="${i / (c.ribbon.length - 1)}" stop-color="${col}"/>`).join('')}</linearGradient>` : ''}
     ${(c.lobes ?? []).map((col, i) => `<linearGradient id="l${i}" gradientUnits="userSpaceOnUse" x1="${i % 2 ? 420 : 90}" y1="${i < 2 ? 90 : 420}" x2="${i % 2 ? 300 : 210}" y2="${i < 2 ? 210 : 300}"><stop offset="0" stop-color="${col}"/><stop offset="1" stop-color="${col}" stop-opacity=".82"/></linearGradient>`).join('')}
     <filter id="lift" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="${c.shadow}" flood-opacity=".38"/></filter>
@@ -119,7 +119,7 @@ async function writeDark() {
   await w(`icon-maskable-dark-${VER}-192.png`, mask, 192);
   for (const [pw, ph] of [[1170, 2532], [1290, 2796]]) {
     const s = Math.round(315 * pw / 1170);
-    await sharp({ create: { width: pw, height: ph, channels: 3, background: '#1B1035' } })
+    await sharp({ create: { width: pw, height: ph, channels: 3, background: '#0B0A0F' } })
       .composite([{ input: await png(any, s), left: Math.round((pw - s) / 2), top: Math.round(ph / 2 - s / 2) }])
       .png().toFile(join(PUB, `splash/apple-splash-dark-${pw}x${ph}.png`));
   }
