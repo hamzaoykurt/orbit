@@ -20,6 +20,8 @@ const VARIANTS = {
   // b: one ribbon, sunset-to-rainbow gradient, on a deep ink tile
   b: { tile: ['#3A2573', '#2A1A55', '#1B1035'], ribbon: ['#FF4F8B', '#FF5A3C', '#FFB400', '#00D08E', '#4C8BFF', '#8F63FF'], shadow: '#0E0620', glyph: '#FFB400' },
   // c: colourful knot on a coral -> violet tile
+  // dark: variant a on a deep night-violet tile, rings lifted one step for contrast
+  dark: { tile: ['#2F2362', '#241A4E', '#1B1035'], lobes: ['#FF6F52', '#9B78FF', '#FFC72E', '#1FD39B'], shadow: '#2A1670', glyph: '#FFF7EA', edge: '#5A49A8' },
   c: { tile: ['#FF7A59', '#FF5A3C', '#7C4DFF'], lobes: ['#FFF7EA', '#FFD84A', '#52E8B4', '#FFA7D1'], shadow: '#5B2BC0', glyph: '#FFF7EA' },
 };
 
@@ -102,6 +104,27 @@ async function writeAll(v) {
   writeFileSync(join(PUB, 'favicon.svg'), knotSvg(v, { size: 512 }));
 }
 
+async function writeDark() {
+  const v = 'dark';
+  const w = async (name, svg, size) => writeFileSync(join(PUB, name), await png(svg, size));
+  const any = knotSvg(v, { size: 1024 });
+  const full = knotSvg(v, { mode: 'maskable', size: 1024 });
+  await w(`orbit-icon-dark-${VER}-512.png`, any, 512);
+  await w(`orbit-icon-dark-${VER}-192.png`, any, 192);
+  await w(`orbit-favicon-dark-${VER}.png`, knotSvg(v, { size: 256 }), 64);
+  await w(`orbit-apple-touch-dark-${VER}.png`, full, 180);
+  await w(`orbit-mark-dark-${VER}-96.png`, any, 96);
+  const mask = knotSvg(v, { mode: 'maskable', size: 1024, scale: 0.9 });
+  await w(`icon-maskable-dark-${VER}-512.png`, mask, 512);
+  await w(`icon-maskable-dark-${VER}-192.png`, mask, 192);
+  for (const [pw, ph] of [[1170, 2532], [1290, 2796]]) {
+    const s = Math.round(315 * pw / 1170);
+    await sharp({ create: { width: pw, height: ph, channels: 3, background: '#1B1035' } })
+      .composite([{ input: await png(any, s), left: Math.round((pw - s) / 2), top: Math.round(ph / 2 - s / 2) }])
+      .png().toFile(join(PUB, `splash/apple-splash-dark-${pw}x${ph}.png`));
+  }
+}
+
 async function variantSheets() {
   const out = join(ROOT, '.ekip/ekran/ikon');
   mkdirSync(out, { recursive: true });
@@ -118,4 +141,5 @@ async function variantSheets() {
 const args = process.argv.slice(2);
 const v = args.find((a) => VARIANTS[a]) ?? 'a';
 if (args.includes('--variants')) await variantSheets();
+else if (v === 'dark') await writeDark();
 else await writeAll(v);
