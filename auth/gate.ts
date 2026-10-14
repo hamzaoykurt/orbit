@@ -25,6 +25,8 @@ const PUBLIC_FILES = new Set([
   '/manifest.webmanifest',
   '/sw.js',
 ]);
+// GET endpoints that change data (OAuth state, account links): never served from the session cache.
+const WRITING_GETS = new Set(['/api/google-calendar/connect', '/api/google-calendar/callback', '/api/integrations/profitness/connect']);
 type Next = () => Promise<Response>;
 const seconds = () => Math.floor(Date.now() / 1000);
 const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
@@ -43,16 +45,27 @@ function cookie(request: Request, token: string, remembered: boolean, clear = fa
     : remembered ? `; Max-Age=${Math.max(0, expiresAt - seconds())}; Expires=${new Date(expiresAt * 1000).toUTCString()}` : '';
   return `${cookieName(request)}=${token}; Path=/; HttpOnly; SameSite=Lax${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}${lifetime}`;
 }
-const redirect = (location: string, setCookie?: string) => new Response(null, {
-  status: 303, headers: { Location: location, ...(setCookie ? { 'Set-Cookie': setCookie } : {}) },
-});
+// Readable (non-HttpOnly) copy of the session's END TIME only: no token, no data. The page
+// reads it before painting, so a device whose session has lapsed never shows the local
+// workspace copy (the app shell may open offline from the service worker).
+const markName = (request: Request) => new URL(request.url).protocol === 'https:' ? '__Host-orbit_exp' : 'orbit_exp';
+function expiryMark(request: Request, expiresAt: number, remembered: boolean, clear = false) {
+  const lifetime = clear ? '; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    : remembered ? `; Max-Age=${Math.max(0, expiresAt - seconds())}; Expires=${new Date(expiresAt * 1000).toUTCString()}` : '';
+  return `${markName(request)}=${clear ? '' : expiresAt}; Path=/; SameSite=Lax${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}${lifetime}`;
+}
+const redirect = (location: string, setCookie?: string | string[]) => {
+  const response = new Response(null, { status: 303, headers: { Location: location } });
+  for (const value of [setCookie ?? []].flat()) response.headers.append('Set-Cookie', value);
+  return response;
+};
 export function safeNext(value: string | null) {
   if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\r\n]/.test(value)) return '/';
   const url = new URL(value, 'https://orbit.invalid');
   if (url.origin !== 'https://orbit.invalid' || /^\/(?:login|auth)(?:\/|$)/.test(url.pathname)) return '/';
   return `${url.pathname}${url.search}${url.hash}`;
 }
-function secureResponse(response: Response, setCookie?: string, immutableAsset = false) {
+function secureResponse(response: Response, setCookie?: string | string[], immutableAsset = false) {
   const secured = new Response(response.body, response);
   // Content-hashed bundles are application code, not user data. They still need a
   // session on first fetch, but the browser may reuse them (never a shared cache).
@@ -62,7 +75,7 @@ function secureResponse(response: Response, setCookie?: string, immutableAsset =
   // Native form submissions need their same-origin Origin header for CSRF checks.
   secured.headers.set('Referrer-Policy', 'same-origin');
   secured.headers.set('X-Robots-Tag', 'noindex, nofollow');
-  if (setCookie) secured.headers.append('Set-Cookie', setCookie);
+  for (const value of [setCookie ?? []].flat()) secured.headers.append('Set-Cookie', value);
   return secured;
 }
 function sameOrigin(request: Request) {
@@ -108,14 +121,15 @@ async function login(request: Request, env: Cloudflare.Env, version: string) {
   if (!passwordMatches || !userMatches) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next, remembered });
   const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
   const previous = cookieValue(request);
+  const expiresAt = now + (remembered ? REMEMBER_SECONDS : SESSION_SECONDS);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM orbit_auth_sessions WHERE expires_at <= ? OR token_hash = ? OR credential_version != ?').bind(now, previous ? await hash(previous) : '', version),
     env.DB.prepare('DELETE FROM orbit_auth_attempts WHERE expires_at <= ? OR key = ?').bind(now, key),
     env.DB.prepare('INSERT INTO orbit_auth_sessions (token_hash, credential_version, remembered, created_at, refreshed_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(await hash(token), version, remembered ? 1 : 0, now, now, now + (remembered ? REMEMBER_SECONDS : SESSION_SECONDS)),
+      .bind(await hash(token), version, remembered ? 1 : 0, now, now, expiresAt),
   ]);
   forgetSession(previous ? await hash(previous) : null);
-  return redirect(next, cookie(request, token, remembered));
+  return redirect(next, [cookie(request, token, remembered), expiryMark(request, expiresAt, remembered)]);
 }
 
 type Timing = { session: number; source: string; appStart: number; appEnd: number };
@@ -160,7 +174,9 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
       if (!sameOrigin(request)) return secureResponse(new Response(null, { status: 403 }));
       forgetSession(tokenHash);
       if (tokenHash) await env.DB.prepare('DELETE FROM orbit_auth_sessions WHERE token_hash = ?').bind(tokenHash).run();
-      const response = redirect('/login', cookie(request, '', false, true));
+      // A request that read the session while the DELETE was running may have re-cached it.
+      forgetSession(tokenHash);
+      const response = redirect('/login', [cookie(request, '', false, true), expiryMark(request, 0, false, true)]);
       response.headers.set('Clear-Site-Data', '"cache", "storage"');
       return secureResponse(response);
     }
@@ -172,7 +188,7 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
       const lookupStart = Date.now();
       // Reads may reuse a lookup that is at most a few seconds old (session-cache.ts);
       // anything that changes data re-checks D1 every time.
-      const found = await lookupSession(env, { tokenHash, version, now, fresh: !['GET', 'HEAD', 'OPTIONS'].includes(request.method), withState });
+      const found = await lookupSession(env, { tokenHash, version, now, fresh: !['GET', 'HEAD', 'OPTIONS'].includes(request.method) || WRITING_GETS.has(url.pathname), withState });
       timing.session = Date.now() - lookupStart;
       timing.source = found.source;
       session = found.session;
@@ -187,18 +203,18 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
       return secureResponse(isPage ? redirect(`/login${url.pathname === '/' && !url.search ? '' : `?next=${encodeURIComponent(safeNext(url.pathname + url.search))}`}`) : unauthorized());
     }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !sameOrigin(request)) return secureResponse(new Response('Geçersiz istek kaynağı.', { status: 403 }));
-    let refreshedCookie: string | undefined;
+    let refreshedCookie: string[] | undefined;
     // Hashed bundles never renew the session or carry a cookie: they stay cacheable.
     if (!isStatic && session.remembered && now - session.refreshed_at >= DAY) {
       const update = await env.DB.prepare('UPDATE orbit_auth_sessions SET refreshed_at = ?, expires_at = ? WHERE token_hash = ? AND expires_at > ?')
         .bind(now, now + REMEMBER_SECONDS, session.token_hash, now).run();
       if (!update.meta.changes) { forgetSession(session.token_hash); return secureResponse(unauthorized()); }
       updateCachedSession(session.token_hash, { refreshed_at: now, expires_at: now + REMEMBER_SECONDS });
-      refreshedCookie = cookie(request, token!, true);
+      refreshedCookie = [cookie(request, token!, true), expiryMark(request, now + REMEMBER_SECONDS, true)];
     }
     if (!refreshedCookie && (url.pathname === '/auth/session' || (request.method === 'GET' && (url.pathname === '/' || request.headers.get('sec-fetch-dest') === 'document')))) {
       // Upgrade existing Strict cookies without extending the database expiry.
-      refreshedCookie = cookie(request, token!, Boolean(session.remembered), false, session.expires_at);
+      refreshedCookie = [cookie(request, token!, Boolean(session.remembered), false, session.expires_at), expiryMark(request, session.expires_at, Boolean(session.remembered))];
     }
     timing.appStart = Date.now();
     const response = url.pathname === '/auth/session'

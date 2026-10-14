@@ -52,6 +52,7 @@ Media is never public. Uploads and reads pass through `/api/project-media`, requ
 - **Session lookups.** The gate trusts a D1 session lookup for at most `ORBIT_SESSION_CACHE_SECONDS` (default 30, capped at 60, `0` turns it off) per isolate. A revoked or logged-out session is rejected within that many seconds everywhere, immediately in the isolate that handled the logout; every data-changing request re-checks D1. Optional plain-text variable, not a secret.
 - **No DDL per request.** `/api/state` no longer creates tables: run `npm run db:migrate:remote` (0001 creates `orbit_state`) on any new database before deploying. Existing production data is untouched.
 - **App shell.** `public/sw.js` keeps the authenticated HTML of `/` on the device (stale-while-revalidate) next to the hashed bundles. It is dropped on logout (the worker intercepts `POST /auth/logout`; `Clear-Site-Data` covers Chrome) and as soon as a revalidation finds the session gone. Bump `SHELL_CACHE` in `sw.js` if the shell rules change.
+- **Lapsed-session lock.** Login and every renewal also set a readable `orbit_exp` cookie holding only the session end time. The page reads it before painting: lapsed or missing means nothing is shown until `/auth/session` confirms (offline: login page, never the local copy). Existing sessions get the cookie on their first confirmed open.
 - `Server-Timing` on every response shows `session`, `app` and `total` durations (ms) and the cache label only.
 
 ## Private access and remembered devices

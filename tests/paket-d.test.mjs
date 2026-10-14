@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { Miniflare } from 'miniflare';
 import { loadModuleUrl } from './load-module.mjs';
+import ts from 'typescript';
 
 const { lookupSession, forgetSession, clearSessionCache, cacheSeconds, updateCachedSession } = await import(loadModuleUrl(new URL('../auth/session-cache.ts', import.meta.url)));
 
@@ -377,4 +378,75 @@ test('activation keeps the two current caches and removes older orbit caches', a
   const sw = swHarness({ reply: () => new Response('x'), extraCaches: ['orbit-shell-v4', 'orbit-static-v0', 'orbit-static-v1', 'orbit-appshell-v1', 'another-app'] });
   await sw.activate();
   assert.deepEqual([...sw.stores.keys()].sort(), ['another-app', 'orbit-appshell-v1', 'orbit-static-v1']);
+});
+
+// ---------------------------------------------------------------- session end-time mark (gate)
+const markOf = response => (response.headers.getSetCookie?.() ?? []).find(c => /^(?:__Host-)?orbit_exp=/.test(c));
+test('login publishes a readable end-time mark next to the session cookie; the session cookie stays first', async () => {
+  const remembered = await login({ remember: '1' });
+  const cookies = remembered.headers.getSetCookie();
+  assert.match(cookies[0], /^__Host-orbit_session=.*HttpOnly/);
+  const mark = markOf(remembered);
+  assert.ok(mark && !/HttpOnly/.test(mark), 'readable by the page');
+  const row = await db.prepare('SELECT expires_at FROM orbit_auth_sessions WHERE token_hash = ?').bind(hashOf(cookie(remembered))).first();
+  assert.equal(mark.split(';')[0], `__Host-orbit_exp=${row.expires_at}`);
+  assert.match(mark, /Max-Age=\d+/);
+  const temporary = markOf(await login());
+  assert.doesNotMatch(temporary, /Max-Age|Expires=/, 'browser-session mark for a temporary login');
+  assert.doesNotMatch(markOf(remembered), /orbit_session|[A-Za-z0-9_-]{40}/, 'time only, no token');
+});
+test('the mark follows renewals (/auth/session, documents) and is cleared on logout; static files never carry it', async () => {
+  const value = cookie(await login({ remember: '1' }));
+  const session = await request('/auth/session', { headers: { cookie: value } });
+  const row = await db.prepare('SELECT expires_at FROM orbit_auth_sessions WHERE token_hash = ?').bind(hashOf(value)).first();
+  assert.equal(markOf(session).split(';')[0], `__Host-orbit_exp=${row.expires_at}`);
+  assert.equal(markOf(await request('/_next/static/chunks/a-1.js', { headers: { cookie: value } })), undefined);
+  const out = await request('/auth/logout', { method: 'POST', headers: { cookie: value, origin } });
+  assert.match(markOf(out), /^__Host-orbit_exp=;.*Max-Age=0/);
+});
+test('GET endpoints that write (OAuth connect/callback, profitness connect) always re-check D1', async () => {
+  const value = cookie(await login());
+  for (const path of ['/api/google-calendar/connect', '/api/google-calendar/callback', '/api/integrations/profitness/connect', '/api/google-calendar/status']) {
+    assert.equal((await request(path, { headers: { cookie: value } })).status, 200, path);
+  }
+  await db.prepare('DELETE FROM orbit_auth_sessions WHERE token_hash = ?').bind(hashOf(value)).run();
+  for (const path of ['/api/google-calendar/connect', '/api/google-calendar/callback', '/api/integrations/profitness/connect']) {
+    assert.equal((await request(path, { headers: { cookie: value } })).status, 401, path);
+  }
+  assert.equal((await request('/api/google-calendar/status', { headers: { cookie: value } })).status, 401, 'a fresh check that finds the session gone also evicts the cached entry');
+});
+
+// ---------------------------------------------------------------- page-side lock (auth-client script)
+const { authClientScript } = await import(`data:text/javascript;base64,${Buffer.from(ts.transpileModule(readFileSync(new URL('../app/auth-client.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString('base64')}`);
+function page({ cookies = '', protocol = 'http:', session = () => ({ ok: true, status: 200 }) } = {}) {
+  const calls = []; const redirects = []; const style = { visibility: '' };
+  const listeners = {};
+  const window = { addEventListener: (n, h) => { listeners[n] = h; }, fetch: async (url) => { calls.push(String(url)); return session(url); } };
+  const context = { window, document: { cookie: cookies, documentElement: { style }, visibilityState: 'visible', addEventListener() {} },
+    location: { protocol, href: 'http://127.0.0.1/', origin: 'http://127.0.0.1', replace: url => redirects.push(url) }, URL, setInterval() {}, Number };
+  runInNewContext(authClientScript, context);
+  return { calls, redirects, style, window, tick: () => new Promise(r => setTimeout(r, 5)) };
+}
+const future = Math.floor(Date.now() / 1000) + 3600;
+test('page: a valid end-time mark paints at once and asks the server nothing', async () => {
+  const p = page({ cookies: `a=b; orbit_exp=${future}` }); await p.tick();
+  assert.deepEqual([p.calls, p.redirects, p.style.visibility], [[], [], '']);
+});
+test('page: lapsed or missing mark hides the page and goes to login when offline (local copy never shown)', async () => {
+  for (const cookies of ['', `orbit_exp=${future - 7200}`, 'orbit_exp=abc', `orbit_exp=`]) {
+    const p = page({ cookies, session: () => { throw new Error('offline'); } }); await p.tick();
+    assert.equal(p.style.visibility, 'hidden', cookies); assert.deepEqual(p.redirects, ['/login'], cookies);
+  }
+});
+test('page: missing mark online is confirmed by the server (existing sessions are not logged out), 401 locks', async () => {
+  const ok = page({ cookies: '' }); await ok.tick();
+  assert.deepEqual([ok.calls, ok.redirects, ok.style.visibility], [['/auth/session'], [], '']);
+  const lost = page({ cookies: '', session: () => ({ ok: false, status: 401 }) }); await lost.tick();
+  assert.deepEqual([lost.redirects, lost.style.visibility], [['/login'], 'hidden']);
+});
+test('page: the https cookie name is used on secure origins, and the online 401 lock is unchanged', async () => {
+  const secure = page({ cookies: `__Host-orbit_exp=${future}`, protocol: 'https:' }); await secure.tick();
+  assert.deepEqual([secure.calls, secure.redirects], [[], []]);
+  const wrongName = page({ cookies: `orbit_exp=${future}`, protocol: 'https:', session: () => { throw new Error('offline'); } }); await wrongName.tick();
+  assert.deepEqual(wrongName.redirects, ['/login']);
 });
