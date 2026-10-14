@@ -636,3 +636,8 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .command-input svg { flex:none; color:var(--pg-ink); }
 :root[data-theme] .time-row { padding:10px 12px; gap:10px; }
 :root[data-theme] :is(.program-task-row,.department-task-row) > button.task-remove-button { color:color-mix(in srgb,var(--danger) 75%,var(--ink)); }
+
+/* App icon choice: both marks are rendered, the html[data-icon] attribute picks one instantly */
+.orbit-mark-dark { display:none; }
+html[data-icon=dark] .orbit-mark-light { display:none; }
+html[data-icon=dark] .orbit-mark-dark { display:block; }

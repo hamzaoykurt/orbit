@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { authenticatedRequest, unauthorized } from './context';
 import { validPasswordHash, verifyPassword } from './password';
 import { loginPage } from './login-page';
+import { iconChoice, manifestForIcon } from './manifest-variant';
 import { forgetSession, lookupSession, updateCachedSession, type Session } from './session-cache';
 
 const DAY = 86_400;
@@ -170,6 +171,14 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
   if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
     url.protocol = 'https:';
     return new Response(null, { status: 308, headers: { Location: url.href } });
+  }
+  if (url.pathname === '/manifest.webmanifest' && ['GET', 'HEAD'].includes(request.method)) {
+    // Public like before, but the icon set follows the user's choice (cookie or ?icon=).
+    const asset = await env.ASSETS.fetch(request);
+    if (!asset.ok) return secureResponse(asset);
+    const body = manifestForIcon(await asset.text(), iconChoice(url, request.headers.get('cookie')));
+    const variant = new Response(request.method === 'HEAD' ? null : body, { status: 200, headers: { 'Content-Type': 'application/manifest+json; charset=utf-8', Vary: 'Cookie' } });
+    return secureResponse(variant);
   }
   if (PUBLIC_FILES.has(url.pathname) && ['GET', 'HEAD'].includes(request.method)) {
     const response = await env.ASSETS.fetch(request);

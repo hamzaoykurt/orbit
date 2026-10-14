@@ -29,7 +29,7 @@ const displayFont = Bricolage_Grotesque({
 const title = 'Orbit — Personal OS';
 const description = 'Hayatın, projelerin, programların ve hedeflerin için sakin bir çalışma alanı.';
 // One theme only (Gun Isigi). Stored preference is left untouched but no longer read.
-const themeBootScript = `(function(){var d=document.documentElement;d.dataset.theme='light';d.style.colorScheme='light';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#F5EADA')})();`;
+const themeBootScript = `(function(){var d=document.documentElement;d.dataset.theme='light';try{var ic=document.cookie.match(/(?:^|; )orbit_icon=(light|dark)/);d.dataset.icon=ic?ic[1]:'light';if(ic&&ic[1]==='dark'){var ml=document.querySelector('link[rel="manifest"]');if(ml)ml.setAttribute('href','/manifest.webmanifest?v=13&icon=dark')}}catch(e){}d.style.colorScheme='light';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#F5EADA')})();`;
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -52,7 +52,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(origin),
     title,
     description,
-    manifest: '/manifest.webmanifest?v=12',
+    manifest: '/manifest.webmanifest?v=13',
     icons: {
       icon: [{ url: '/orbit-favicon-v8.png', sizes: '64x64', type: 'image/png' }, { url: '/orbit-icon-v8-192.png', sizes: '192x192', type: 'image/png' }],
       shortcut: '/orbit-favicon-v8.png',
@@ -71,7 +71,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" data-theme="light" suppressHydrationWarning>
-      <head><style dangerouslySetInnerHTML={{ __html: "html,body{background:#F5EADA;color:#1B1035}" }}/><link rel="manifest" href="/manifest.webmanifest?v=12"/><link rel="icon" href="/orbit-favicon-dark-v8.png" type="image/png" sizes="64x64" media="(prefers-color-scheme: dark)"/><meta name="theme-color" content="#F5EADA"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+      <head><style dangerouslySetInnerHTML={{ __html: "html,body{background:#F5EADA;color:#1B1035}" }}/><link rel="manifest" href="/manifest.webmanifest?v=13"/><meta name="theme-color" content="#F5EADA"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
         className={`${geistSans.variable} ${displayFont.variable} antialiased`}
       >
