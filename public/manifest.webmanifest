@@ -10,8 +10,8 @@
   "display_override": [
     "standalone"
   ],
-  "background_color": "#151a1f",
-  "theme_color": "#151a1f",
+  "background_color": "#F5EADA",
+  "theme_color": "#F5EADA",
   "icons": [
     {
       "src": "/orbit-icon-v6-192.png",

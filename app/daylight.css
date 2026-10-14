@@ -395,24 +395,13 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
    coloured lip. No blur, no backdrop-filter, no hard outlines.
    ====================================================================== */
 /* Focus surfaces: header band, HUD, next step, Rebuild focus, progress card */
-:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.hud,.next-step,.rx-focus,.week-card.surface) {
+:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.next-step,.rx-focus) {
   background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b));
   border:0; border-radius:var(--r-xl); box-shadow:var(--raise); color:var(--pg-on-solid); margin-bottom:calc(var(--sp-5,24px) + 4px);
 }
-:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.hud,.next-step,.rx-focus,.week-card.surface) :is(h1,h2,h3,p,.eyebrow,.rd-kicker,.ph-title,.ph-desc,.hud-top strong,.hud-top span,.next-step-copy strong,.next-step-copy small,.next-step-copy .eyebrow,.card-title-row span,.progress-meta p,.rd-week-index span,.rd-week-index b,.rd-week-index i) { color:var(--pg-on-solid); }
+:root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.next-step,.rx-focus) :is(h1,h2,h3,p,.eyebrow,.rd-kicker,.ph-title,.ph-desc,.next-step-copy strong,.next-step-copy small,.next-step-copy .eyebrow,.card-title-row span,.progress-meta p,.rd-week-index span,.rd-week-index b,.rd-week-index i) { color:var(--pg-on-solid); }
 :root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading,.next-step,.rx-focus) :is(.ghost-button,.primary-button,.rd-done-action,.pp-button,.pp-primary,.text-button,.rd-text-button) { background:var(--panel); color:var(--pg-ink); box-shadow:0 3px 0 color-mix(in srgb,var(--pg-lip) 55%,transparent); }
 :root[data-theme] :is(.ph,.rd-heading,.hub-page-title,.px-hub-heading) :is(.ph-chips>span,.chip) { background:var(--panel); }
-:root[data-theme] .hud .hud-ring { background:conic-gradient(var(--pg-on-solid) var(--p),color-mix(in srgb,var(--pg-on-solid) 25%,transparent) 0); }
-:root[data-theme] .hud .hud-ring::before { background:var(--panel); }
-:root[data-theme] .hud .hud-ring b { color:var(--ink); }
-:root[data-theme] .hud .hud-bar { background:color-mix(in srgb,var(--pg-on-solid) 22%,transparent); }
-:root[data-theme] .hud .hud-bar>i { background:var(--pg-on-solid); }
-:root[data-theme] .week-card .progress-ring { background:conic-gradient(var(--pg-on-solid) var(--progress,0deg),color-mix(in srgb,var(--pg-on-solid) 25%,transparent) 0); }
-:root[data-theme] .week-card .progress-ring>div { background:var(--panel); }
-:root[data-theme] .week-card .progress-ring :is(strong,span) { color:var(--ink); }
-:root[data-theme] .week-card .icon-button { background:var(--panel); color:var(--pg-ink); }
-:root[data-theme] .week-card .progress-meta button { color:var(--pg-on-solid); }
-:root[data-theme] .week-card .dot { background:var(--pg-on-solid); }
 :root[data-theme] .rd-week-index { background:var(--panel); }
 :root[data-theme] .rd-week-index :is(span,b,i) { color:var(--pg-ink); }
 
@@ -437,7 +426,6 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .chip-streak { background:linear-gradient(180deg,color-mix(in srgb,var(--streak) 55%,#fff),var(--streak)); color:var(--ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 color-mix(in srgb,var(--streak) 60%,#000); }
 :root[data-theme] .chip-xp { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 0 var(--pg-lip); }
 :root[data-theme] .chip-gold { background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 60%,#fff),var(--gold)); color:var(--ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 color-mix(in srgb,var(--gold) 60%,#000); }
-:root[data-theme] .hud .chip-xp { background:var(--panel); color:var(--pg-ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 0 color-mix(in srgb,var(--pg-lip) 60%,transparent); }
 :root[data-theme] .wp-badges li.got>svg { background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 60%,#fff),var(--gold)); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 3px 0 color-mix(in srgb,var(--gold) 60%,#000); }
 :root[data-theme] .wp-time.bonus-tag { box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 color-mix(in srgb,var(--gold) 60%,#000); }
 :root[data-theme] .goal-row.complete { background:linear-gradient(180deg,color-mix(in srgb,var(--ok) 70%,#fff),var(--ok)); color:var(--ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 3px 0 color-mix(in srgb,var(--ok) 60%,#000); }
@@ -445,5 +433,13 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 
 /* Calm surfaces: soft raised card with a page-tinted shadow, no hard line */
 :root[data-theme] .app-shell :is(.surface,.note-card,.project-card,.wp-task,.rb-route,.pb-project-entry,.hub-link-card,.archive-item,.program-card,.rx-content-card,.pb-task-list,.pw-task) { box-shadow:var(--shadow); border-radius:var(--r-l); }
-:root[data-theme] .app-shell .week-card.surface { box-shadow:var(--raise); }
 :root[data-theme] :is(.goal-row,.next-row,.time-row,.program-task-row,.department-task-row) { box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 0 color-mix(in srgb,var(--pg-fill) 14%,var(--canvas)); border-radius:var(--r-m); }
+
+
+/* HUD and progress card: calm tint, still raised (only next step / Rebuild focus are filled) */
+:root[data-theme] :is(.hud,.week-card.surface) { background:linear-gradient(180deg,color-mix(in srgb,var(--pg-fill) 16%,var(--panel)),color-mix(in srgb,var(--pg-fill) 7%,var(--panel))); border-radius:var(--r-xl); box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 4px 0 color-mix(in srgb,var(--pg-fill) 30%,var(--canvas)),0 12px 18px -12px color-mix(in srgb,var(--pg-fill) 55%,transparent); margin-bottom:calc(var(--sp-5,24px) + 4px); }
+:root[data-theme] .hud .chip-xp { background:var(--panel); color:var(--pg-ink); }
+
+/* Project workspace filters: keep active pill filled so on-solid text stays readable */
+:root[data-theme] .project-workspace.pw-redesign .pb-filters button[aria-pressed=true] { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+:root[data-theme] .project-workspace .pb-task-row:first-child { background:color-mix(in srgb,var(--pg-fill) 8%,var(--panel)); }
