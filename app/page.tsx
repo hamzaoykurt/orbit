@@ -33,13 +33,14 @@ import type { Journey } from './rebuild/journey-model';
 import { emptyDeck, normalizeDeck, weekView } from './rebuild/weekly-deck-model';
 import { greeting, weekGoalRows, XP_PER_STEP } from './home-today';
 import { DayScene } from './ui/day-scene';
+import { ProgramHub, RebuildFocusCard } from './program/program-hub';
 import { Hud } from './ui/hud';
 import { celebrateAt, celebrateBanner } from './ui/celebrate';
 import { Sheet } from './ui/sheet';
 import { PageHeader } from './ui/page-header';
 import { EmptyState } from './ui/empty-state';
 import { useFlip } from './ui/list-motion';
-import { currentStreak as programStreak, dayStats as programDayStats, dayTasks as programDayTasks, dayIndexOf, emptyProgram, normalizeProgram, totalXp as programXp, weekKeyOf, levelOf as programLevel } from './program/program-model';
+import { currentStreak as programStreak, dayStats as programDayStats, dayTasks as programDayTasks, dayIndexOf, emptyProgram, normalizeProgram, totalXp as programXp, weekKeyOf, levelOf as programLevel, weekXp as programWeekXp, emptyWeek as programEmptyWeek } from './program/program-model';
 import type { Program as WeekProgram } from './program/program-model';
 import type { WeeklyDeck } from './rebuild/weekly-deck-model';
 import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
@@ -164,7 +165,6 @@ const nav: { id: PageKey; label: string; icon: LucideIcon; parent?: PageKey }[] 
   { id: 'home', label: 'Ana Sayfa', icon: HomeIcon },
   { id: 'weekplan', label: 'Program', icon: CalendarCheck },
   { id: 'personal', label: 'Personal', icon: UserRound },
-  { id: 'rebuild', label: '6 Aylık Rebuild', icon: Route },
   { id: 'projects', label: 'Projeler', icon: PanelsTopLeft },
   { id: 'hub', label: 'Hub', icon: Link2 },
   { id: 'kibleteyn', label: 'Kıbleteyn', icon: Building2 },
@@ -1039,7 +1039,7 @@ export default function PersonalOS() {
     go('calendar');
   };
 
-  const isNavActive = (page: PageKey) => active === page || (page === 'kibleteyn' && active === 'programs');
+  const isNavActive = (page: PageKey) => active === page || (page === 'kibleteyn' && active === 'programs') || (page === 'weekplan' && active === 'rebuild');
 
   const setFocusLength = (minutes: number) => {
     setFocusActive(false); setFocusMode('countdown'); setFocusMinutes(minutes); setFocusSeconds(minutes * 60);
@@ -2203,9 +2203,14 @@ export default function PersonalOS() {
     );
   };
 
-  const renderWeekPlan = () => (
+  const renderProgramHub = (tab: 'week' | 'journey', content: React.ReactNode) => {
+    const hubWeek = state.program.weeks[weekKeyOf(now)] ?? programEmptyWeek();
+    return <ProgramHub tab={tab} onTab={next => go(next === 'week' ? 'weekplan' : 'rebuild')} level={programLevel(programXp(state.program))} streak={programStreak(state.program, now)} weekXp={programWeekXp(hubWeek)} badges={Object.keys(state.program.profile.badges).length}>{content}</ProgramHub>;
+  };
+
+  const renderWeekPlan = () => renderProgramHub('week',
     <Suspense fallback={<PageSkeleton/>}>
-      <WeekPlan program={state.program} deck={state.rebuildDeck} now={now} motion={state.settings.motion}
+      <WeekPlan embedded focus={<RebuildFocusCard practice={state.rebuildPractice} now={now.getTime()} onStart={() => go('rebuild')}/>} program={state.program} deck={state.rebuildDeck} now={now} motion={state.settings.motion}
         onChange={(program, deck) => setState(current => ({ ...current, program, rebuildDeck: deck ?? current.rebuildDeck }))}
         onFeedback={tone => playFeedback(tone, true)}/>
     </Suspense>
@@ -2252,7 +2257,7 @@ export default function PersonalOS() {
     </>;
   };
 
-  const renderRebuild = () => <Suspense fallback={<PageSkeleton/>}><RebuildJourney
+  const renderRebuild = () => renderProgramHub('journey', <Suspense fallback={<PageSkeleton/>}><RebuildJourney
     journey={state.rebuildJourney} deck={state.rebuildDeck} activities={state.rebuildActivities}
     selections={state.rebuildSelections} syncStatus={syncStatus}
     practice={state.rebuildPractice}
@@ -2275,7 +2280,7 @@ export default function PersonalOS() {
     }}
     onUpdateDeck={update => setState(current => { const next = update(current.rebuildDeck); return next === current.rebuildDeck ? current : { ...current, rebuildDeck: next }; })}
     onStartChange={date => setState(current => ({ ...current, rebuildJourney: { ...current.rebuildJourney, startDate: date } }))}
-  /></Suspense>;
+  /></Suspense>);
 
   const renderProjects = () => {
     const allProjects = metricProjects;
@@ -2448,7 +2453,7 @@ export default function PersonalOS() {
     const isBuy = capturePage === 'personal' && captureArea === 'buy';
     const isVisit = capturePage === 'personal' && captureArea === 'visit';
     const acceptsDetails = capturePage === 'personal' || capturePage === 'projects' || capturePage === 'calendar' || capturePage === 'notes';
-    const pageOptions: { value: CapturePage; label: string }[] = [{ value: 'personal', label: 'Personal' }, { value: 'rebuild', label: 'Rebuild' }, { value: 'projects', label: 'Projeler' }, { value: 'kibleteyn', label: 'Kıbleteyn' }, { value: 'programs', label: 'Turlar' }, { value: 'calendar', label: 'Takvim' }, { value: 'notes', label: 'Notlar' }];
+    const pageOptions: { value: CapturePage; label: string }[] = [{ value: 'personal', label: 'Personal' }, { value: 'rebuild', label: 'Yolculuk' }, { value: 'projects', label: 'Projeler' }, { value: 'kibleteyn', label: 'Kıbleteyn' }, { value: 'programs', label: 'Turlar' }, { value: 'calendar', label: 'Takvim' }, { value: 'notes', label: 'Notlar' }];
     const changeCapturePage = (page: CapturePage) => {
       const firstArea = captureAreasFor(page)[0]?.value ?? '';
       setCapturePage(page); setCaptureArea(firstArea);
@@ -2521,9 +2526,9 @@ export default function PersonalOS() {
 
   if (!hydrated) return <div className="app-shell"><main className="content boot-skeleton" aria-busy="true"><p role="status" className="boot-label">Kayıtların yükleniyor…</p><div className="boot-bar wide" aria-hidden="true"/><div className="boot-grid" aria-hidden="true"><div/><div/><div/></div></main></div>;
   return <div className="app-shell">
-    <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><OrbitMark /></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item)=>{const NavIcon=item.icon;const isNested=Boolean(item.parent);const isSectionActive=item.id==='kibleteyn'&&active==='programs';return <button key={item.id} data-p={item.id} className={`${active===item.id?'active ':''}${isNested?'nav-child ':''}${isSectionActive?'section-active':''}`.trim()} onClick={()=>go(item.id)} aria-label={item.label} aria-current={active===item.id?'page':undefined}><span><NavIcon size={isNested?15:17}/></span>{item.label}{item.id==='programs'&&<em>{metricPrograms.length}</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>beginCapture('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli kayıt ekle</small></span><ArrowUpRight size={14}/></button><button className="sidebar-profile" onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}><div className="avatar">{profileInitials}</div><span><strong>{state.profile.name}</strong><small>{state.profile.workspace}</small></span><MoreHorizontal size={16}/></button></aside>
+    <aside className={`sidebar ${mobileMenu?'open':''}`}><div className="brand-row"><button className="brand" onClick={()=>go('home')}><span className="brand-mark"><OrbitMark /></span><span>Orbit<small>PERSONAL OS</small></span></button><IconButton label="Menüyü kapat" className="mobile-close" onClick={()=>setMobileMenu(false)}><X size={18}/></IconButton></div><nav className="side-nav" aria-label="Ana navigasyon">{nav.map((item)=>{const NavIcon=item.icon;const isNested=Boolean(item.parent);const isSectionActive=item.id==='kibleteyn'&&active==='programs';return <button key={item.id} data-p={item.id} className={`${isNavActive(item.id)?'active ':''}${isNested?'nav-child ':''}${isSectionActive?'section-active':''}`.trim()} onClick={()=>go(item.id)} aria-label={item.label} aria-current={isNavActive(item.id)?'page':undefined}><span><NavIcon size={isNested?15:17}/></span>{item.label}{item.id==='programs'&&<em>{metricPrograms.length}</em>}</button>})}</nav><button className="sidebar-upgrade" onClick={()=>beginCapture('voice')}><span><Sparkles size={17}/></span><span><strong>Orbit Assistant</strong><small>Sesli kayıt ekle</small></span><ArrowUpRight size={14}/></button><button className="sidebar-profile" onClick={()=>{setProfileDraft(state.profile);setModal('profile');}}><div className="avatar">{profileInitials}</div><span><strong>{state.profile.name}</strong><small>{state.profile.workspace}</small></span><MoreHorizontal size={16}/></button></aside>
     {mobileMenu&&<button aria-label="Menüyü kapat" className="menu-backdrop" onClick={()=>setMobileMenu(false)}/>} 
-    <section className="workspace"><header className={`topbar${topScrolled?' is-scrolled':''}`}><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><span className="topbar-title" aria-hidden="true">{nav.find(item=>item.id===active)?.label??'Orbit'}</span><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><form className="top-secondary" action="/auth/logout" method="post" onSubmit={logout}><button type="submit" className="icon-button" aria-label={loggingOut?"Çıkış yapılıyor":"Çıkış yap"} title="Çıkış yap" disabled={loggingOut}><LogOut size={16}/></button></form><button aria-label="Sitede ara" className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Mentor Sync" className="top-secondary" onClick={()=>{setMentorError('');setMentorParsed(null);setMentorDuplicate(null);setMentorFileName('');setModal('mentor');}}><FileInput size={16}/></IconButton><IconButton label="Sesli kayıt" className="top-secondary" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label={unreadNotificationCount?`${unreadNotificationCount} okunmamış bildirim`:'Bildirimler'} className={unreadNotificationCount?'has-notifications':''} onClick={()=>setModal('notifications')}><Bell size={16}/>{unreadNotificationCount>0&&<span className="notification-badge" aria-hidden="true">{unreadNotificationCount>9?'9+':unreadNotificationCount}</span>}</IconButton><IconButton label="Diğer işlemler" className="top-more" onClick={()=>setModal('more')}><MoreHorizontal size={18}/></IconButton></div></header><main ref={pageContentRef} tabIndex={-1} key={`${active}:${activeProjectId ?? ''}`} className={`content page-${active} ${enter.cls}`}>{renderPage()}</main></section>
+    <section className="workspace"><header className={`topbar${topScrolled?' is-scrolled':''}`}><IconButton label="Menüyü aç" className="menu-trigger" onClick={()=>setMobileMenu(true)}><Menu size={19}/></IconButton><span className="topbar-title" aria-hidden="true">{active==='rebuild'?'Program':(nav.find(item=>item.id===active)?.label??'Orbit')}</span><div className="date-pill"><i/>{displayDate}</div><div className="top-actions"><form className="top-secondary" action="/auth/logout" method="post" onSubmit={logout}><button type="submit" className="icon-button" aria-label={loggingOut?"Çıkış yapılıyor":"Çıkış yap"} title="Çıkış yap" disabled={loggingOut}><LogOut size={16}/></button></form><button aria-label="Sitede ara" className="search-trigger" onClick={()=>setModal('search')}><Search size={15}/><span>Ara...</span><kbd>/</kbd></button><IconButton label="Mentor Sync" className="top-secondary" onClick={()=>{setMentorError('');setMentorParsed(null);setMentorDuplicate(null);setMentorFileName('');setModal('mentor');}}><FileInput size={16}/></IconButton><IconButton label="Sesli kayıt" className="top-secondary" onClick={()=>beginCapture('voice')}><Mic size={16}/></IconButton><IconButton label={unreadNotificationCount?`${unreadNotificationCount} okunmamış bildirim`:'Bildirimler'} className={unreadNotificationCount?'has-notifications':''} onClick={()=>setModal('notifications')}><Bell size={16}/>{unreadNotificationCount>0&&<span className="notification-badge" aria-hidden="true">{unreadNotificationCount>9?'9+':unreadNotificationCount}</span>}</IconButton><IconButton label="Diğer işlemler" className="top-more" onClick={()=>setModal('more')}><MoreHorizontal size={18}/></IconButton></div></header><main ref={pageContentRef} tabIndex={-1} key={`${active}:${activeProjectId ?? ''}`} className={`content page-${active} ${enter.cls}`}>{renderPage()}</main></section>
     {captureMenuOpen&&<button className="capture-scrim" aria-label="Hızlı eylemleri kapat" onClick={()=>setCaptureMenuOpen(false)}/>}
     <nav className="bottom-nav" aria-label="Mobil navigasyon">{state.mobileNav.slice(0,2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} data-p={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}<div className={`quick-capture-cluster ${captureMenuOpen?'open':''}`}><div className="quick-capture-menu" aria-hidden={!captureMenuOpen}><button className="capture-action text" aria-label="Yazılı kayıt ekle" onClick={()=>beginCapture('text')}><StickyNote size={20}/><span>Yaz</span></button><button className="capture-action ai" aria-label="AI ile akıllı kayıt ekle" onClick={()=>beginCapture('ai')}><Sparkles size={20}/><span>AI ile</span></button><button className="capture-action voice" aria-label="Sesli kayıt ekle" onClick={()=>beginCapture('voice')}><Mic size={20}/><span>Konuş</span></button></div><button className="quick-capture-trigger" onClick={openCaptureChoice} aria-label="Yeni kayıt ekle" aria-expanded={captureMenuOpen}><Plus size={21}/></button></div>{state.mobileNav.slice(2).map((page)=>{const item=nav.find((entry)=>entry.id===page)!;const NavIcon=item.icon;return <button key={item.id} data-p={item.id} onClick={()=>go(item.id)} className={isNavActive(item.id)?'active':''} aria-current={isNavActive(item.id)?'page':undefined}><NavIcon size={19}/><small>{item.label==='6 Aylık Rebuild'?'Rebuild':item.label}</small></button>})}</nav>
     {projectCreatorOpen && state.projectCreationDraft && <Suspense fallback={<p role="status">Proje atölyesi açılıyor…</p>}><ProjectCreator draft={state.projectCreationDraft} onChange={draft => setState(current => ({ ...current, projectCreationDraft: draft }))} onClose={() => setProjectCreatorOpen(false)} onDiscard={() => { setState(current => ({ ...current, projectCreationDraft: null })); setProjectCreatorOpen(false); }} onSave={saveProjectPlan}/></Suspense>}

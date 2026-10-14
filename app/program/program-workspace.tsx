@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRightLeft, Award, Check, Coffee, Flame, Pencil, Plus, Trash2, Undo2, Zap } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { WeeklyDeck } from '../rebuild/weekly-deck-model';
 import { weekView } from '../rebuild/weekly-deck-model';
 import { weekGoalRows } from '../home-today';
@@ -14,10 +15,10 @@ import * as P from './program-model';
 import type { Block, Events, Program, Task } from './program-model';
 import './program.css';
 
-type Props = { program: Program; deck: WeeklyDeck; now: Date; motion: boolean; onChange: (program: Program, deck?: WeeklyDeck) => void; onFeedback: (tone: 'tap' | 'select' | 'confirm') => void };
+type Props = { embedded?: boolean; focus?: ReactNode; program: Program; deck: WeeklyDeck; now: Date; motion: boolean; onChange: (program: Program, deck?: WeeklyDeck) => void; onFeedback: (tone: 'tap' | 'select' | 'confirm') => void };
 const kindLabels: Record<string, string> = { body: 'Spor', english: 'English', make: 'Üret', research: 'Araştır', social: 'Sosyal', any: 'Genel' };
 
-export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: Props) {
+export function WeekPlan({ embedded = false, focus, program, deck, now, motion, onChange, onFeedback }: Props) {
   const weekKey = P.weekKeyOf(now);
   const today = P.dayIndexOf(now);
   const [selected, setSelected] = useState(today);
@@ -81,11 +82,15 @@ export function WeekPlan({ program, deck, now, motion, onChange, onFeedback }: P
 
   return (
     <div className="wp">
-      <PageHeader eyebrow="HAFTALIK RİTİM" title="Program" description="Bugünün adımlarını yap, seriyi koru, XP topla."
-        action={<button className="ghost-button" onClick={() => setEditing(value => !value)} aria-pressed={editing}><Pencil size={16}/> {editing ? 'Bitti' : 'Düzenle'}</button>}/>
-      <Hud level={level.level} title={level.title} inLevel={level.inLevel} step={level.step}>
-        <span className="chip chip-streak"><Flame size={16}/> {streak} gün seri</span><span className="chip chip-xp"><Zap size={16}/> Bu hafta {P.weekXp(week)} XP</span><span className="chip chip-gold"><Award size={16}/> {Object.keys(program.profile.badges).length} rozet</span>
-      </Hud>
+      {!embedded && <>
+        <PageHeader eyebrow="HAFTALIK RİTİM" title="Program" description="Bugünün adımlarını yap, seriyi koru, XP topla."
+          action={<button className="ghost-button" onClick={() => setEditing(value => !value)} aria-pressed={editing}><Pencil size={16}/> {editing ? 'Bitti' : 'Düzenle'}</button>}/>
+        <Hud level={level.level} title={level.title} inLevel={level.inLevel} step={level.step}>
+          <span className="chip chip-streak"><Flame size={16}/> {streak} gün seri</span><span className="chip chip-xp"><Zap size={16}/> Bu hafta {P.weekXp(week)} XP</span><span className="chip chip-gold"><Award size={16}/> {Object.keys(program.profile.badges).length} rozet</span>
+        </Hud>
+      </>}
+      {embedded && <div className="wp-embedded-bar"><span>{editing ? 'Blokları ve hafta düzenini düzenliyorsun' : 'Bu haftanın günleri ve blokları'}</span><button className="ghost-button" onClick={() => setEditing(value => !value)} aria-pressed={editing}><Pencil size={16}/> {editing ? 'Bitti' : 'Düzenle'}</button></div>}
+      {embedded && !editing && focus}
 
       {!editing && <>
         <nav className="wp-days" aria-label="Haftanın günleri">

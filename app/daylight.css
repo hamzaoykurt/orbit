@@ -548,3 +548,34 @@ html.reduce-motion .scene-cloud.drift { animation:none; }
 :root[data-theme] .page-programs .program-date { flex-direction:row !important; flex-wrap:wrap; justify-content:flex-start; }
 :root[data-theme] .page-programs .program-date-point { flex-direction:row !important; grid-template-columns:none; }
 :root[data-theme] .capture-actions .text-button { justify-self:center; min-height:44px; padding:0 16px; }
+
+/* ======================================================================
+   Program hub: one shell (title, level/XP strip, tabs) for the week and the journey
+   ====================================================================== */
+.program-hub { display:grid; gap:0; }
+.program-hub-head { display:grid; gap:0; }
+:root[data-theme] .program-hub-head .hud { margin-bottom:20px; }
+:root[data-theme] .program-tabs { display:flex; gap:6px; padding:6px; margin-bottom:24px; border-radius:999px; background:var(--panel-2); width:max-content; max-width:100%; box-shadow:inset 0 1px 2px rgba(27,16,53,.08); }
+:root[data-theme] .program-tabs button { min-height:48px; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--ink-2); font-size:16px; font-weight:600; white-space:nowrap; }
+:root[data-theme] .program-tabs button.active { background:linear-gradient(180deg,var(--pg-solid-a),var(--pg-solid-b)); color:var(--pg-on-solid); box-shadow:var(--raise); }
+@media (max-width:560px) { :root[data-theme] .program-tabs { width:100%; } :root[data-theme] .program-tabs button { flex:1; padding:0 10px; font-size:15px; } }
+/* Workspaces (English, idea studio, ...) take the whole page */
+.program-hub:has(.rx-workspace) .program-hub-head { display:none; }
+/* Journey heading becomes a calm row, the hub header already carries the title */
+:root[data-theme] .program-hub .rd-heading { background:none; box-shadow:none; padding:0; border-radius:0; margin-bottom:var(--sp-4,16px); }
+:root[data-theme] .program-hub .rd-heading :is(.rd-kicker,p,h2) { color:var(--ink); }
+:root[data-theme] .program-hub .rd-heading .rd-kicker { color:var(--pg-ink); }
+:root[data-theme] .program-hub .rd-week-title { margin:4px 0 0; font-family:var(--font-head); font-size:clamp(28px,5vw,40px); font-weight:800; letter-spacing:-.03em; }
+:root[data-theme] .program-hub .rd-heading .rd-week-index { background:var(--panel); box-shadow:var(--shadow); }
+:root[data-theme] .program-hub .rd-heading .rd-week-index :is(span,b,i) { color:var(--pg-ink); }
+/* Week tab */
+.wp-embedded-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.wp-embedded-bar > span { color:var(--muted); font-size:15px; font-weight:600; }
+:root[data-theme] .program-focus { margin-bottom:0; }
+@media (min-width:1180px) {
+  :root[data-theme] .program-hub .wp { max-width:none; grid-template-columns:minmax(0,1fr) 340px; align-items:start; column-gap:24px; }
+  :root[data-theme] .program-hub .wp > * { grid-column:1; }
+  :root[data-theme] .program-hub .wp > .wp-side { grid-column:2; grid-row:1 / span 8; grid-template-columns:1fr; position:sticky; top:16px; }
+}
+:root[data-theme] .program-hub .rebuild-deck { max-width:none; width:100%; margin:0; }
+:root[data-theme] .program-hub .rx-home, :root[data-theme] .program-hub .rb-lanes { max-width:none; }
