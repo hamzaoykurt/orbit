@@ -169,7 +169,7 @@ html[data-theme] .surface, .note-card, .project-card { border-radius:var(--r-m);
 .celebrate-banner { top:max(18px,calc(var(--sat) + 8px)); }
 @media (max-width:820px) {
   .toast { bottom:calc(92px + var(--sab)); }
-  .sheet-layer.is-sheet .modal-card .modal-close { position:sticky; top:32px; z-index:12; margin:4px 0 -31px auto; }
+  .sheet-layer.is-sheet .modal-card .modal-close { position:sticky; top:32px; z-index:12; flex:none; width:44px; height:44px; margin:4px -14px -35px auto; }
 }
 @media (min-width:821px) {
   .app-shell .sidebar { padding-left:max(18px,var(--sal)); }
