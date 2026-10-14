@@ -21,3 +21,13 @@ test('both routes render inside the shared Program hub', () => {
   assert.match(page, /renderProgramHub\('week'/);
   assert.match(page, /renderProgramHub\('journey'/);
 });
+
+test('manifest URL carries a version so the service worker never serves a stale manifest', () => {
+  const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+  const versions = [...layout.matchAll(/manifest\.webmanifest\?v=(\d+)/g)].map(match => match[1]);
+  assert.ok(versions.length >= 2 && new Set(versions).size === 1, 'metadata and <link> use the same version');
+  assert.ok(Number(versions[0]) >= 10, 'bumped after the background_color change');
+  const manifest = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'));
+  assert.equal(manifest.background_color, '#F5EADA');
+  assert.equal(manifest.theme_color, '#F5EADA');
+});
