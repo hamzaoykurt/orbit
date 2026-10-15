@@ -21,9 +21,14 @@
   --inset:0 0 0 0 transparent;
   --e2:0 10px 28px -14px color-mix(in srgb,var(--pg-fill) 45%,transparent),0 1px 2px rgba(27,16,53,.06);
   --e3:0 -12px 40px -18px rgba(27,16,53,.38); --scrim:rgba(27,16,53,.38);
+  /* Text on bright fills (sun, mint, gold, danger) stays dark in every theme; top-edge highlights per strength. */
+  --on-bright:#1B1035; --on-danger:#fff; --err-ink:#8F1233; --on-btn:#fff;
+  --hi-25:rgba(255,255,255,.25); --hi-35:rgba(255,255,255,.35); --hi-4:rgba(255,255,255,.4); --hi-5:rgba(255,255,255,.5);
+  --hi-6:rgba(255,255,255,.6); --hi-65:rgba(255,255,255,.65); --hi-7:rgba(255,255,255,.7);
+  --drop:rgba(27,16,53,.10); --glass-wash:rgba(255,255,255,.72);
   /* Shape */
   /* Focus surfaces: page colour as fill. Ink text where ink passes on the fill, white on the darker button shade. */
-  --pg-solid:var(--pg-fill); --pg-on-solid:var(--ink); --pg-solid-a:color-mix(in srgb,var(--pg-solid) 84%,#fff); --pg-solid-b:var(--pg-solid);
+  --pg-solid:var(--pg-fill); --pg-on-solid:var(--on-bright); --pg-solid-a:color-mix(in srgb,var(--pg-solid) 84%,#fff); --pg-solid-b:var(--pg-solid);
   --pg-lip:color-mix(in srgb,var(--pg-solid) 58%,#000);
   --raise:inset 0 1px 0 rgba(255,255,255,.5),0 4px 0 var(--pg-lip),0 12px 18px -10px color-mix(in srgb,var(--pg-solid) 60%,transparent);
   --raise-down:inset 0 1px 0 rgba(255,255,255,.35),0 1px 0 var(--pg-lip);
@@ -65,3 +70,34 @@ html[data-page=settings] { --pg-fill:#3A3354; --pg-ink:#1B1035; --pg-btn:#1B1035
   .celebrate-layer i, .celebrate-layer b, .celebrate-layer em, .celebrate-layer svg, .celebrate-banner { animation:none; }
   .celebrate-layer i, .celebrate-layer em, .celebrate-layer svg { display:none; }
 }
+
+/* ---- Dark theme: purple-navy canvas, never pure black. Set by data-theme=dark (boot script + Ayarlar > Görünüm). ---- */
+:root[data-theme=dark] {
+  color-scheme:dark;
+  --canvas:#150C2B; --panel:#211749; --panel-solid:#211749; --panel-2:#2D2160;
+  --ink:#F4F0FF; --ink-2:#D9D2F0; --muted:#B8B0D0; --soft:#ABA3C6;
+  --line:rgba(244,240,255,.13); --ctrl-edge:#8F87AD;
+  --ink-red:#FF8F7A; --ink-pink:#FF93C0; --ink-violet:#BBA2FF; --ink-blue:#8FB3FF; --ink-green:#4FE3A9; --ink-gold:#FFCB5C;
+  --ok-ink:#4FE3A9; --streak-ink:#FFB066; --gold-ink:#FFD36B; --danger:#FF6B87; --on-danger:#1B1035; --err-ink:#FFB3C1;
+  --pg-ink:#FF8F7A;
+  --shadow:inset 0 1px 0 rgba(255,255,255,.05),0 8px 18px -10px rgba(0,0,0,.65),0 1px 2px rgba(0,0,0,.35);
+  --e2:0 10px 28px -14px rgba(0,0,0,.7),0 1px 2px rgba(0,0,0,.35);
+  --e3:0 -12px 40px -18px rgba(0,0,0,.75); --scrim:rgba(8,4,22,.66);
+  --raise:inset 0 1px 0 rgba(255,255,255,.12),0 4px 0 var(--pg-lip),0 12px 18px -10px rgba(0,0,0,.6);
+  --raise-down:inset 0 1px 0 rgba(255,255,255,.08),0 1px 0 var(--pg-lip);
+  --card-bg:linear-gradient(160deg,color-mix(in srgb,var(--pg-fill) 9%,var(--panel)),var(--panel) 72%);
+  --art-fill:color-mix(in srgb,var(--pg-fill) 22%,var(--panel)); --art-line:color-mix(in srgb,var(--pg-ink) 80%,var(--ink));
+  --hi-25:rgba(255,255,255,.05); --hi-35:rgba(255,255,255,.06); --hi-4:rgba(255,255,255,.07); --hi-5:rgba(255,255,255,.08);
+  --hi-6:rgba(255,255,255,.09); --hi-65:rgba(255,255,255,.1); --hi-7:rgba(255,255,255,.1);
+  --drop:rgba(0,0,0,.45); --glass-wash:rgba(33,23,73,.78);
+}
+html[data-theme=dark][data-page=personal] { --pg-ink:#FF8F7A; }
+html[data-theme=dark][data-page=weekplan] { --pg-ink:#BBA2FF; }
+html[data-theme=dark][data-page=rebuild] { --pg-ink:#4FE3A9; }
+html[data-theme=dark]:is([data-page=projects],[data-page=hub],[data-page=kibleteyn],[data-page=programs]) { --pg-ink:#8FB3FF; }
+html[data-theme=dark]:is([data-page=notes],[data-page=archive]) { --pg-ink:#FFCB5C; }
+html[data-theme=dark]:is([data-page=calendar],[data-page=fitness]) { --pg-ink:#FF93C0; }
+html[data-theme=dark][data-page=settings] { --pg-fill:#9A92BC; --pg-ink:#E6DFFB; --pg-btn:#6A5FA0; --pg-rgb:154,146,188; --pg-tint:color-mix(in srgb,var(--pg-fill) 14%,var(--panel)); --pg-solid:#5B5090; --pg-on-solid:#fff; --pg-solid-a:#6A5FA8; --pg-solid-b:#4F4580; }
+
+html[data-theme=dark] .scene[data-phase=sabah] { --sc-top:#6B3F7A; --sc-bottom:#B8607A; --sc-ink:#fff; }
+html[data-theme=dark] .scene[data-phase=gun] { --sc-top:#2E4C93; --sc-bottom:#5F82C4; --sc-ink:#fff; }

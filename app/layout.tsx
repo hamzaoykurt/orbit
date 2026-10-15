@@ -9,6 +9,7 @@ import './workspace-refresh.css';
 import './energy.css';
 import './ui/feel.css';
 import './daylight.css';
+import './dark.css';
 import { PwaRegister } from './pwa-register';
 import { startupScript } from './startup';
 import { authClientScript } from './auth-client';
@@ -28,14 +29,14 @@ const displayFont = Bricolage_Grotesque({
 
 const title = 'Orbit — Personal OS';
 const description = 'Hayatın, projelerin, programların ve hedeflerin için sakin bir çalışma alanı.';
-// One theme only (Gun Isigi). Stored preference is left untouched but no longer read.
-const themeBootScript = `(function(){var d=document.documentElement;d.dataset.theme='light';try{var ic=document.cookie.match(/(?:^|; )orbit_icon=(light|dark)/);d.dataset.icon=ic?ic[1]:'light';if(ic&&ic[1]==='dark'){var ml=document.querySelector('link[rel="manifest"]');if(ml)ml.setAttribute('href','/manifest.webmanifest?v=13&icon=dark')}}catch(e){}d.style.colorScheme='light';var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content','#F5EADA')})();`;
+// Theme: stored preference (orbit-theme: light | dark | system, default system) is resolved before first paint.
+const themeBootScript = `(function(){var d=document.documentElement,p='system';try{var t=localStorage.getItem('orbit-theme');if(t==='light'||t==='dark'||t==='system')p=t}catch(e){}var k=p==='dark'||(p==='system'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);d.dataset.theme=k?'dark':'light';d.dataset.themePref=p;d.style.colorScheme=k?'dark':'light';try{var ic=document.cookie.match(/(?:^|; )orbit_icon=(light|dark)/);d.dataset.icon=ic?ic[1]:'light';if(ic&&ic[1]==='dark'){var ml=document.querySelector('link[rel="manifest"]');if(ml)ml.setAttribute('href','/manifest.webmanifest?v=13&icon=dark')}}catch(e){}var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',k?'#150C2B':'#F5EADA')})();`;
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  colorScheme: 'light',
+  colorScheme: 'light dark',
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -71,7 +72,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" data-theme="light" suppressHydrationWarning>
-      <head><style dangerouslySetInnerHTML={{ __html: "html,body{background:#F5EADA;color:#1B1035}" }}/><link rel="manifest" href="/manifest.webmanifest?v=13"/><meta name="theme-color" content="#F5EADA"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
+      <head><style dangerouslySetInnerHTML={{ __html: "html,body{background:#F5EADA;color:#1B1035}html[data-theme=dark],html[data-theme=dark] body{background:#150C2B;color:#F4F0FF}" }}/><link rel="manifest" href="/manifest.webmanifest?v=13"/><meta name="theme-color" content="#F5EADA"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)"/><script dangerouslySetInnerHTML={{ __html: authClientScript }}/><script dangerouslySetInnerHTML={{ __html: themeBootScript }}/><script dangerouslySetInnerHTML={{ __html: startupScript }}/></head>
       <body
         className={`${geistSans.variable} ${displayFont.variable} antialiased`}
       >
