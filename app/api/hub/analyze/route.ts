@@ -1,4 +1,5 @@
 import { authenticatedUser, unauthorized } from '../../../../auth/context';
+import { fetchFollowingRedirects, RedirectError } from '../../../../generation/safe-fetch';
 import type { HubAnalysis, HubPlatform } from '../../../hub/hub-model';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +36,9 @@ const readLimited = async (response: Response, limit = MAX_REMOTE_BYTES) => {
 };
 
 const requestText = async (url: string, headers: HeadersInit = {}) => {
-  const response = await fetch(url, { headers, redirect: 'error', signal: AbortSignal.timeout(12_000) });
+  let response: Response;
+  try { response = await fetchFollowingRedirects(url, { headers, signal: AbortSignal.timeout(12_000) }); }
+  catch (error) { if (error instanceof RedirectError) throw new Error(`Bağlantı açılamadı: ${error.message}`); throw error; }
   if (!response.ok) throw new Error(`İçerik kaynağı ${response.status} döndürdü.`);
   return readLimited(response);
 };

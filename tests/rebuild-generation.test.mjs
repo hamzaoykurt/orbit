@@ -11,7 +11,7 @@ const url=(file,replacements={})=>{
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 };
 const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),serviceUrl=url('../generation/service.ts');
-const providerUrl=url('../generation/provider.ts'),engineUrl=url('../app/rebuild/idea-engine.ts');
+const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts');
 const {GenerationRepository}=await import(repoUrl),{GenerationService}=await import(serviceUrl),{createModelProvider}=await import(providerUrl);
 const {resolveModelConfig}=await import(providerUrl);
 const practice=await import(url('../app/rebuild/practice-model.ts'));

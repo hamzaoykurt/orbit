@@ -1,3 +1,4 @@
+import { fetchFollowingRedirects } from './safe-fetch';
 export type ModelRequest = { name: string; instructions: string; input: unknown; schema: object; signal?: AbortSignal };
 export type ModelProvider = (request: ModelRequest) => Promise<unknown>;
 export type ModelConfig = { apiKey?: string; model?: string; baseUrl?: string; provider?: 'openai' | 'gemini' };
@@ -16,8 +17,8 @@ export function createModelProvider(config: ModelConfig, transport: typeof fetch
     const base = new URL(config.baseUrl || 'https://api.openai.com/v1/');
     if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw new Error('provider-config-invalid');
     const endpoint = new URL(`${base.href.replace(/\/$/, '')}/responses`);
-    const response = await transport(endpoint, {
-      method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
+    const response = await fetchFollowingRedirects(endpoint, {
+      method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
       headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: config.model || 'gpt-5-mini', store: false, instructions,
@@ -25,7 +26,7 @@ export function createModelProvider(config: ModelConfig, transport: typeof fetch
         ...((config.model || 'gpt-5-mini').startsWith('gpt-5') ? { reasoning: { effort: 'low' } } : {}),
         text: { format: { type: 'json_schema', name, strict: true, schema } },
       }),
-    });
+    }, { transport, sameOriginOnly: true });
     if (!response.ok) throw new Error(`provider-http-${response.status}`);
     const reader = response.body?.getReader();
     if (!reader) throw new Error('provider-empty');
