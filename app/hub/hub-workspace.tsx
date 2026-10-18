@@ -5,10 +5,10 @@ import { createPortal } from 'react-dom';
 import {
   ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, ChevronUp, Clock3,
   Camera, Code2, Copy, ExternalLink, Globe2, Image as ImageIcon, MessageCircle,
-  Layers3, Link2, LoaderCircle, PlaySquare, Plus, RefreshCw, Search, Sparkles, Trash2, Workflow, X,
+  Layers3, Link2, LoaderCircle, PlaySquare, Plus, RefreshCw, Search, Sparkles, StickyNote, Trash2, Workflow, X,
 } from 'lucide-react';
 import type { HubAnalysis, HubLink, HubPlatform, WorkflowCard } from './hub-model';
-import { HUB_CATEGORIES, hubPromptRecipes, hubResources, workflowInfrastructure, workflowPhases } from './hub-model';
+import { buildReanalysisPatch, cleanHubNote, HUB_CATEGORIES, HUB_NOTE_MAX, hubSearchText, hubPromptRecipes, hubResources, workflowInfrastructure, workflowPhases } from './hub-model';
 import { readClipboardUrl } from './clipboard-link';
 import { safeHttpUrl } from '../external-link';
 import './hub-workspace.css';
@@ -53,16 +53,32 @@ export async function reanalyze(link: HubLink): Promise<{ patch?: Partial<HubLin
     const response = await fetch('/api/hub/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: link.url }) });
     const payload = await response.json() as HubAnalysis & { error?: string; notice?: string };
     if (!response.ok) return { message: payload.error || 'Yeniden analiz edilemedi; mevcut bilgiler korundu.' };
-    const worse = (payload.estimated || payload.untranslated) && Boolean(link.purpose) && !link.untranslated && !link.estimated;
-    if (worse || !payload.summary) return { message: 'İçerik şu an daha iyi analiz edilemedi; mevcut bilgiler korundu.' };
-    const patch: Partial<HubLink> = { summary: payload.summary, purpose: payload.purpose, estimated: payload.estimated, untranslated: payload.untranslated };
-    if (!link.images.length && payload.images.length) patch.images = payload.images;
-    if (!link.thumbnailUrl && payload.thumbnailUrl) patch.thumbnailUrl = payload.thumbnailUrl;
-    return { patch, message: payload.untranslated ? 'Açıklama güncellendi, ancak Türkçeye çevrilemedi.' : 'Açıklama ve “Ne işe yarar” güncellendi.' };
+    return buildReanalysisPatch(link, payload);
   } catch { return { message: 'Bağlantı kurulamadı; mevcut bilgiler korundu.' }; }
 }
 
-function LinkCard({ link, onDelete, onReanalyze }: { link: HubLink; onDelete: () => void; onReanalyze: () => Promise<void> }) {
+const draftKey = (id: string) => `orbit-hub-note-draft:${id}`;
+const readDraft = (id: string) => { try { return localStorage.getItem(draftKey(id)); } catch { return null; } };
+const writeDraft = (id: string, value: string | null) => { try { if (value === null) localStorage.removeItem(draftKey(id)); else localStorage.setItem(draftKey(id), value); } catch { /* storage unavailable */ } };
+
+function NoteEditor({ link, onSave, onClose }: { link: HubLink; onSave: (note: string | undefined) => void; onClose: () => void }) {
+  // A half-written note survives closing the editor or the app until it is saved or deleted.
+  const [draft, setDraft] = useState(() => readDraft(link.id) ?? link.note ?? '');
+  const change = (value: string) => { setDraft(value); writeDraft(link.id, value.slice(0, HUB_NOTE_MAX)); };
+  const finish = (note: string | undefined) => { writeDraft(link.id, null); onSave(note); onClose(); };
+  return <div className="hub-note-editor">
+    <label>Kişisel not<textarea autoFocus rows={4} maxLength={HUB_NOTE_MAX} value={draft} onChange={event => change(event.target.value)} placeholder="Bu bağlantı hakkında kendine not bırak…"/></label>
+    <div className="hub-note-actions">
+      <small>{draft.length}/{HUB_NOTE_MAX}</small>
+      <button type="button" className="hub-note-save" onClick={() => finish(cleanHubNote(draft))}>Kaydet</button>
+      {link.note && <button type="button" className="hub-note-delete" onClick={() => finish(undefined)}>Notu sil</button>}
+      <button type="button" onClick={() => { writeDraft(link.id, null); onClose(); }}>Vazgeç</button>
+    </div>
+  </div>;
+}
+
+function LinkCard({ link, onDelete, onReanalyze, onNote }: { link: HubLink; onDelete: () => void; onReanalyze: () => Promise<void>; onNote: (note: string | undefined) => void }) {
+  const [editingNote, setEditingNote] = useState(() => readDraft(link.id) !== null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [imageIndex, setImageIndex] = useState<number | null>(null);
@@ -95,6 +111,10 @@ function LinkCard({ link, onDelete, onReanalyze }: { link: HubLink; onDelete: ()
       {link.purpose && <p className="hub-purpose"><strong>Ne işe yarar:</strong> {link.purpose}</p>}
       {link.summary && <><p className={!expanded ? 'hub-summary-clamped' : ''}>{link.summary}</p>{link.summary.length > 230 && <button className="hub-expand" onClick={() => setExpanded(current => !current)}>{expanded ? <><ChevronUp size={13}/> Daha az</> : <><ChevronDown size={13}/> Devamı</>}</button>}</>}
       {link.embedded.length > 0 && <div className="hub-embedded"><span><Link2 size={12}/>{link.embedded.length} bağlantı</span>{link.embedded.map((item, index) => <a key={`${item.url}-${index}`} href={safeUrl(item.url) ?? undefined} target="_blank" rel="noopener noreferrer"><strong>{item.title}</strong><small>{item.summary}</small><ExternalLink size={12}/></a>)}</div>}
+      {editingNote ? <NoteEditor link={link} onSave={onNote} onClose={() => setEditingNote(false)}/> : <div className="hub-note-row">
+        {link.note && <p className="hub-note"><StickyNote size={13} aria-hidden="true"/><span>{link.note}</span></p>}
+        <button type="button" className="hub-note-button" onClick={() => setEditingNote(true)}>{link.note ? 'Notu düzenle' : 'Not ekle'}</button>
+      </div>}
       {link.categories.length > 0 && <div className="hub-tags">{link.categories.map(tag => <span key={tag}>{tag}</span>)}</div>}
       <footer><span className="hub-owner">{link.addedBy.slice(0, 1).toLocaleUpperCase('tr')}</span><strong>{link.addedBy}</strong><span><Clock3 size={11}/>{relativeTime(link.createdAt)}</span><small>{hostname}</small></footer>
     </div>
@@ -114,6 +134,7 @@ function AddLinkDialog({ currentUser, clipboardUrl, onClose, onAdd }: { currentU
   const url = typed ?? clipboardUrl ?? '';
   const pasted = typed === null && Boolean(clipboardUrl);
   const setUrl = setTyped;
+  const [note, setNote] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading'>('idle');
   const [error, setError] = useState('');
 
@@ -126,7 +147,8 @@ function AddLinkDialog({ currentUser, clipboardUrl, onClose, onAdd }: { currentU
       const payload = await response.json() as HubAnalysis & { error?: string; notice?: string };
       if (!response.ok) throw new Error(payload.error || 'Bağlantı analiz edilemedi.');
       const { notice, ...analysis } = payload;
-      onAdd({ ...analysis, id: crypto.randomUUID(), addedBy: currentUser || 'Orbit', createdAt: new Date().toISOString() }, typeof notice === 'string' ? notice : undefined);
+      const personalNote = cleanHubNote(note);
+      onAdd({ ...analysis, ...(personalNote ? { note: personalNote } : {}), id: crypto.randomUUID(), addedBy: currentUser || 'Orbit', createdAt: new Date().toISOString() }, typeof notice === 'string' ? notice : undefined);
       onClose();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Bağlantı analiz edilemedi.'); }
     finally { setStatus('idle'); }
@@ -139,6 +161,7 @@ function AddLinkDialog({ currentUser, clipboardUrl, onClose, onAdd }: { currentU
       <h2 id="hub-add-title">Bağlantıyı Orbit’e bırak.</h2>
       <p>Başlık, Türkçe özet, kategori, görseller ve içerideki bağlantılar otomatik hazırlanır.</p>
       <label>Web adresi<input autoFocus value={url} onFocus={event => pasted && event.currentTarget.select()} onChange={event => setUrl(event.target.value)} onKeyDown={event => event.key === 'Enter' && status === 'idle' && void submit()} placeholder="youtube.com/… · x.com/… · github.com/…" /></label>
+      <label>Not <small>(isteğe bağlı)</small><textarea rows={3} maxLength={HUB_NOTE_MAX} value={note} onChange={event => setNote(event.target.value)} placeholder="Bu bağlantıyı neden kaydediyorsun?"/></label>
       {pasted && <p className="hub-clip-hint" role="status">Panodaki bağlantı eklendi <button type="button" onClick={() => setTyped('')}>Temizle</button></p>}
       {error && <div className="hub-dialog-error">{error}</div>}
       <button className="primary-button full" disabled={!url.trim() || status === 'loading'} onClick={() => void submit()}>{status === 'loading' ? <><LoaderCircle className="hub-spin" size={16}/> İçerik okunuyor…</> : <>Analiz et ve ekle <Sparkles size={15}/></>}</button>
@@ -204,7 +227,7 @@ export function HubWorkspace({ links, currentUser, onAdd, onUpdate, onDelete }: 
     if (category !== 'all' && (link.mainCategory || 'Diğer') !== category) return false;
     if (platform !== 'all' && link.platform !== platform) return false;
     const needle = search.trim().toLocaleLowerCase('tr');
-    return !needle || `${link.title} ${link.summary} ${link.purpose ?? ''} ${link.url} ${link.categories.join(' ')}`.toLocaleLowerCase('tr').includes(needle);
+    return !needle || hubSearchText(link).includes(needle);
   }), [category, links, platform, search]);
   const reanalyzeLink = async (link: HubLink) => {
     const outcome = await reanalyze(link);
@@ -234,7 +257,7 @@ export function HubWorkspace({ links, currentUser, onAdd, onUpdate, onDelete }: 
         </div></div>
       </div>
       <div className="hub-results-head"><span><strong>{filtered.length}</strong> bağlantı</span>{(search || category !== 'all' || platform !== 'all') && <small>aktif filtrelerle eşleşiyor</small>}</div>
-      {filtered.length > 0 ? <div className="hub-link-grid">{filtered.map(link => <LinkCard key={link.id} link={link} onDelete={() => onDelete(link.id)} onReanalyze={() => reanalyzeLink(link)}/>)}</div> : <section className="hub-empty"><span>{links.length ? <Search size={25}/> : <ImageIcon size={25}/>}</span><h2>{links.length ? 'Eşleşen bağlantı yok.' : 'İlk bağlantını yakala.'}</h2><p>{links.length ? 'Aramayı veya filtreleri sadeleştir.' : 'YouTube, X, GitHub, Instagram veya herhangi bir web adresini ekleyebilirsin.'}</p><button className="primary-button" onClick={openAdd}><Plus size={15}/> Bağlantı ekle</button></section>}
+      {filtered.length > 0 ? <div className="hub-link-grid">{filtered.map(link => <LinkCard key={link.id} link={link} onDelete={() => onDelete(link.id)} onReanalyze={() => reanalyzeLink(link)} onNote={note => onUpdate(link.id, { note })}/>)}</div> : <section className="hub-empty"><span>{links.length ? <Search size={25}/> : <ImageIcon size={25}/>}</span><h2>{links.length ? 'Eşleşen bağlantı yok.' : 'İlk bağlantını yakala.'}</h2><p>{links.length ? 'Aramayı veya filtreleri sadeleştir.' : 'YouTube, X, GitHub, Instagram veya herhangi bir web adresini ekleyebilirsin.'}</p><button className="primary-button" onClick={openAdd}><Plus size={15}/> Bağlantı ekle</button></section>}
     </>}
     {tab === 'workflow' && <WorkflowView/>}
     {tab === 'knowledge' && <KnowledgeView/>}

@@ -21,6 +21,27 @@ export const matchHubCategory = (value: unknown): string => {
   return HUB_CATEGORIES.find(item => item.toLocaleLowerCase('tr') === key) ?? CATEGORY_ALIASES[key] ?? 'Diğer';
 };
 
+export const HUB_NOTE_MAX = 2000;
+/** Personal note: text only, line breaks kept, trimmed and capped; empty means no note. */
+export const cleanHubNote = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const note = value.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim().slice(0, HUB_NOTE_MAX).trim();
+  return note || undefined;
+};
+
+/** Server-side guard for /api/state: only string notes survive, capped. Returns a copy; other state is untouched. */
+export const clampHubNotes = (state: unknown): unknown => {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return state;
+  const record = state as Record<string, unknown>;
+  if (!Array.isArray(record.hubLinks)) return state;
+  return { ...record, hubLinks: record.hubLinks.map(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) || !('note' in entry)) return entry;
+    const { note, ...rest } = entry as Record<string, unknown>;
+    const clean = cleanHubNote(note);
+    return clean ? { ...rest, note: clean } : rest;
+  }) };
+};
+
 export type HubEmbeddedLink = {
   url: string;
   platform: HubPlatform;
@@ -41,6 +62,8 @@ export type HubLink = {
   estimated?: boolean;
   /** True when the text is still in the source language because no Turkish version could be produced. */
   untranslated?: boolean;
+  /** Personal note written by the user. Never touched by re-analysis. */
+  note?: string;
   thumbnailUrl?: string;
   author?: string;
   categories: string[];
@@ -52,6 +75,19 @@ export type HubLink = {
 };
 
 export type HubAnalysis = Omit<HubLink, 'id' | 'addedBy' | 'createdAt'>;
+
+/** Re-analysis refreshes only the description fields. title, category, tags and the personal note are never in the patch. */
+export const buildReanalysisPatch = (link: HubLink, payload: Partial<HubAnalysis> & { error?: string }): { patch?: Partial<HubLink>; message: string } => {
+  const worse = (payload.estimated || payload.untranslated) && Boolean(link.purpose) && !link.untranslated && !link.estimated;
+  if (worse || !payload.summary) return { message: 'İçerik şu an daha iyi analiz edilemedi; mevcut bilgiler korundu.' };
+  const patch: Partial<HubLink> = { summary: payload.summary, purpose: payload.purpose, estimated: payload.estimated, untranslated: payload.untranslated };
+  if (!link.images.length && payload.images?.length) patch.images = payload.images;
+  if (!link.thumbnailUrl && payload.thumbnailUrl) patch.thumbnailUrl = payload.thumbnailUrl;
+  return { patch, message: payload.untranslated ? 'Açıklama güncellendi, ancak Türkçeye çevrilemedi.' : 'Açıklama ve “Ne işe yarar” güncellendi.' };
+};
+
+/** Search text for the Hub library: everything a person might remember, including the note. */
+export const hubSearchText = (link: HubLink) => `${link.title} ${link.summary} ${link.purpose ?? ''} ${link.note ?? ''} ${link.url} ${link.categories.join(' ')}`.toLocaleLowerCase('tr');
 
 export const normalizeHubLinks = (value: unknown): HubLink[] => {
   if (!Array.isArray(value)) return [];
@@ -69,6 +105,7 @@ export const normalizeHubLinks = (value: unknown): HubLink[] => {
       ...(typeof item.purpose === 'string' && item.purpose ? { purpose: item.purpose.slice(0, 400) } : {}),
       ...(item.estimated === true ? { estimated: true } : {}),
       ...(item.untranslated === true ? { untranslated: true } : {}),
+      ...(cleanHubNote(item.note) ? { note: cleanHubNote(item.note) } : {}),
       thumbnailUrl: typeof item.thumbnailUrl === 'string' ? item.thumbnailUrl : undefined,
       author: typeof item.author === 'string' ? item.author : undefined,
       categories: Array.isArray(item.categories) ? item.categories.filter((tag): tag is string => typeof tag === 'string').slice(0, 8) : [],

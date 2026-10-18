@@ -1,5 +1,6 @@
 import { getDatabase } from '../../../db/client';
 import { authenticatedUser, prefetchedStateRow, unauthorized } from '../../../auth/context';
+import { clampHubNotes } from '../../hub/hub-model';
 import { STATE_SELECT_SQL, WORKSPACE_ID, type StateRow } from './query';
 
 export const dynamic = 'force-dynamic';
@@ -50,7 +51,7 @@ export async function PUT(request: Request) {
       return json({ error: 'Geçerli bir Orbit durumu gerekli.' }, { status: 400 });
     }
 
-    const stateJson = JSON.stringify(body.state);
+    const stateJson = JSON.stringify(clampHubNotes(body.state));
     if (new TextEncoder().encode(stateJson).byteLength > MAX_STATE_BYTES) {
       return json({ error: 'Orbit verisi izin verilen boyutu aşıyor.' }, { status: 413 });
     }

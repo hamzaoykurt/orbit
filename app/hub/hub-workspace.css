@@ -71,3 +71,18 @@
 
 .hub-clip-hint{display:flex;align-items:center;gap:10px;margin:8px 0 0;font-size:13px;line-height:1.4;color:var(--muted)}
 .hub-clip-hint button{min-height:44px;padding:0 12px;border:0;border-radius:999px;background:var(--pg-tint);color:var(--pg-ink);font-size:13px;font-weight:600;cursor:pointer}
+
+/* Personal notes */
+.hub-note-row{display:grid;gap:6px;margin-top:10px}
+.hub-note{display:flex;gap:8px;align-items:flex-start;margin:0;padding:10px 12px;border-radius:var(--r-m,18px);background:color-mix(in srgb,var(--gold) 16%,var(--panel));color:var(--ink);font-size:14px;line-height:1.5}
+.hub-note svg{flex:none;margin-top:3px;color:var(--gold-ink)}
+.hub-note span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line;overflow-wrap:anywhere}
+.hub-note-button,.hub-note-actions button{min-height:44px;padding:0 14px;border:0;border-radius:999px;background:var(--pg-tint);color:var(--pg-ink);font-size:13px;font-weight:600;cursor:pointer}
+.hub-note-button{justify-self:start}
+.hub-note-editor{display:grid;gap:8px;margin-top:10px}
+.hub-note-editor label,.hub-dialog label small{font-size:13px;color:var(--muted)}
+.hub-note-editor textarea,.hub-dialog textarea{display:block;width:100%;margin-top:6px;padding:12px;font:inherit;font-size:15px;line-height:1.5;resize:vertical;min-height:88px}
+.hub-note-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.hub-note-actions small{margin-right:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.hub-note-actions .hub-note-save{background:var(--pg-btn);color:#fff}
+.hub-note-actions .hub-note-delete{color:var(--danger)}
