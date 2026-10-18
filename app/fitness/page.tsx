@@ -6,6 +6,6 @@ export default function FitnessHelp() {
     <p>Bu bağlantı Android telefonundaki <strong>ProFitness</strong> APK’sı içindir. Bilgisayarda Fitness’i çalıştırmaz; veri aktarımı yalnız ayrıca onayladığın Premium Fitness Sync bağlantısıyla yapılır.</p>
     <p>Uygulama açılmadıysa, <code>profitness://open</code> desteğini içeren güncel APK’yı yüklemelisin.</p>
     <p>Güncellemeyi aynı imzayla, mevcut uygulamanın üzerine kur. Verilerini korumak için uygulamayı kaldırma.</p>
-    <FitnessLink/><p><Link href="/">Orbit’e dön</Link> · <a href="https://github.com/hamzaoykurt/profitnessapp" target="_blank" rel="noreferrer">ProFitness deposu</a></p>
+    <FitnessLink/><p><Link href="/">Orbit’e dön</Link> · <a href="https://github.com/hamzaoykurt/profitnessapp" target="_blank" rel="noopener noreferrer">ProFitness deposu</a></p>
   </div></main>;
 }

@@ -11,6 +11,7 @@ import './ui/feel.css';
 import './daylight.css';
 import './dark.css';
 import { PwaRegister } from './pwa-register';
+import { ExternalLinks } from './external-links';
 import { startupScript } from './startup';
 import { authClientScript } from './auth-client';
 
@@ -77,6 +78,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${displayFont.variable} antialiased`}
       >
         <PwaRegister />
+        <ExternalLinks />
         {children}
       </body>
     </html>

@@ -10,6 +10,7 @@ import {
 import type { HubAnalysis, HubLink, HubPlatform, WorkflowCard } from './hub-model';
 import { HUB_CATEGORIES, hubPromptRecipes, hubResources, workflowInfrastructure, workflowPhases } from './hub-model';
 import { readClipboardUrl } from './clipboard-link';
+import { safeHttpUrl } from '../external-link';
 import './hub-workspace.css';
 
 type HubTab = 'library' | 'workflow' | 'knowledge';
@@ -29,10 +30,7 @@ const platformMeta: Record<HubPlatform, { label: string; icon: typeof Globe2 }> 
   web: { label: 'Web', icon: Globe2 },
 };
 
-const safeUrl = (value: string) => {
-  try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null; }
-  catch { return null; }
-};
+const safeUrl = safeHttpUrl;
 
 const subscribeToClient = () => () => undefined;
 
@@ -87,7 +85,7 @@ function LinkCard({ link, onDelete, onReanalyze }: { link: HubLink; onDelete: ()
         <div className="hub-badges"><span className="platform-badge"><PlatformIcon size={12}/>{platformMeta[link.platform].label}</span><span>{link.mainCategory}</span></div>
         <div className="hub-card-actions">
           <button className={busy ? 'is-busy' : ''} disabled={busy} onClick={() => { setBusy(true); void onReanalyze().finally(() => setBusy(false)); }} aria-label="Yeniden analiz et" title="Yeniden analiz et"><RefreshCw size={15}/></button>
-          {externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label="Bağlantıyı aç"><ExternalLink size={15}/></a>}
+          {externalUrl && <a href={externalUrl} target="_blank" rel="noopener noreferrer" aria-label="Bağlantıyı aç"><ExternalLink size={15}/></a>}
           <button onClick={() => window.confirm('Bu bağlantı silinsin mi?') && onDelete()} aria-label="Bağlantıyı sil"><Trash2 size={15}/></button>
         </div>
       </header>
@@ -96,7 +94,7 @@ function LinkCard({ link, onDelete, onReanalyze }: { link: HubLink; onDelete: ()
       {link.untranslated && !link.estimated && <p className="hub-estimate" role="note">Çevrilemedi</p>}
       {link.purpose && <p className="hub-purpose"><strong>Ne işe yarar:</strong> {link.purpose}</p>}
       {link.summary && <><p className={!expanded ? 'hub-summary-clamped' : ''}>{link.summary}</p>{link.summary.length > 230 && <button className="hub-expand" onClick={() => setExpanded(current => !current)}>{expanded ? <><ChevronUp size={13}/> Daha az</> : <><ChevronDown size={13}/> Devamı</>}</button>}</>}
-      {link.embedded.length > 0 && <div className="hub-embedded"><span><Link2 size={12}/>{link.embedded.length} bağlantı</span>{link.embedded.map((item, index) => <a key={`${item.url}-${index}`} href={safeUrl(item.url) ?? '#'} target="_blank" rel="noreferrer"><strong>{item.title}</strong><small>{item.summary}</small><ExternalLink size={12}/></a>)}</div>}
+      {link.embedded.length > 0 && <div className="hub-embedded"><span><Link2 size={12}/>{link.embedded.length} bağlantı</span>{link.embedded.map((item, index) => <a key={`${item.url}-${index}`} href={safeUrl(item.url) ?? undefined} target="_blank" rel="noopener noreferrer"><strong>{item.title}</strong><small>{item.summary}</small><ExternalLink size={12}/></a>)}</div>}
       {link.categories.length > 0 && <div className="hub-tags">{link.categories.map(tag => <span key={tag}>{tag}</span>)}</div>}
       <footer><span className="hub-owner">{link.addedBy.slice(0, 1).toLocaleUpperCase('tr')}</span><strong>{link.addedBy}</strong><span><Clock3 size={11}/>{relativeTime(link.createdAt)}</span><small>{hostname}</small></footer>
     </div>
@@ -153,7 +151,7 @@ function WorkflowDetail({ item, onClose }: { item: WorkflowCard; onClose: () => 
     <section className={`hub-workflow-detail tone-${item.tone}`} role="dialog" aria-modal="true" aria-labelledby="workflow-detail-title">
       <button className="hub-dialog-close" onClick={onClose} aria-label="Kapat"><X size={18}/></button>
       <header><span>{item.index === undefined ? <Layers3 size={22}/> : String(item.index).padStart(2, '0')}</span><div><small>{item.timing}{item.role ? ` · ${item.role}` : ''}</small><h2 id="workflow-detail-title">{item.title}</h2><p>{item.description}</p></div></header>
-      <div className="hub-detail-sections">{item.sections.map(section => <section key={section.title}><h3>{section.title}</h3>{section.text && <p>{section.text}</p>}{section.items && <div>{section.items.map(entry => entry.url ? <a href={entry.url} target="_blank" rel="noreferrer" key={entry.label}><strong>{entry.label}</strong>{entry.description && <small>{entry.description}</small>}<ExternalLink size={13}/></a> : <article key={entry.label}><i><Check size={12}/></i><span><strong>{entry.label}</strong>{entry.description && <small>{entry.description}</small>}</span></article>)}</div>}</section>)}</div>
+      <div className="hub-detail-sections">{item.sections.map(section => <section key={section.title}><h3>{section.title}</h3>{section.text && <p>{section.text}</p>}{section.items && <div>{section.items.map(entry => entry.url ? <a href={entry.url} target="_blank" rel="noopener noreferrer" key={entry.label}><strong>{entry.label}</strong>{entry.description && <small>{entry.description}</small>}<ExternalLink size={13}/></a> : <article key={entry.label}><i><Check size={12}/></i><span><strong>{entry.label}</strong>{entry.description && <small>{entry.description}</small>}</span></article>)}</div>}</section>)}</div>
     </section>
   </div></BodyPortal>;
 }
@@ -177,7 +175,7 @@ function KnowledgeView() {
   const copy = async (title: string, prompt: string) => { await navigator.clipboard.writeText(prompt); setCopied(title); window.setTimeout(() => setCopied(''), 1600); };
   return <div className="hub-knowledge-layout">
     <section><div className="hub-prompt-grid">{hubPromptRecipes.map(recipe => <article key={recipe.title}><header><span>{recipe.phase}</span><button onClick={() => void copy(recipe.title, recipe.prompt)}>{copied === recipe.title ? <Check size={14}/> : <Copy size={14}/>} {copied === recipe.title ? 'Kopyalandı' : 'Kopyala'}</button></header><h3>{recipe.title}</h3><p>{recipe.description}</p><details><summary>Promptu göster <ChevronDown size={14}/></summary><pre>{recipe.prompt}</pre></details></article>)}</div></section>
-    <aside className="hub-resource-panel"><h2>Kaynaklar</h2>{hubResources.map(group => <section key={group.group}><h3>{group.group}</h3><div>{group.links.map(link => <a key={link} href={`https://${link}`} target="_blank" rel="noreferrer">{link}<ExternalLink size={11}/></a>)}</div></section>)}</aside>
+    <aside className="hub-resource-panel"><h2>Kaynaklar</h2>{hubResources.map(group => <section key={group.group}><h3>{group.group}</h3><div>{group.links.map(link => <a key={link} href={`https://${link}`} target="_blank" rel="noopener noreferrer">{link}<ExternalLink size={11}/></a>)}</div></section>)}</aside>
   </div>;
 }
 
