@@ -4,19 +4,19 @@ import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } fr
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, ChevronUp, Clock3,
-  Camera, Code2, Copy, ExternalLink, Filter, Globe2, Image as ImageIcon, MessageCircle,
-  Layers3, Link2, LoaderCircle, PlaySquare, Plus, Search, Sparkles, Trash2, Workflow, X,
+  Camera, Code2, Copy, ExternalLink, Globe2, Image as ImageIcon, MessageCircle,
+  Layers3, Link2, LoaderCircle, PlaySquare, Plus, RefreshCw, Search, Sparkles, Trash2, Workflow, X,
 } from 'lucide-react';
 import type { HubAnalysis, HubLink, HubPlatform, WorkflowCard } from './hub-model';
-import { hubPromptRecipes, hubResources, workflowInfrastructure, workflowPhases } from './hub-model';
+import { HUB_CATEGORIES, hubPromptRecipes, hubResources, workflowInfrastructure, workflowPhases } from './hub-model';
 import './hub-workspace.css';
 
 type HubTab = 'library' | 'workflow' | 'knowledge';
-type OwnerFilter = 'all' | 'mine' | 'others';
 type HubWorkspaceProps = {
   links: HubLink[];
   currentUser: string;
   onAdd: (link: HubLink) => void;
+  onUpdate: (id: string, patch: Partial<HubLink>) => void;
   onDelete: (id: string) => void;
 };
 
@@ -48,7 +48,23 @@ const relativeTime = (value: string) => {
   return `${Math.floor(minutes / 1440)} gün`;
 };
 
-function LinkCard({ link, onDelete }: { link: HubLink; onDelete: () => void }) {
+// Re-analysis only refreshes the description fields (summary, purpose, flags); title, category and tags stay as the user left them.
+export async function reanalyze(link: HubLink): Promise<{ patch?: Partial<HubLink>; message: string }> {
+  try {
+    const response = await fetch('/api/hub/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: link.url }) });
+    const payload = await response.json() as HubAnalysis & { error?: string; notice?: string };
+    if (!response.ok) return { message: payload.error || 'Yeniden analiz edilemedi; mevcut bilgiler korundu.' };
+    const worse = (payload.estimated || payload.untranslated) && Boolean(link.purpose) && !link.untranslated && !link.estimated;
+    if (worse || !payload.summary) return { message: 'İçerik şu an daha iyi analiz edilemedi; mevcut bilgiler korundu.' };
+    const patch: Partial<HubLink> = { summary: payload.summary, purpose: payload.purpose, estimated: payload.estimated, untranslated: payload.untranslated };
+    if (!link.images.length && payload.images.length) patch.images = payload.images;
+    if (!link.thumbnailUrl && payload.thumbnailUrl) patch.thumbnailUrl = payload.thumbnailUrl;
+    return { patch, message: payload.untranslated ? 'Açıklama güncellendi, ancak Türkçeye çevrilemedi.' : 'Açıklama ve “Ne işe yarar” güncellendi.' };
+  } catch { return { message: 'Bağlantı kurulamadı; mevcut bilgiler korundu.' }; }
+}
+
+function LinkCard({ link, onDelete, onReanalyze }: { link: HubLink; onDelete: () => void; onReanalyze: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [imageIndex, setImageIndex] = useState<number | null>(null);
   const PlatformIcon = platformMeta[link.platform].icon;
@@ -69,12 +85,14 @@ function LinkCard({ link, onDelete }: { link: HubLink; onDelete: () => void }) {
       <header>
         <div className="hub-badges"><span className="platform-badge"><PlatformIcon size={12}/>{platformMeta[link.platform].label}</span><span>{link.mainCategory}</span></div>
         <div className="hub-card-actions">
+          <button className={busy ? 'is-busy' : ''} disabled={busy} onClick={() => { setBusy(true); void onReanalyze().finally(() => setBusy(false)); }} aria-label="Yeniden analiz et" title="Yeniden analiz et"><RefreshCw size={15}/></button>
           {externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" aria-label="Bağlantıyı aç"><ExternalLink size={15}/></a>}
           <button onClick={() => window.confirm('Bu bağlantı silinsin mi?') && onDelete()} aria-label="Bağlantıyı sil"><Trash2 size={15}/></button>
         </div>
       </header>
       <h2>{link.title}</h2>
       {link.estimated && <p className="hub-estimate" role="note">Tahmini analiz: sayfa okunamadı</p>}
+      {link.untranslated && !link.estimated && <p className="hub-estimate" role="note">Çevrilemedi</p>}
       {link.purpose && <p className="hub-purpose"><strong>Ne işe yarar:</strong> {link.purpose}</p>}
       {link.summary && <><p className={!expanded ? 'hub-summary-clamped' : ''}>{link.summary}</p>{link.summary.length > 230 && <button className="hub-expand" onClick={() => setExpanded(current => !current)}>{expanded ? <><ChevronUp size={13}/> Daha az</> : <><ChevronDown size={13}/> Devamı</>}</button>}</>}
       {link.embedded.length > 0 && <div className="hub-embedded"><span><Link2 size={12}/>{link.embedded.length} bağlantı</span>{link.embedded.map((item, index) => <a key={`${item.url}-${index}`} href={safeUrl(item.url) ?? '#'} target="_blank" rel="noreferrer"><strong>{item.title}</strong><small>{item.summary}</small><ExternalLink size={12}/></a>)}</div>}
@@ -157,26 +175,35 @@ function KnowledgeView() {
   </div>;
 }
 
-export function HubWorkspace({ links, currentUser, onAdd, onDelete }: HubWorkspaceProps) {
+export function HubWorkspace({ links, currentUser, onAdd, onUpdate, onDelete }: HubWorkspaceProps) {
   const [tab, setTab] = useState<HubTab>('library');
-  const [owner, setOwner] = useState<OwnerFilter>('all');
   const [category, setCategory] = useState('all');
   const [platform, setPlatform] = useState<'all' | HubPlatform>('all');
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [notice, setNotice] = useState('');
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 7000); return () => window.clearTimeout(timer); }, [notice]);
 
-  const categories = useMemo(() => Array.from(new Set(links.flatMap(link => [link.mainCategory, ...link.categories]).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'tr')), [links]);
+  // Chips show only what exists, with counts; older saves keep whatever category name they were stored with.
+  const categoryChips = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const link of links) { const name = link.mainCategory || 'Diğer'; counts.set(name, (counts.get(name) ?? 0) + 1); }
+    const known = HUB_CATEGORIES.filter(item => counts.has(item)).map(item => [item as string, counts.get(item)!] as const);
+    const legacy = [...counts.entries()].filter(([item]) => !(HUB_CATEGORIES as readonly string[]).includes(item)).sort((x, y) => x[0].localeCompare(y[0], 'tr'));
+    return [...known, ...legacy];
+  }, [links]);
+  const platformChips = useMemo(() => (Object.keys(platformMeta) as HubPlatform[]).map(id => [id, links.filter(link => link.platform === id).length] as const).filter(([, count]) => count > 0), [links]);
   const filtered = useMemo(() => links.filter(link => {
-    if (owner === 'mine' && link.addedBy.toLocaleLowerCase('tr') !== currentUser.toLocaleLowerCase('tr')) return false;
-    if (owner === 'others' && link.addedBy.toLocaleLowerCase('tr') === currentUser.toLocaleLowerCase('tr')) return false;
-    if (category !== 'all' && link.mainCategory !== category && !link.categories.includes(category)) return false;
+    if (category !== 'all' && (link.mainCategory || 'Diğer') !== category) return false;
     if (platform !== 'all' && link.platform !== platform) return false;
     const needle = search.trim().toLocaleLowerCase('tr');
     return !needle || `${link.title} ${link.summary} ${link.purpose ?? ''} ${link.url} ${link.categories.join(' ')}`.toLocaleLowerCase('tr').includes(needle);
-  }), [category, currentUser, links, owner, platform, search]);
+  }), [category, links, platform, search]);
+  const reanalyzeLink = async (link: HubLink) => {
+    const outcome = await reanalyze(link);
+    if (outcome.patch) onUpdate(link.id, outcome.patch);
+    setNotice(outcome.message);
+  };
 
   return <div className="hub-workspace">
     <div className="page-title hub-page-title"><div><h1>Hub</h1></div>{tab === 'library' && <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16}/> Bağlantı ekle</button>}</div>
@@ -188,12 +215,19 @@ export function HubWorkspace({ links, currentUser, onAdd, onDelete }: HubWorkspa
     {tab === 'library' && <>
       <section className="hub-library-toolbar">
         <label className="hub-search"><Search size={15}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Başlık, özet, adres veya etiket ara…"/>{search && <button onClick={() => setSearch('')} aria-label="Aramayı temizle"><X size={13}/></button>}</label>
-        <div className="hub-owner-tabs">{(['all', 'mine', 'others'] as const).map(item => <button key={item} className={owner === item ? 'active' : ''} onClick={() => setOwner(item)}>{item === 'all' ? 'Tümü' : item === 'mine' ? 'Benim' : 'Diğer'}</button>)}</div>
-        <button className={`hub-filter-trigger ${filtersOpen ? 'active' : ''}`} onClick={() => setFiltersOpen(current => !current)}><Filter size={14}/> Filtreler</button>
       </section>
-      {filtersOpen && <section className="hub-filter-panel"><label>Kategori<select value={category} onChange={event => setCategory(event.target.value)}><option value="all">Tüm kategoriler</option>{categories.map(item => <option key={item}>{item}</option>)}</select></label><label>Platform<select value={platform} onChange={event => setPlatform(event.target.value as 'all' | HubPlatform)}><option value="all">Tüm platformlar</option>{Object.entries(platformMeta).map(([id, meta]) => <option key={id} value={id}>{meta.label}</option>)}</select></label>{(category !== 'all' || platform !== 'all') && <button onClick={() => { setCategory('all'); setPlatform('all'); }}><X size={13}/> Temizle</button>}</section>}
+      <div className="hub-chip-groups">
+        <div className="hub-chip-row" role="group" aria-label="Kategori"><span className="hub-chip-label">Kategori</span><div className="hub-chip-scroll">
+          <button className={`hub-chip ${category === 'all' ? 'active' : ''}`} aria-pressed={category === 'all'} onClick={() => setCategory('all')}>Tümü<em>{links.length}</em></button>
+          {categoryChips.map(([item, count]) => <button key={item} className={`hub-chip ${category === item ? 'active' : ''}`} aria-pressed={category === item} onClick={() => setCategory(item)}>{item}<em>{count}</em></button>)}
+        </div></div>
+        <div className="hub-chip-row" role="group" aria-label="Platform"><span className="hub-chip-label">Platform</span><div className="hub-chip-scroll">
+          <button className={`hub-chip ${platform === 'all' ? 'active' : ''}`} aria-pressed={platform === 'all'} onClick={() => setPlatform('all')}>Tümü<em>{links.length}</em></button>
+          {platformChips.map(([id, count]) => { const Icon = platformMeta[id].icon; return <button key={id} className={`hub-chip ${platform === id ? 'active' : ''}`} aria-pressed={platform === id} onClick={() => setPlatform(id)}><Icon size={13}/>{platformMeta[id].label}<em>{count}</em></button>; })}
+        </div></div>
+      </div>
       <div className="hub-results-head"><span><strong>{filtered.length}</strong> bağlantı</span>{(search || category !== 'all' || platform !== 'all') && <small>aktif filtrelerle eşleşiyor</small>}</div>
-      {filtered.length > 0 ? <div className="hub-link-grid">{filtered.map(link => <LinkCard key={link.id} link={link} onDelete={() => onDelete(link.id)}/>)}</div> : <section className="hub-empty"><span>{links.length ? <Search size={25}/> : <ImageIcon size={25}/>}</span><h2>{links.length ? 'Eşleşen bağlantı yok.' : 'İlk bağlantını yakala.'}</h2><p>{links.length ? 'Aramayı veya filtreleri sadeleştir.' : 'YouTube, X, GitHub, Instagram veya herhangi bir web adresini ekleyebilirsin.'}</p><button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={15}/> Bağlantı ekle</button></section>}
+      {filtered.length > 0 ? <div className="hub-link-grid">{filtered.map(link => <LinkCard key={link.id} link={link} onDelete={() => onDelete(link.id)} onReanalyze={() => reanalyzeLink(link)}/>)}</div> : <section className="hub-empty"><span>{links.length ? <Search size={25}/> : <ImageIcon size={25}/>}</span><h2>{links.length ? 'Eşleşen bağlantı yok.' : 'İlk bağlantını yakala.'}</h2><p>{links.length ? 'Aramayı veya filtreleri sadeleştir.' : 'YouTube, X, GitHub, Instagram veya herhangi bir web adresini ekleyebilirsin.'}</p><button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={15}/> Bağlantı ekle</button></section>}
     </>}
     {tab === 'workflow' && <WorkflowView/>}
     {tab === 'knowledge' && <KnowledgeView/>}

@@ -2411,6 +2411,7 @@ export default function PersonalOS() {
       });
       notify('Bağlantı Hub’a eklendi.');
     }}
+    onUpdate={(id, patch) => setState(current => ({ ...current, hubLinks: current.hubLinks.map(link => link.id === id ? { ...link, ...patch } : link) }))}
     onDelete={id => {
       setState(current => ({ ...current, hubLinks: current.hubLinks.filter(link => link.id !== id) }));
       notify('Bağlantı Hub’dan kaldırıldı.');

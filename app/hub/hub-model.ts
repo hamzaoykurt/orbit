@@ -1,5 +1,26 @@
 export type HubPlatform = 'youtube' | 'twitter' | 'github' | 'instagram' | 'web';
 
+// Single source for the Hub categories: filter chips, the Groq prompt and validation of model output all read this list.
+// Links saved earlier may carry other category names (e.g. "Yapay Zeka", "GitHub"); those are shown exactly as stored.
+export const HUB_CATEGORIES = [
+  'Yapay Zekâ', 'Yazılım ve Kod', 'Tasarım', 'Araçlar', 'Eğitim ve Kurs', 'Haber ve Makale', 'Video ve İzleme', 'İlham ve Referans',
+  'İş ve Girişimcilik', 'Pazarlama', 'Sağlık ve Spor', 'Finans', 'Eğlence ve Oyun', 'Alışveriş', 'Diğer',
+] as const;
+
+// Old names the model (or older saves) used, mapped to the current list. Only applied to NEW model output.
+const CATEGORY_ALIASES: Record<string, (typeof HUB_CATEGORIES)[number]> = {
+  'yapay zeka': 'Yapay Zekâ', 'yazılım geliştirme': 'Yazılım ve Kod', 'yazılım': 'Yazılım ve Kod', 'kod': 'Yazılım ve Kod', 'github': 'Yazılım ve Kod',
+  'haberler': 'Haber ve Makale', 'haber': 'Haber ve Makale', 'makale': 'Haber ve Makale', 'iş dünyası': 'İş ve Girişimcilik', 'girişimcilik': 'İş ve Girişimcilik',
+  'eğitim': 'Eğitim ve Kurs', 'kurs': 'Eğitim ve Kurs', 'video': 'Video ve İzleme', 'ilham': 'İlham ve Referans', 'referans': 'İlham ve Referans',
+  'sağlık': 'Sağlık ve Spor', 'spor': 'Sağlık ve Spor', 'eğlence': 'Eğlence ve Oyun', 'oyun': 'Eğlence ve Oyun',
+};
+
+export const matchHubCategory = (value: unknown): string => {
+  if (typeof value !== 'string') return 'Diğer';
+  const key = value.replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr');
+  return HUB_CATEGORIES.find(item => item.toLocaleLowerCase('tr') === key) ?? CATEGORY_ALIASES[key] ?? 'Diğer';
+};
+
 export type HubEmbeddedLink = {
   url: string;
   platform: HubPlatform;
@@ -18,6 +39,8 @@ export type HubLink = {
   purpose?: string;
   /** True when the page could not be read and the analysis is a guess from the domain and meta data. */
   estimated?: boolean;
+  /** True when the text is still in the source language because no Turkish version could be produced. */
+  untranslated?: boolean;
   thumbnailUrl?: string;
   author?: string;
   categories: string[];
@@ -45,6 +68,7 @@ export const normalizeHubLinks = (value: unknown): HubLink[] => {
       summary: typeof item.summary === 'string' ? item.summary : '',
       ...(typeof item.purpose === 'string' && item.purpose ? { purpose: item.purpose.slice(0, 400) } : {}),
       ...(item.estimated === true ? { estimated: true } : {}),
+      ...(item.untranslated === true ? { untranslated: true } : {}),
       thumbnailUrl: typeof item.thumbnailUrl === 'string' ? item.thumbnailUrl : undefined,
       author: typeof item.author === 'string' ? item.author : undefined,
       categories: Array.isArray(item.categories) ? item.categories.filter((tag): tag is string => typeof tag === 'string').slice(0, 8) : [],

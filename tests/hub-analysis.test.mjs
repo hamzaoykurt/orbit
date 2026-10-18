@@ -95,3 +95,60 @@ test('Hub model keeps purpose and the estimated flag and stays compatible with o
   const [old] = normalizeHubLinks([base]);
   assert.equal('purpose' in old, false); assert.equal('estimated' in old, false);
 });
+
+const { looksTurkish, generateAnalysis, buildMessages, SYSTEM_PROMPT } = await import(loadModuleUrl(new URL('../app/api/hub/analysis.ts', import.meta.url)));
+const { HUB_CATEGORIES, matchHubCategory } = await import(loadModuleUrl(new URL('../app/hub/hub-model.ts', import.meta.url)));
+
+const turkish = { title: 'Swishy: yapay zekâ hareket tasarımcısı', summary: 'Metinden hareketli grafikler ve animasyonlar üretmeni sağlar.', purpose: 'Animasyon hazırlamak için kullanılır.', category: 'Tasarım' };
+const english = { title: 'Swishy AI Motion Designer', summary: 'Create professional motion graphics and animations with AI for your projects.', purpose: 'Make animations from a prompt.', category: 'Design' };
+
+test('language check tells Turkish from English', () => {
+  assert.equal(looksTurkish(`${turkish.title} ${turkish.summary}`), true);
+  assert.equal(looksTurkish(`${english.title} ${english.summary}`), false);
+  assert.equal(looksTurkish(''), true);
+  assert.equal(looksTurkish('Figma'), true);
+});
+
+test('prompt makes Turkish output mandatory, even for English sources', () => {
+  const messages = buildMessages('x');
+  assert.equal(messages[0].role, 'system');
+  assert.match(SYSTEM_PROMPT, /HER ZAMAN Türkçe/); assert.match(SYSTEM_PROMPT, /çevirme/);
+  assert.match(buildPrompt(target, 'web', { title: '', description: '', text: 'x' }, false), /Yapay Zekâ\|Yazılım ve Kod/);
+});
+
+test('model chain: Turkish answer is used as is', async () => {
+  const out = await generateAnalysis('p', [async () => turkish]);
+  assert.deepEqual([out.untranslated, out.result.title], [false, turkish.title]);
+});
+
+test('model chain: English answer gets exactly one correction request on the same runner', async () => {
+  const calls = [];
+  const out = await generateAnalysis('p', [async (messages) => { calls.push(messages.length); return calls.length === 1 ? english : turkish; }]);
+  assert.equal(out.untranslated, false); assert.equal(out.result.summary, turkish.summary);
+  assert.deepEqual(calls, [2, 3]);
+});
+
+test('model chain: still English after correction -> flagged untranslated; runners are tried in order', async () => {
+  const stubborn = await generateAnalysis('p', [async () => english]);
+  assert.equal(stubborn.untranslated, true);
+  const order = [];
+  const out = await generateAnalysis('p', [async () => { order.push('groq'); return null; }, async () => { order.push('ai'); return turkish; }]);
+  assert.deepEqual(order, ['groq', 'ai']); assert.equal(out.untranslated, false);
+  assert.equal(await generateAnalysis('p', []), null);
+  assert.equal(await generateAnalysis('p', [async () => { throw new Error('down'); }]), null);
+});
+
+test('no model: English page text is shown but flagged, Turkish text is not', () => {
+  const content = (text) => ({ quality: 'meta', source: 'direct', title: 'Swishy', description: text, text: '', images: [] });
+  assert.equal(fromContent(target, 'web', content('Create professional motion graphics and animations with AI for creators.'), {}).untranslated, true);
+  assert.equal(fromContent(target, 'web', content('Metinden animasyon üreten bir araç ve sayfa.'), {}).untranslated, undefined);
+  assert.equal(fromModel(target, 'web', english, { quality: 'full', title: '' }, {}, false, true).untranslated, true);
+});
+
+test('categories: one shared list; new model output is matched, unknown becomes Diğer; stored legacy names are untouched', () => {
+  assert.ok(HUB_CATEGORIES.length >= 14 && HUB_CATEGORIES.includes('Diğer') && HUB_CATEGORIES.includes('Eğitim ve Kurs'));
+  assert.equal(matchHubCategory('yapay zeka'), 'Yapay Zekâ'); assert.equal(matchHubCategory('GitHub'), 'Yazılım ve Kod');
+  assert.equal(matchHubCategory('Sağlık ve Spor'), 'Sağlık ve Spor'); assert.equal(matchHubCategory('uydurma'), 'Diğer');
+  const [legacy] = normalizeHubLinks([{ id: '1', url: 'https://a.example/', title: 'A', platform: 'github', mainCategory: 'Yazılım Geliştirme' }]);
+  assert.equal(legacy.mainCategory, 'Yazılım Geliştirme');
+});

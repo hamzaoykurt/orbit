@@ -1,9 +1,10 @@
+import { env } from 'cloudflare:workers';
 import { authenticatedUser, unauthorized } from '../../../../auth/context';
 import { isUnreadable, readLimited, requestText, unreadableAnalysis } from '../web-fetch';
 import { loadWebContent, type LoadedContent } from '../content-source';
-import { buildPrompt, fromContent, fromModel, MAX_AI_TEXT, type ModelResult } from '../analysis';
+import { buildPrompt, fromContent, fromModel, generateAnalysis, MAX_AI_TEXT, type ModelResult, type ModelRunner } from '../analysis';
 import { assertSafeUrl, RedirectError } from '../../../../generation/safe-fetch';
-import type { HubPlatform } from '../../../hub/hub-model';
+import { HUB_CATEGORIES, type HubPlatform } from '../../../hub/hub-model';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,27 +87,47 @@ const loadContent = async (url: URL, platform: HubPlatform): Promise<{ loaded: L
   return { loaded: await loadWebContent(url) };
 };
 
-const callModel = async (prompt: string): Promise<ModelResult | null> => {
+const parseJson = (raw: unknown): ModelResult | null => {
+  if (raw && typeof raw === 'object') return raw as ModelResult;
+  if (typeof raw !== 'string') return null;
+  try { const parsed = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)); return parsed && typeof parsed === 'object' ? parsed as ModelResult : null; } catch { return null; }
+};
+
+const groqRunner = (key: string): ModelRunner => async messages => {
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST', signal: AbortSignal.timeout(20_000),
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', temperature: 0.2, response_format: { type: 'json_object' }, messages }),
+  });
+  if (!response.ok) return null;
+  const envelope = JSON.parse(await readLimited(response, 80_000)) as { choices?: { message?: { content?: string } }[] };
+  return parseJson(envelope.choices?.[0]?.message?.content);
+};
+
+type WorkersAi = { run: (model: string, input: Record<string, unknown>) => Promise<{ response?: unknown } | null> };
+const analysisSchema = { type: 'object', properties: { title: { type: 'string' }, summary: { type: 'string' }, purpose: { type: 'string' }, category: { type: 'string', enum: [...HUB_CATEGORIES] }, categories: { type: 'array', items: { type: 'string' } } }, required: ['title', 'summary', 'purpose', 'category'] };
+// Cloudflare Workers AI: no API key, free daily allowance. Model verified in the Workers AI catalogue (supports JSON mode).
+export const WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+const workersAiRunner = (ai: WorkersAi): ModelRunner => async messages => {
+  const output = await ai.run(WORKERS_AI_MODEL, { messages, max_tokens: 700, temperature: 0.2, response_format: { type: 'json_schema', json_schema: analysisSchema } });
+  return parseJson(output?.response);
+};
+
+// Order: Groq (when a key exists) -> Workers AI (binding) -> raw page metadata.
+const runners = (): ModelRunner[] => {
+  const list: ModelRunner[] = [];
   const key = process.env.GROQ_API_KEY?.trim();
-  if (!key) return null;
-  try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST', signal: AbortSignal.timeout(20_000),
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }),
-    });
-    if (!response.ok) return null;
-    const envelope = JSON.parse(await readLimited(response, 80_000)) as { choices?: { message?: { content?: string } }[] };
-    const raw = envelope.choices?.[0]?.message?.content;
-    return raw ? JSON.parse(raw) as ModelResult : null;
-  } catch { return null; }
+  if (key) list.push(groqRunner(key));
+  const ai = (env as unknown as { AI?: WorkersAi }).AI;
+  if (ai && typeof ai.run === 'function') list.push(workersAiRunner(ai));
+  return list;
 };
 
 const analyze = async (url: URL, platform: HubPlatform, loaded: LoadedContent, author?: string) => {
   const extra = { thumbnailUrl: loaded.thumbnailUrl, author, images: loaded.images };
   const estimated = loaded.quality === 'none';
-  const result = await callModel(buildPrompt(url, platform, loaded, estimated));
-  if (result) return fromModel(url, platform, result, loaded, extra, estimated);
+  const generated = await generateAnalysis(buildPrompt(url, platform, loaded, estimated), runners());
+  if (generated) return fromModel(url, platform, generated.result, loaded, extra, estimated, generated.untranslated);
   return estimated ? unreadableAnalysis(url, platform) : fromContent(url, platform, loaded, extra);
 };
 
