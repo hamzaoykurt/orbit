@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, ChevronUp, Clock3,
@@ -89,7 +89,7 @@ function LinkCard({ link, onDelete }: { link: HubLink; onDelete: () => void }) {
   </article>;
 }
 
-function AddLinkDialog({ currentUser, onClose, onAdd }: { currentUser: string; onClose: () => void; onAdd: (link: HubLink) => void }) {
+function AddLinkDialog({ currentUser, onClose, onAdd }: { currentUser: string; onClose: () => void; onAdd: (link: HubLink, notice?: string) => void }) {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading'>('idle');
   const [error, setError] = useState('');
@@ -100,9 +100,10 @@ function AddLinkDialog({ currentUser, onClose, onAdd }: { currentUser: string; o
     setStatus('loading'); setError('');
     try {
       const response = await fetch('/api/hub/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: normalized }) });
-      const payload = await response.json() as HubAnalysis & { error?: string };
+      const payload = await response.json() as HubAnalysis & { error?: string; notice?: string };
       if (!response.ok) throw new Error(payload.error || 'Bağlantı analiz edilemedi.');
-      onAdd({ ...payload, id: crypto.randomUUID(), addedBy: currentUser || 'Orbit', createdAt: new Date().toISOString() });
+      const { notice, ...analysis } = payload;
+      onAdd({ ...analysis, id: crypto.randomUUID(), addedBy: currentUser || 'Orbit', createdAt: new Date().toISOString() }, typeof notice === 'string' ? notice : undefined);
       onClose();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Bağlantı analiz edilemedi.'); }
     finally { setStatus('idle'); }
@@ -162,6 +163,8 @@ export function HubWorkspace({ links, currentUser, onAdd, onDelete }: HubWorkspa
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 7000); return () => window.clearTimeout(timer); }, [notice]);
 
   const categories = useMemo(() => Array.from(new Set(links.flatMap(link => [link.mainCategory, ...link.categories]).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'tr')), [links]);
   const filtered = useMemo(() => links.filter(link => {
@@ -175,6 +178,7 @@ export function HubWorkspace({ links, currentUser, onAdd, onDelete }: HubWorkspa
 
   return <div className="hub-workspace">
     <div className="page-title hub-page-title"><div><h1>Hub</h1></div>{tab === 'library' && <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16}/> Bağlantı ekle</button>}</div>
+    {notice && <p className="hub-notice" role="status">{notice}</p>}
     <nav className="hub-tabs" aria-label="Hub sekmeleri">{([
       ['library', 'Kütüphane', Link2], ['workflow', 'Workflow', Workflow], ['knowledge', 'Rehber', BookOpen],
     ] as const).map(([id, label, Icon]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={16}/><span>{label}</span>{id === 'library' && <em>{links.length}</em>}</button>)}</nav>
@@ -191,6 +195,6 @@ export function HubWorkspace({ links, currentUser, onAdd, onDelete }: HubWorkspa
     </>}
     {tab === 'workflow' && <WorkflowView/>}
     {tab === 'knowledge' && <KnowledgeView/>}
-    {showAdd && <AddLinkDialog currentUser={currentUser} onClose={() => setShowAdd(false)} onAdd={onAdd}/>} 
+    {showAdd && <AddLinkDialog currentUser={currentUser} onClose={() => setShowAdd(false)} onAdd={(link, message) => { onAdd(link); if (message) setNotice(message); }}/>}
   </div>;
 }

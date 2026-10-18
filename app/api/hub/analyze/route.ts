@@ -1,11 +1,10 @@
 import { authenticatedUser, unauthorized } from '../../../../auth/context';
-import { fetchFollowingRedirects, RedirectError } from '../../../../generation/safe-fetch';
+import { isUnreadable, readLimited, requestText, unreadableAnalysis } from '../web-fetch';
 import type { HubAnalysis, HubPlatform } from '../../../hub/hub-model';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_REQUEST_BYTES = 4096;
-const MAX_REMOTE_BYTES = 320_000;
 const MAX_AI_TEXT = 9_000;
 
 const json = (data: unknown, init: ResponseInit = {}) => {
@@ -13,34 +12,6 @@ const json = (data: unknown, init: ResponseInit = {}) => {
   headers.set('Cache-Control', 'no-store');
   headers.set('Content-Type', 'application/json; charset=utf-8');
   return new Response(JSON.stringify(data), { ...init, headers });
-};
-
-const readLimited = async (response: Response, limit = MAX_REMOTE_BYTES) => {
-  const advertised = Number(response.headers.get('content-length') ?? 0);
-  if (advertised > limit) throw new Error('İçerik analiz sınırını aşıyor.');
-  if (!response.body) return '';
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let result = '';
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > limit) throw new Error('İçerik analiz sınırını aşıyor.');
-      result += decoder.decode(value, { stream: true });
-    }
-    return result + decoder.decode();
-  } finally { await reader.cancel().catch(() => undefined); }
-};
-
-const requestText = async (url: string, headers: HeadersInit = {}) => {
-  let response: Response;
-  try { response = await fetchFollowingRedirects(url, { headers, signal: AbortSignal.timeout(12_000) }); }
-  catch (error) { if (error instanceof RedirectError) throw new Error(`Bağlantı açılamadı: ${error.message}`); throw error; }
-  if (!response.ok) throw new Error(`İçerik kaynağı ${response.status} döndürdü.`);
-  return readLimited(response);
 };
 
 const normalizeUrl = (value: unknown) => {
@@ -143,7 +114,13 @@ export async function POST(request: Request) {
     const url = normalizeUrl(body.url);
     if (!url) return json({ error: 'Geçerli bir web adresi gerekli.' }, { status: 400 });
     const platform = platformFor(url.hostname);
-    const fetched = platform === 'youtube' ? await fetchYoutube(url) : platform === 'twitter' ? await fetchTwitter(url) : platform === 'github' ? await fetchGithub(url) : await fetchGeneric(url);
+    let fetched: FetchedContent;
+    try { fetched = platform === 'youtube' ? await fetchYoutube(url) : platform === 'twitter' ? await fetchTwitter(url) : platform === 'github' ? await fetchGithub(url) : await fetchGeneric(url); }
+    catch (error) {
+      if (!isUnreadable(error)) throw error;
+      console.error(JSON.stringify({ event: 'hub_analyze_unreadable', host: url.hostname, message: error instanceof Error ? error.message : 'unknown' }));
+      return json(unreadableAnalysis(url, platform));
+    }
     return json(await analyze(url, platform, fetched));
   } catch (error) {
     console.error(JSON.stringify({ event: 'hub_analyze_failed', message: error instanceof Error ? error.message : 'unknown' }));
