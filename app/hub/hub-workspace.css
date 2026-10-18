@@ -68,3 +68,6 @@
 .hub-chip:focus-visible{outline:2px solid var(--pg-ink);outline-offset:2px}
 .hub-card-actions button.is-busy svg{animation:hub-spin 1s linear infinite}
 @media(max-width:620px){.hub-chip-row{grid-template-columns:minmax(0,1fr);gap:4px}.hub-chip-label{min-width:0}}
+
+.hub-clip-hint{display:flex;align-items:center;gap:10px;margin:8px 0 0;font-size:13px;line-height:1.4;color:var(--muted)}
+.hub-clip-hint button{min-height:44px;padding:0 12px;border:0;border-radius:999px;background:var(--pg-tint);color:var(--pg-ink);font-size:13px;font-weight:600;cursor:pointer}

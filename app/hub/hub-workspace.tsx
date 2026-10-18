@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { HubAnalysis, HubLink, HubPlatform, WorkflowCard } from './hub-model';
 import { HUB_CATEGORIES, hubPromptRecipes, hubResources, workflowInfrastructure, workflowPhases } from './hub-model';
+import { readClipboardUrl } from './clipboard-link';
 import './hub-workspace.css';
 
 type HubTab = 'library' | 'workflow' | 'knowledge';
@@ -109,8 +110,12 @@ function LinkCard({ link, onDelete, onReanalyze }: { link: HubLink; onDelete: ()
   </article>;
 }
 
-function AddLinkDialog({ currentUser, onClose, onAdd }: { currentUser: string; onClose: () => void; onAdd: (link: HubLink, notice?: string) => void }) {
-  const [url, setUrl] = useState('');
+function AddLinkDialog({ currentUser, clipboardUrl, onClose, onAdd }: { currentUser: string; clipboardUrl: string | null; onClose: () => void; onAdd: (link: HubLink, notice?: string) => void }) {
+  // `typed` is null until the user edits the field; until then a detected clipboard link fills it. Typing never gets overwritten.
+  const [typed, setTyped] = useState<string | null>(null);
+  const url = typed ?? clipboardUrl ?? '';
+  const pasted = typed === null && Boolean(clipboardUrl);
+  const setUrl = setTyped;
   const [status, setStatus] = useState<'idle' | 'loading'>('idle');
   const [error, setError] = useState('');
 
@@ -135,7 +140,8 @@ function AddLinkDialog({ currentUser, onClose, onAdd }: { currentUser: string; o
       <span className="hub-dialog-icon"><Link2 size={21}/></span><span className="eyebrow">AKILLI KAYIT</span>
       <h2 id="hub-add-title">Bağlantıyı Orbit’e bırak.</h2>
       <p>Başlık, Türkçe özet, kategori, görseller ve içerideki bağlantılar otomatik hazırlanır.</p>
-      <label>Web adresi<input autoFocus value={url} onChange={event => setUrl(event.target.value)} onKeyDown={event => event.key === 'Enter' && status === 'idle' && void submit()} placeholder="youtube.com/… · x.com/… · github.com/…" /></label>
+      <label>Web adresi<input autoFocus value={url} onFocus={event => pasted && event.currentTarget.select()} onChange={event => setUrl(event.target.value)} onKeyDown={event => event.key === 'Enter' && status === 'idle' && void submit()} placeholder="youtube.com/… · x.com/… · github.com/…" /></label>
+      {pasted && <p className="hub-clip-hint" role="status">Panodaki bağlantı eklendi <button type="button" onClick={() => setTyped('')}>Temizle</button></p>}
       {error && <div className="hub-dialog-error">{error}</div>}
       <button className="primary-button full" disabled={!url.trim() || status === 'loading'} onClick={() => void submit()}>{status === 'loading' ? <><LoaderCircle className="hub-spin" size={16}/> İçerik okunuyor…</> : <>Analiz et ve ekle <Sparkles size={15}/></>}</button>
     </section>
@@ -181,6 +187,9 @@ export function HubWorkspace({ links, currentUser, onAdd, onUpdate, onDelete }: 
   const [platform, setPlatform] = useState<'all' | HubPlatform>('all');
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [clipboardUrl, setClipboardUrl] = useState<string | null>(null);
+  // Read the clipboard inside the click (user gesture); the dialog opens at once and fills in if a link was found.
+  const openAdd = () => { setClipboardUrl(null); setShowAdd(true); void readClipboardUrl().then(setClipboardUrl); };
   const [notice, setNotice] = useState('');
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 7000); return () => window.clearTimeout(timer); }, [notice]);
 
@@ -206,7 +215,7 @@ export function HubWorkspace({ links, currentUser, onAdd, onUpdate, onDelete }: 
   };
 
   return <div className="hub-workspace">
-    <div className="page-title hub-page-title"><div><h1>Hub</h1></div>{tab === 'library' && <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16}/> Bağlantı ekle</button>}</div>
+    <div className="page-title hub-page-title"><div><h1>Hub</h1></div>{tab === 'library' && <button className="primary-button" onClick={openAdd}><Plus size={16}/> Bağlantı ekle</button>}</div>
     {notice && <p className="hub-notice" role="status">{notice}</p>}
     <nav className="hub-tabs" aria-label="Hub sekmeleri">{([
       ['library', 'Kütüphane', Link2], ['workflow', 'Workflow', Workflow], ['knowledge', 'Rehber', BookOpen],
@@ -227,10 +236,10 @@ export function HubWorkspace({ links, currentUser, onAdd, onUpdate, onDelete }: 
         </div></div>
       </div>
       <div className="hub-results-head"><span><strong>{filtered.length}</strong> bağlantı</span>{(search || category !== 'all' || platform !== 'all') && <small>aktif filtrelerle eşleşiyor</small>}</div>
-      {filtered.length > 0 ? <div className="hub-link-grid">{filtered.map(link => <LinkCard key={link.id} link={link} onDelete={() => onDelete(link.id)} onReanalyze={() => reanalyzeLink(link)}/>)}</div> : <section className="hub-empty"><span>{links.length ? <Search size={25}/> : <ImageIcon size={25}/>}</span><h2>{links.length ? 'Eşleşen bağlantı yok.' : 'İlk bağlantını yakala.'}</h2><p>{links.length ? 'Aramayı veya filtreleri sadeleştir.' : 'YouTube, X, GitHub, Instagram veya herhangi bir web adresini ekleyebilirsin.'}</p><button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={15}/> Bağlantı ekle</button></section>}
+      {filtered.length > 0 ? <div className="hub-link-grid">{filtered.map(link => <LinkCard key={link.id} link={link} onDelete={() => onDelete(link.id)} onReanalyze={() => reanalyzeLink(link)}/>)}</div> : <section className="hub-empty"><span>{links.length ? <Search size={25}/> : <ImageIcon size={25}/>}</span><h2>{links.length ? 'Eşleşen bağlantı yok.' : 'İlk bağlantını yakala.'}</h2><p>{links.length ? 'Aramayı veya filtreleri sadeleştir.' : 'YouTube, X, GitHub, Instagram veya herhangi bir web adresini ekleyebilirsin.'}</p><button className="primary-button" onClick={openAdd}><Plus size={15}/> Bağlantı ekle</button></section>}
     </>}
     {tab === 'workflow' && <WorkflowView/>}
     {tab === 'knowledge' && <KnowledgeView/>}
-    {showAdd && <AddLinkDialog currentUser={currentUser} onClose={() => setShowAdd(false)} onAdd={(link, message) => { onAdd(link); if (message) setNotice(message); }}/>}
+    {showAdd && <AddLinkDialog currentUser={currentUser} clipboardUrl={clipboardUrl} onClose={() => setShowAdd(false)} onAdd={(link, message) => { onAdd(link); if (message) setNotice(message); }}/>}
   </div>;
 }
