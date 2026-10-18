@@ -14,6 +14,10 @@ export type HubLink = {
   platform: HubPlatform;
   title: string;
   summary: string;
+  /** "Ne işe yarar": one sentence on what the page is for. Optional; older links do not have it. */
+  purpose?: string;
+  /** True when the page could not be read and the analysis is a guess from the domain and meta data. */
+  estimated?: boolean;
   thumbnailUrl?: string;
   author?: string;
   categories: string[];
@@ -39,6 +43,8 @@ export const normalizeHubLinks = (value: unknown): HubLink[] => {
       platform,
       title: item.title,
       summary: typeof item.summary === 'string' ? item.summary : '',
+      ...(typeof item.purpose === 'string' && item.purpose ? { purpose: item.purpose.slice(0, 400) } : {}),
+      ...(item.estimated === true ? { estimated: true } : {}),
       thumbnailUrl: typeof item.thumbnailUrl === 'string' ? item.thumbnailUrl : undefined,
       author: typeof item.author === 'string' ? item.author : undefined,
       categories: Array.isArray(item.categories) ? item.categories.filter((tag): tag is string => typeof tag === 'string').slice(0, 8) : [],

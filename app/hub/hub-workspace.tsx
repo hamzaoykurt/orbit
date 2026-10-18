@@ -74,6 +74,8 @@ function LinkCard({ link, onDelete }: { link: HubLink; onDelete: () => void }) {
         </div>
       </header>
       <h2>{link.title}</h2>
+      {link.estimated && <p className="hub-estimate" role="note">Tahmini analiz: sayfa okunamadı</p>}
+      {link.purpose && <p className="hub-purpose"><strong>Ne işe yarar:</strong> {link.purpose}</p>}
       {link.summary && <><p className={!expanded ? 'hub-summary-clamped' : ''}>{link.summary}</p>{link.summary.length > 230 && <button className="hub-expand" onClick={() => setExpanded(current => !current)}>{expanded ? <><ChevronUp size={13}/> Daha az</> : <><ChevronDown size={13}/> Devamı</>}</button>}</>}
       {link.embedded.length > 0 && <div className="hub-embedded"><span><Link2 size={12}/>{link.embedded.length} bağlantı</span>{link.embedded.map((item, index) => <a key={`${item.url}-${index}`} href={safeUrl(item.url) ?? '#'} target="_blank" rel="noreferrer"><strong>{item.title}</strong><small>{item.summary}</small><ExternalLink size={12}/></a>)}</div>}
       {link.categories.length > 0 && <div className="hub-tags">{link.categories.map(tag => <span key={tag}>{tag}</span>)}</div>}
@@ -173,7 +175,7 @@ export function HubWorkspace({ links, currentUser, onAdd, onDelete }: HubWorkspa
     if (category !== 'all' && link.mainCategory !== category && !link.categories.includes(category)) return false;
     if (platform !== 'all' && link.platform !== platform) return false;
     const needle = search.trim().toLocaleLowerCase('tr');
-    return !needle || `${link.title} ${link.summary} ${link.url} ${link.categories.join(' ')}`.toLocaleLowerCase('tr').includes(needle);
+    return !needle || `${link.title} ${link.summary} ${link.purpose ?? ''} ${link.url} ${link.categories.join(' ')}`.toLocaleLowerCase('tr').includes(needle);
   }), [category, currentUser, links, owner, platform, search]);
 
   return <div className="hub-workspace">

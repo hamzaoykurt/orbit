@@ -1,11 +1,13 @@
 import { authenticatedUser, unauthorized } from '../../../../auth/context';
 import { isUnreadable, readLimited, requestText, unreadableAnalysis } from '../web-fetch';
-import type { HubAnalysis, HubPlatform } from '../../../hub/hub-model';
+import { loadWebContent, type LoadedContent } from '../content-source';
+import { buildPrompt, fromContent, fromModel, MAX_AI_TEXT, type ModelResult } from '../analysis';
+import { assertSafeUrl, RedirectError } from '../../../../generation/safe-fetch';
+import type { HubPlatform } from '../../../hub/hub-model';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_REQUEST_BYTES = 4096;
-const MAX_AI_TEXT = 9_000;
 
 const json = (data: unknown, init: ResponseInit = {}) => {
   const headers = new Headers(init.headers);
@@ -72,35 +74,40 @@ const fetchTwitter = async (url: URL): Promise<FetchedContent> => {
   return { title: `@${username}`, author: tweet.author?.name, thumbnailUrl: images[0] || tweet.author?.avatar_url, images, content: `Yazar: ${tweet.author?.name ?? ''} (@${username})\nGönderi: ${tweet.text ?? ''}` };
 };
 
-const fetchGeneric = async (url: URL): Promise<FetchedContent> => {
-  // Jina Reader fetches the public page for us; the Worker never connects to a user-selected host.
-  const text = await requestText(`https://r.jina.ai/${url.toString()}`, { Accept: 'text/plain', 'X-Return-Format': 'text' });
-  const title = text.split('\n').map(line => line.replace(/^#+\s*/, '').trim()).find(Boolean) || url.hostname;
-  const imageMatch = text.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
-  return { title, content: text.slice(0, MAX_AI_TEXT), thumbnailUrl: imageMatch?.[1], images: [] };
+const toLoaded = (fetched: FetchedContent): LoadedContent => ({ quality: 'full', source: 'direct', title: fetched.title, description: '', text: fetched.content, thumbnailUrl: fetched.thumbnailUrl, images: fetched.images });
+
+// Platform APIs first (YouTube, GitHub, X); every other page, or an API that cannot be reached, goes through the web chain.
+const loadContent = async (url: URL, platform: HubPlatform): Promise<{ loaded: LoadedContent; author?: string }> => {
+  const api = platform === 'youtube' ? fetchYoutube : platform === 'twitter' ? fetchTwitter : platform === 'github' ? fetchGithub : null;
+  if (api) {
+    try { const fetched = await api(url); return { loaded: toLoaded(fetched), author: fetched.author }; }
+    catch (error) { if (!isUnreadable(error)) throw error; }
+  }
+  return { loaded: await loadWebContent(url) };
 };
 
-const analyze = async (url: URL, platform: HubPlatform, fetched: FetchedContent): Promise<HubAnalysis> => {
+const callModel = async (prompt: string): Promise<ModelResult | null> => {
   const key = process.env.GROQ_API_KEY?.trim();
-  if (!key) return { url: url.toString(), platform, title: fetched.title, summary: fetched.content.replace(/\s+/g, ' ').slice(0, 420), thumbnailUrl: fetched.thumbnailUrl, author: fetched.author, categories: [], mainCategory: 'Diğer', embedded: [], images: fetched.images };
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST', signal: AbortSignal.timeout(20_000),
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: `Bu içeriği Türkçe analiz et. Yalnızca şu JSON'u döndür: {"title":"80 karakteri geçmeyen başlık","summary":"3-4 cümle özet","mainCategory":"Yapay Zeka|Yazılım Geliştirme|GitHub|Haberler|Araçlar|Tasarım|İş Dünyası|Diğer","categories":["en fazla 4 etiket"]}\nPlatform: ${platform}\nURL: ${url.toString()}\nİçerik:\n${fetched.content.slice(0, MAX_AI_TEXT)}` }] }),
-  });
-  if (!response.ok) throw new Error('AI özeti şu anda üretilemedi.');
-  const envelope = JSON.parse(await readLimited(response, 80_000)) as { choices?: { message?: { content?: string } }[] };
-  const raw = envelope.choices?.[0]?.message?.content;
-  if (!raw) throw new Error('AI boş yanıt verdi.');
-  const result = JSON.parse(raw) as { title?: unknown; summary?: unknown; mainCategory?: unknown; categories?: unknown };
-  return {
-    url: url.toString(), platform,
-    title: typeof result.title === 'string' && result.title.trim() ? result.title.trim().slice(0, 120) : fetched.title,
-    summary: typeof result.summary === 'string' ? result.summary.trim().slice(0, 1600) : '',
-    mainCategory: typeof result.mainCategory === 'string' ? result.mainCategory.trim().slice(0, 80) : 'Diğer',
-    categories: Array.isArray(result.categories) ? result.categories.filter((item): item is string => typeof item === 'string').map(item => item.slice(0, 50)).slice(0, 4) : [],
-    thumbnailUrl: fetched.thumbnailUrl, author: fetched.author, embedded: [], images: fetched.images,
-  };
+  if (!key) return null;
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', signal: AbortSignal.timeout(20_000),
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }),
+    });
+    if (!response.ok) return null;
+    const envelope = JSON.parse(await readLimited(response, 80_000)) as { choices?: { message?: { content?: string } }[] };
+    const raw = envelope.choices?.[0]?.message?.content;
+    return raw ? JSON.parse(raw) as ModelResult : null;
+  } catch { return null; }
+};
+
+const analyze = async (url: URL, platform: HubPlatform, loaded: LoadedContent, author?: string) => {
+  const extra = { thumbnailUrl: loaded.thumbnailUrl, author, images: loaded.images };
+  const estimated = loaded.quality === 'none';
+  const result = await callModel(buildPrompt(url, platform, loaded, estimated));
+  if (result) return fromModel(url, platform, result, loaded, extra, estimated);
+  return estimated ? unreadableAnalysis(url, platform) : fromContent(url, platform, loaded, extra);
 };
 
 export async function POST(request: Request) {
@@ -113,17 +120,13 @@ export async function POST(request: Request) {
     const body = await request.json() as { url?: unknown };
     const url = normalizeUrl(body.url);
     if (!url) return json({ error: 'Geçerli bir web adresi gerekli.' }, { status: 400 });
+    assertSafeUrl(url);
     const platform = platformFor(url.hostname);
-    let fetched: FetchedContent;
-    try { fetched = platform === 'youtube' ? await fetchYoutube(url) : platform === 'twitter' ? await fetchTwitter(url) : platform === 'github' ? await fetchGithub(url) : await fetchGeneric(url); }
-    catch (error) {
-      if (!isUnreadable(error)) throw error;
-      console.error(JSON.stringify({ event: 'hub_analyze_unreadable', host: url.hostname, message: error instanceof Error ? error.message : 'unknown' }));
-      return json(unreadableAnalysis(url, platform));
-    }
-    return json(await analyze(url, platform, fetched));
+    const { loaded, author } = await loadContent(url, platform);
+    return json(await analyze(url, platform, loaded, author));
   } catch (error) {
     console.error(JSON.stringify({ event: 'hub_analyze_failed', message: error instanceof Error ? error.message : 'unknown' }));
+    if (error instanceof RedirectError) return json({ error: 'Bu adres güvenlik nedeniyle analiz edilemez.' }, { status: 422 });
     return json({ error: error instanceof Error ? error.message : 'Bağlantı analiz edilemedi.' }, { status: 422 });
   }
 }
