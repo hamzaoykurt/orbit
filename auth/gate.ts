@@ -58,6 +58,19 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const appOAuthLeg = (request: Request, url: URL) => request.method === 'GET' && (
   (url.pathname === '/api/google-calendar/connect' && TOKEN_PATTERN.test(url.searchParams.get('link') ?? ''))
   || (url.pathname === '/api/google-calendar/callback' && TOKEN_PATTERN.test(url.searchParams.get('state') ?? '')));
+// shortcut: counted per isolate, not globally. It only spares D1 from a flood of well-formed guesses
+// against the sessionless doors; the secrets themselves (256 bit, single use) are the real protection.
+const LEG_LIMIT = 20;
+const LEG_WINDOW_MS = 60_000;
+const legHits = new Map<string, { count: number; resetAt: number }>();
+function legAllowed(client: string) {
+  const at = Date.now();
+  if (legHits.size > 512) for (const [key, hit] of legHits) if (hit.resetAt <= at) legHits.delete(key);
+  if (legHits.size > 2048) legHits.clear();
+  const hit = legHits.get(client);
+  if (!hit || hit.resetAt <= at) { legHits.set(client, { count: 1, resetAt: at + LEG_WINDOW_MS }); return true; }
+  return ++hit.count <= LEG_LIMIT;
+}
 type Next = () => Promise<Response>;
 const seconds = () => Math.floor(Date.now() / 1000);
 const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
@@ -221,7 +234,7 @@ async function issueToken(request: Request, env: Cloudflare.Env, version: string
   return Response.json({ token, expiresAt: isoSeconds(expiresAt) });
 }
 
-type Timing ={ session: number; source: string; appStart: number; appEnd: number };
+type Timing = { session: number; source: string; appStart: number; appEnd: number };
 // Server-Timing carries durations (ms) and a hit/miss label only, never data.
 export async function withAuthentication(request: Request, env: Cloudflare.Env, next: Next): Promise<Response> {
   const started = Date.now();
@@ -313,7 +326,12 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
       if (!['GET', 'HEAD'].includes(request.method)) return secureResponse(new Response(null, { status: 405 }));
       return secureResponse(session ? redirect(safeNext(url.searchParams.get('next'))) : loginPage({ next: safeNext(url.searchParams.get('next')) }));
     }
-    if (!session && !bearerMode && appOAuthLeg(request, url)) return secureResponse(await next());
+    if (!session && !bearerMode && appOAuthLeg(request, url)) {
+      if (!legAllowed(request.headers.get('cf-connecting-ip') ?? 'local')) {
+        return secureResponse(new Response('Çok fazla istek. Biraz sonra tekrar dene.', { status: 429, headers: { 'Retry-After': '60', 'Content-Type': 'text/plain; charset=utf-8' } }));
+      }
+      return secureResponse(await next());
+    }
     if (!session) {
       const isPage = request.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/auth/') && !request.headers.has('rsc') && !url.searchParams.has('_rsc') && (request.headers.get('accept')?.includes('text/html') || url.pathname === '/');
       return secureResponse(isPage ? redirect(`/login${url.pathname === '/' && !url.search ? '' : `?next=${encodeURIComponent(safeNext(url.pathname + url.search))}`}`) : unauthorized());

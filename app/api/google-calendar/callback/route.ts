@@ -1,6 +1,6 @@
-import { authenticatedUser, unauthorized } from '../../../../auth/context';
+import { authenticatedUser } from '../../../../auth/context';
 import { digest, encryptRefreshToken, googleCalendarConfig } from '../../../../integrations/google-calendar/server';
-import { appReturnPage, takeAppState } from '../../../../integrations/google-calendar/app-flow';
+import { appReturnPage, bindingCookie, readBinding, takeAppState } from '../../../../integrations/google-calendar/app-flow';
 import { getDatabase } from '../../../../db/client';
 
 export const dynamic = 'force-dynamic';
@@ -15,12 +15,21 @@ const finish = (request: Request, result: 'connected' | 'denied' | 'failed') => 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const state = url.searchParams.get('state') ?? '';
-  // Linking started from the native app: its state is bound to that app-started flow, not to a web
-  // session (the system browser has none). It is consumed here, once, and decides the owner.
-  const appOwner = await takeAppState(state).catch(() => null);
+  // Linking started from the native app: its state is bound to that app-started flow AND to the browser
+  // that opened the link (binding cookie), not to a web session (the system browser has none). It is
+  // consumed here, once, and decides the owner.
+  let appOwner: string | null = null;
+  let lookupFailed = false;
+  try { appOwner = await takeAppState(state, readBinding(request)); } catch { lookupFailed = true; }
   const owner = appOwner ?? authenticatedUser();
-  if (!owner) return unauthorized();
-  const done = (result: 'connected' | 'denied' | 'failed') => appOwner ? appReturnPage(result) : finish(request, result);
+  // No web session and no matching app flow (or D1 down): this is the system browser, so answer with a page, not JSON.
+  if (!owner) return appReturnPage('failed', lookupFailed ? 503 : 401);
+  const done = (result: 'connected' | 'denied' | 'failed') => {
+    if (!appOwner) return finish(request, result);
+    const page = appReturnPage(result);
+    page.headers.append('Set-Cookie', bindingCookie(request, '', true));
+    return page;
+  };
   if (url.searchParams.get('error')) return done('denied');
   const code = url.searchParams.get('code') ?? '';
   if (!/^[A-Za-z0-9_-]{43}$/.test(state) || !code || code.length > 4096) return done('failed');

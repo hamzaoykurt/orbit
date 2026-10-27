@@ -15,6 +15,7 @@ const day = 86400;
 const stateKey = 'app-token-test';
 let mf, database;
 const googleCalls = [];
+const calendarCalls = [];
 before(async () => {
   const bundle = await build({
     stdin: {
@@ -22,9 +23,9 @@ before(async () => {
         import * as state from './app/api/state/route'; import * as ideas from './app/api/ideas/route'; import * as quiz from './app/api/research-quiz/route';
         import * as hub from './app/api/hub/analyze/route'; import * as organize from './app/api/organize/route'; import * as media from './app/api/project-media/route'; import * as gStatus from './app/api/google-calendar/status/route';
         import * as gConnect from './app/api/google-calendar/connect/route'; import * as gLink from './app/api/google-calendar/connect-link/route';
-        import * as gCallback from './app/api/google-calendar/callback/route'; import * as gEvents from './app/api/google-calendar/events/route';
+        import * as gCallback from './app/api/google-calendar/callback/route'; import * as gDisconnect from './app/api/google-calendar/disconnect/route'; import * as gEvents from './app/api/google-calendar/events/route';
         const routes = {'/api/state':state,'/api/ideas':ideas,'/api/research-quiz':quiz,'/api/hub/analyze':hub,'/api/organize':organize,'/api/project-media':media,'/api/google-calendar/status':gStatus,
-          '/api/google-calendar/connect':gConnect,'/api/google-calendar/connect-link':gLink,'/api/google-calendar/callback':gCallback,'/api/google-calendar/events':gEvents,
+          '/api/google-calendar/connect':gConnect,'/api/google-calendar/connect-link':gLink,'/api/google-calendar/callback':gCallback,'/api/google-calendar/events':gEvents,'/api/google-calendar/disconnect':gDisconnect,
           '/__who':{GET:()=>Response.json({user:authenticatedUser(),bearer:bearerRequest()})}};
         export default {fetch(request,env){env.ASSETS={fetch:async()=>new Response('public-icon')};
           return withAuthentication(request,env,async()=>{const handler=routes[new URL(request.url).pathname]?.[request.method];return handler?handler(request):new Response('not found',{status:404})})}};`,
@@ -36,7 +37,14 @@ before(async () => {
     modules: true, script: bundle.outputFiles[0].text, compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'], d1Databases: ['DB'],
     bindings: { ORBIT_AUTH_USERNAME: 'emir', ORBIT_AUTH_PASSWORD_HASH: passwordHash, GOOGLE_OAUTH_CLIENT_ID: 'test-client', GOOGLE_OAUTH_CLIENT_SECRET: 'test-secret', GOOGLE_TOKEN_ENCRYPTION_KEY: stateKey },
     outboundService: async fake => {
+      const url = new URL(fake.url);
+      if (url.pathname.startsWith('/calendar/v3/')) {
+        calendarCalls.push({ url: fake.url, method: fake.method, auth: fake.headers.get('authorization') });
+        return fake.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json(fake.method === 'POST' ? { id: 'ev-created' } : { items: [{ id: 'ev-listed' }] });
+      }
+      if (url.pathname === '/revoke') { calendarCalls.push({ url: fake.url, method: fake.method }); return new Response('{}'); }
       const body = new URLSearchParams(await fake.text());
+      if (body.get('grant_type') === 'refresh_token') { calendarCalls.push({ url: fake.url, method: fake.method, refresh: true }); return Response.json({ access_token: 'access-test', expires_in: 3600 }); }
       googleCalls.push({ url: fake.url, code: body.get('code'), redirect: body.get('redirect_uri') });
       return Response.json({ refresh_token: 'refresh-test-value', scope: 'calendar.events' });
     },
@@ -48,7 +56,8 @@ before(async () => {
 });
 after(async () => { await mf?.dispose(); });
 
-const request = (path, options = {}) => mf.dispatchFetch(origin + path, { redirect: 'manual', ...options });
+// Every request gets its own client address unless it names one, so per-client budgets never bleed between tests.
+const request = (path, options = {}) => mf.dispatchFetch(origin + path, { redirect: 'manual', ...options, headers: { 'cf-connecting-ip': nextIp(), ...options.headers } });
 let ip = 1;
 const nextIp = () => `198.18.0.${ip++}`;
 const tokenRequest = (body = { username: 'emir', password }, headers = {}) => request('/auth/token', {
@@ -264,7 +273,21 @@ test('cookie behaviour is unchanged: same /auth/session shape, cookie CSRF rules
   assert.equal((await request('/api/state', { headers: bearer(token) })).status, 200);
 });
 
-test('Google linking from the app: one-time 60 s link, sessionless browser leg, app return page, no replay', async () => {
+// Runs the app-side Google link up to (not including) the callback. The browser keeps the binding cookie.
+async function startAppLink(token, headers = {}) {
+  const minted = await request('/api/google-calendar/connect-link', { method: 'POST', headers: bearer(token) });
+  assert.equal(minted.status, 200);
+  const link = new URL((await minted.json()).url);
+  const start = await request(link.pathname + link.search, { headers });
+  return { link, start, binding: start.headers.get('set-cookie')?.split(';')[0], state: start.status === 302 ? new URL(start.headers.get('location')).searchParams.get('state') : null };
+}
+const connectGoogle = async token => {
+  const { state, binding } = await startAppLink(token);
+  const done = await request(`/api/google-calendar/callback?code=auth-code-x&state=${state}`, { headers: { cookie: binding } });
+  assert.equal(done.status, 200);
+};
+
+test('Google linking from the app: one-time 60 s link, browser-bound 5 min state, app return page, no replay', async () => {
   const { token } = await issue();
   assert.equal((await request('/api/google-calendar/connect-link')).status, 401, 'no GET');
   assert.equal((await request('/api/google-calendar/connect-link', { method: 'POST' })).status, 401);
@@ -286,19 +309,36 @@ test('Google linking from the app: one-time 60 s link, sessionless browser leg, 
   assert.equal(google.origin + google.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
   assert.equal(google.searchParams.get('redirect_uri'), origin + '/api/google-calendar/callback');
   const state = google.searchParams.get('state');
+  // The state is bound to this browser by a short-lived HttpOnly cookie and lives 5 minutes.
+  const header = start.headers.get('set-cookie');
+  for (const setting of ['__Host-orbit_gcal_bind=', 'HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/', 'Max-Age=300']) assert.ok(header.includes(setting), setting);
+  const binding = header.split(';')[0];
+  const lifetime = (await database.prepare('SELECT MAX(expires_at) AS e FROM orbit_google_calendar_oauth_states').first()).e - Date.now() / 1000;
+  assert.ok(lifetime > 295 && lifetime <= 300, `state lifetime ${lifetime}`);
+  assert.equal(JSON.stringify(await database.prepare('SELECT * FROM orbit_google_calendar_oauth_states').all()).includes(binding.split('=')[1]), false, 'binding value is never stored');
   // One-time: the same link cannot start a second flow.
   const replay = await request(link.pathname + link.search);
   assert.equal(replay.status, 410);
   assert.match(await replay.text(), /süresi doldu/);
 
-  // A state minted for the web (cookie) flow is not accepted on the sessionless door, and vice versa.
-  assert.equal((await request(`/api/google-calendar/callback?code=c0de&state=${'B'.repeat(43)}`)).status, 401);
+  // Not redeemable without the browser's binding (leaked state), nor with someone else's, nor with a web-style state.
   const callbackPath = `/api/google-calendar/callback?code=auth-code-1&state=${state}`;
-  const done = await request(callbackPath);
+  const grants = googleCalls.length;
+  for (const [name, headers] of [['no cookie', {}], ['other browser', { cookie: `__Host-orbit_gcal_bind=${'Z'.repeat(43)}` }]]) {
+    const refused = await request(callbackPath, { headers });
+    assert.equal(refused.status, 401, name);
+    assert.match(refused.headers.get('content-type'), /text\/html/, `${name}: a page, never raw JSON`);
+    assert.match(await refused.text(), /Bağlantı kurulamadı/);
+  }
+  assert.equal((await request(`/api/google-calendar/callback?code=c0de&state=${'B'.repeat(43)}`, { headers: { cookie: binding } })).status, 401);
+  assert.equal(googleCalls.length, grants, 'Google was never contacted for refused callbacks');
+
+  const done = await request(callbackPath, { headers: { cookie: binding } });
   assert.equal(done.status, 200);
   assert.match(done.headers.get('content-type'), /text\/html/);
   assert.match(await done.text(), /Orbit uygulamasına dönebilirsin/);
-  assert.equal(done.headers.get('set-cookie'), null);
+  assert.match(done.headers.get('set-cookie'), /__Host-orbit_gcal_bind=;.*Max-Age=0/, 'binding cookie is cleared');
+  assert.equal(googleCalls.length, grants + 1);
   assert.deepEqual(googleCalls.at(-1), { url: 'https://oauth2.googleapis.com/token', code: 'auth-code-1', redirect: origin + '/api/google-calendar/callback' });
   const credential = await database.prepare('SELECT owner, refresh_token_ciphertext FROM orbit_google_calendar_credentials').first();
   assert.equal(credential.owner, 'emir');
@@ -306,7 +346,7 @@ test('Google linking from the app: one-time 60 s link, sessionless browser leg, 
   const status = await (await request('/api/google-calendar/status', { headers: bearer(token) })).json();
   assert.equal(status.connected, true);
   // The state was consumed: replaying the callback grants nothing.
-  assert.equal((await request(callbackPath)).status, 401);
+  assert.equal((await request(callbackPath, { headers: { cookie: binding } })).status, 401);
 });
 
 test('Google app flow: expired ticket, denied consent, and no new unauthenticated surface', async () => {
@@ -316,12 +356,16 @@ test('Google app flow: expired ticket, denied consent, and no new unauthenticate
   await database.prepare('UPDATE orbit_google_calendar_oauth_states SET expires_at = 1').run();
   assert.equal((await request(expired.pathname + expired.search)).status, 410);
 
-  const link = await mint();
-  const state = new URL((await request(link.pathname + link.search)).headers.get('location')).searchParams.get('state');
-  const denied = await request(`/api/google-calendar/callback?error=access_denied&state=${state}`);
+  const { state, binding } = await startAppLink(token);
+  const denied = await request(`/api/google-calendar/callback?error=access_denied&state=${state}`, { headers: { cookie: binding } });
   assert.equal(denied.status, 200);
   assert.match(await denied.text(), /İzin verilmedi/);
-  assert.equal((await request(`/api/google-calendar/callback?error=access_denied&state=${state}`)).status, 401, 'state is single use');
+  assert.equal((await request(`/api/google-calendar/callback?error=access_denied&state=${state}`, { headers: { cookie: binding } })).status, 401, 'state is single use');
+
+  // An expired app state (5 min) is refused even with the right browser.
+  const late = await startAppLink(token);
+  await database.prepare('UPDATE orbit_google_calendar_oauth_states SET expires_at = 1').run();
+  assert.equal((await request(`/api/google-calendar/callback?code=c&state=${late.state}`, { headers: { cookie: late.binding } })).status, 401);
 
   // Without a session the link/callback doors are the ONLY open ones, and only with their secrets.
   assert.equal((await request('/api/google-calendar/connect')).status, 401);
@@ -334,13 +378,81 @@ test('Google app flow: expired ticket, denied consent, and no new unauthenticate
   assert.equal((await request(`/api/google-calendar/connect?link=${'A'.repeat(43)}`, { headers: { authorization: 'Bearer nope' } })).status, 401);
 });
 
+test('the sessionless doors are rate limited per client before D1 is touched', async () => {
+  const flood = '203.0.113.200';
+  const hit = () => request(`/api/google-calendar/callback?code=c&state=${'Q'.repeat(43)}`, { headers: { 'cf-connecting-ip': flood } });
+  for (let i = 0; i < 20; i++) assert.equal((await hit()).status, 401, `request ${i + 1}`);
+  const limited = await hit();
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get('retry-after'), '60');
+  assert.match(await limited.text(), /Çok fazla istek/);
+  const link = await request(`/api/google-calendar/connect?link=${'Q'.repeat(43)}`, { headers: { 'cf-connecting-ip': flood } });
+  assert.equal(link.status, 429, 'same budget for the link door');
+  assert.equal((await request(`/api/google-calendar/callback?code=c&state=${'Q'.repeat(43)}`, { headers: { 'cf-connecting-ip': '203.0.113.201' } })).status, 401, 'other clients are unaffected');
+});
+
+test('lowercase and uppercase Bearer schemes work, and Bearer wins over a valid cookie on writes', async () => {
+  const { token } = await issue();
+  for (const scheme of ['bearer', 'BEARER', 'Bearer']) assert.equal((await request('/api/state', { headers: { authorization: `${scheme} ${token}` } })).status, 200, scheme);
+  const cookie = cookieOf(await webLogin());
+  // Cookie present, no Origin: a cookie-only write is refused (403), but the Bearer is what counts here.
+  const bearerWrite = await request('/api/state', { method: 'PUT', headers: { ...bearer(token), cookie, 'content-type': 'application/json' }, body: JSON.stringify({ state: { tasks: [] }, revision: 0 }) });
+  assert.notEqual(bearerWrite.status, 403);
+  assert.equal(bearerWrite.headers.get('set-cookie'), null);
+  assert.deepEqual(await (await request('/__who', { headers: { ...bearer(token), cookie } })).json(), { user: 'emir', bearer: true });
+});
+
+test('Google Calendar events and disconnect work with Bearer, without Origin', async () => {
+  const { token } = await issue();
+  await connectGoogle(token);
+  const json = { 'content-type': 'application/json' };
+  const before = calendarCalls.length;
+  const list = await request('/api/google-calendar/events?timeMin=2026-10-01T00:00:00Z&timeMax=2026-11-01T00:00:00Z', { headers: bearer(token) });
+  assert.equal(list.status, 200);
+  assert.deepEqual(await list.json(), { items: [{ id: 'ev-listed' }] });
+  const created = await request('/api/google-calendar/events', { method: 'POST', headers: { ...bearer(token), ...json }, body: JSON.stringify({ summary: 'Deneme' }) });
+  assert.equal(created.status, 200);
+  assert.deepEqual(await created.json(), { id: 'ev-created' });
+  const removed = await request('/api/google-calendar/events', { method: 'DELETE', headers: { ...bearer(token), ...json }, body: JSON.stringify({ eventId: 'ev-1' }) });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(await removed.json(), { deleted: true });
+  assert.deepEqual(calendarCalls.slice(before).filter(call => call.url.includes('/calendar/v3/')).map(call => [call.method, call.auth]),
+    [['GET', 'Bearer access-test'], ['POST', 'Bearer access-test'], ['DELETE', 'Bearer access-test']]);
+  assert.equal((await request('/api/google-calendar/events', { method: 'POST', headers: { ...json }, body: '{"summary":"x"}' })).status, 401, 'still needs a token');
+  const gone = await request('/api/google-calendar/disconnect', { method: 'DELETE', headers: bearer(token) });
+  assert.equal(gone.status, 200);
+  assert.deepEqual(await gone.json(), { disconnected: true });
+  assert.equal(await database.prepare('SELECT 1 FROM orbit_google_calendar_credentials').first(), null);
+  assert.equal((await (await request('/api/google-calendar/status', { headers: bearer(token) })).json()).connected, false);
+});
+
 test('web Google linking (cookie) still works exactly as before: web state, redirect back into the app', async () => {
   const cookie = cookieOf(await webLogin());
   const start = await request('/api/google-calendar/connect', { headers: { cookie } });
   assert.equal(start.status, 302);
+  assert.equal(start.headers.get('set-cookie'), null, 'the web flow needs no binding cookie');
   const state = new URL(start.headers.get('location')).searchParams.get('state');
   const done = await request(`/api/google-calendar/callback?code=web-code&state=${state}`, { headers: { cookie } });
   assert.equal(done.status, 303);
   assert.match(done.headers.get('location'), /view=calendar&google-calendar=connected$/);
   assert.equal((await request(`/api/google-calendar/callback?code=web-code&state=${state}`, { headers: { cookie } })).headers.get('location').endsWith('google-calendar=failed'), true);
+});
+
+test('when D1 fails during the app link the system browser gets a short Turkish page, not JSON', async () => {
+  const { token } = await issue();
+  const { binding, state } = await startAppLink(token);
+  const migration = readFileSync(new URL('../migrations/0004_google_calendar.sql', import.meta.url), 'utf8').split(';').map(query => query.trim()).filter(Boolean);
+  await database.prepare('DROP TABLE orbit_google_calendar_oauth_states').run();
+  try {
+    const callback = await request(`/api/google-calendar/callback?code=c&state=${state}`, { headers: { cookie: binding } });
+    assert.equal(callback.status, 503);
+    assert.match(callback.headers.get('content-type'), /text\/html/);
+    assert.match(await callback.text(), /Bağlantı kurulamadı/);
+    const connect = await request(`/api/google-calendar/connect?link=${'R'.repeat(43)}`);
+    assert.equal(connect.status, 503);
+    assert.match(connect.headers.get('content-type'), /text\/html/);
+    assert.match(await connect.text(), /Bağlantı kurulamadı/);
+  } finally {
+    await database.batch(migration.map(query => database.prepare(query)));
+  }
 });
