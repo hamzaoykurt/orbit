@@ -48,6 +48,16 @@ const PUBLIC_FILES = new Set([
 ]);
 // GET endpoints that change data (OAuth state, account links): never served from the session cache.
 const WRITING_GETS = new Set(['/api/google-calendar/connect', '/api/google-calendar/callback', '/api/integrations/profitness/connect']);
+// Native-app tokens live in the same table as cookie sessions but in their own hash domain
+// (SHA-256 of "app-token:" + token), so a cookie value is never valid as a Bearer token or vice versa.
+const APP_TOKEN_DOMAIN = 'app-token:';
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+// The system browser that finishes the Google Calendar linking has no Orbit session; the one-time
+// `link` ticket (connect) and the app-bound OAuth `state` (callback) are its credentials, and those
+// routes verify them in D1 themselves. Nothing else is reachable without a session.
+const appOAuthLeg = (request: Request, url: URL) => request.method === 'GET' && (
+  (url.pathname === '/api/google-calendar/connect' && TOKEN_PATTERN.test(url.searchParams.get('link') ?? ''))
+  || (url.pathname === '/api/google-calendar/callback' && TOKEN_PATTERN.test(url.searchParams.get('state') ?? '')));
 type Next = () => Promise<Response>;
 const seconds = () => Math.floor(Date.now() / 1000);
 const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
@@ -75,6 +85,14 @@ function expiryMark(request: Request, expiresAt: number, remembered: boolean, cl
     : remembered ? `; Max-Age=${Math.max(0, expiresAt - seconds())}; Expires=${new Date(expiresAt * 1000).toUTCString()}` : '';
   return `${markName(request)}=${clear ? '' : expiresAt}; Path=/; SameSite=Lax${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}${lifetime}`;
 }
+// string = well-formed Bearer token, false = Authorization: Bearer present but malformed,
+// null = no Bearer credential (cookie rules apply). A Bearer header never falls back to the cookie.
+function bearerValue(request: Request): string | false | null {
+  const match = /^Bearer[ \t]+(\S*)[ \t]*$/i.exec(request.headers.get('authorization') ?? '');
+  if (!match) return null;
+  return TOKEN_PATTERN.test(match[1]) ? match[1] : false;
+}
+const isoSeconds = (value: number) => new Date(value * 1000).toISOString();
 const redirect = (location: string, setCookie?: string | string[]) => {
   const response = new Response(null, { status: 303, headers: { Location: location } });
   for (const value of [setCookie ?? []].flat()) response.headers.append('Set-Cookie', value);
@@ -102,8 +120,8 @@ function secureResponse(response: Response, setCookie?: string | string[], immut
 function sameOrigin(request: Request) {
   return request.headers.get('origin') === new URL(request.url).origin && request.headers.get('sec-fetch-site') !== 'cross-site';
 }
-async function readForm(request: Request) {
-  if (!request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) return null;
+async function readBounded(request: Request, contentType: string) {
+  if (!request.headers.get('content-type')?.startsWith(contentType)) return null;
   if (Number(request.headers.get('content-length') ?? 0) > 4096) return null;
   const reader = request.body?.getReader();
   if (!reader) return null;
@@ -118,7 +136,34 @@ async function readForm(request: Request) {
       chunks.push(value);
     }
   } finally { reader.releaseLock(); }
-  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+  return Buffer.concat(chunks).toString('utf8');
+}
+async function readForm(request: Request) {
+  const text = await readBounded(request, 'application/x-www-form-urlencoded');
+  return text === null ? null : new URLSearchParams(text);
+}
+async function readJson(request: Request) {
+  const text = await readBounded(request, 'application/json');
+  if (text === null) return null;
+  try {
+    const value: unknown = JSON.parse(text);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch { return null; }
+}
+// One attempt budget for every way of signing in (web form and app token): 10 per 15 minutes per client.
+// CF-Connecting-IP is assigned by Cloudflare, not forwarded client identity.
+const attemptKey = (request: Request) => hash(`login:${request.headers.get('cf-connecting-ip') ?? 'local'}`);
+async function countAttempt(env: Cloudflare.Env, key: string, now: number) {
+  return env.DB.prepare(`INSERT INTO orbit_auth_attempts (key, attempts, expires_at) VALUES (?, 1, ?)
+    ON CONFLICT(key) DO UPDATE SET attempts = CASE WHEN expires_at <= ? THEN 1 ELSE attempts + 1 END,
+    expires_at = CASE WHEN expires_at <= ? THEN excluded.expires_at ELSE expires_at END
+    RETURNING attempts, expires_at`).bind(key, now + ATTEMPT_WINDOW, now, now).first<{ attempts: number; expires_at: number }>();
+}
+async function credentialsMatch(env: Cloudflare.Env, username: string, password: string) {
+  // Both checks always run (no short-circuit) and both compare in constant time.
+  const passwordMatches = verifyPassword(password, env.ORBIT_AUTH_PASSWORD_HASH);
+  const userMatches = timingSafeEqual(await digest(username), await digest(env.ORBIT_AUTH_USERNAME));
+  return passwordMatches && userMatches;
 }
 async function login(request: Request, env: Cloudflare.Env, version: string) {
   if (!sameOrigin(request)) return new Response('Geçersiz istek kaynağı.', { status: 403 });
@@ -130,16 +175,10 @@ async function login(request: Request, env: Cloudflare.Env, version: string) {
   const password = form.get('password') ?? '';
   if (!username || username.length > 64 || !password || password.length > 256) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next, remembered });
   const now = seconds();
-  // CF-Connecting-IP is assigned by Cloudflare, not forwarded client identity.
-  const key = await hash(`login:${request.headers.get('cf-connecting-ip') ?? 'local'}`);
-  const attempt = await env.DB.prepare(`INSERT INTO orbit_auth_attempts (key, attempts, expires_at) VALUES (?, 1, ?)
-    ON CONFLICT(key) DO UPDATE SET attempts = CASE WHEN expires_at <= ? THEN 1 ELSE attempts + 1 END,
-    expires_at = CASE WHEN expires_at <= ? THEN excluded.expires_at ELSE expires_at END
-    RETURNING attempts, expires_at`).bind(key, now + ATTEMPT_WINDOW, now, now).first<{ attempts: number; expires_at: number }>();
+  const key = await attemptKey(request);
+  const attempt = await countAttempt(env, key, now);
   if (!attempt || attempt.attempts > 10) return loginPage({ error: 'Çok fazla giriş denemesi. Biraz sonra tekrar dene.', status: 429, retryAfter: Math.max(1, (attempt?.expires_at ?? now + ATTEMPT_WINDOW) - now), next, remembered });
-  const passwordMatches = verifyPassword(password, env.ORBIT_AUTH_PASSWORD_HASH);
-  const userMatches = timingSafeEqual(await digest(username), await digest(env.ORBIT_AUTH_USERNAME));
-  if (!passwordMatches || !userMatches) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next, remembered });
+  if (!await credentialsMatch(env, username, password)) return loginPage({ error: 'Kullanıcı adı veya parola hatalı.', status: 401, next, remembered });
   const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
   const previous = cookieValue(request);
   const expiresAt = now + (remembered ? REMEMBER_SECONDS : SESSION_SECONDS);
@@ -153,7 +192,36 @@ async function login(request: Request, env: Cloudflare.Env, version: string) {
   return redirect(next, [cookie(request, token, remembered), expiryMark(request, expiresAt, remembered)]);
 }
 
-type Timing = { session: number; source: string; appStart: number; appEnd: number };
+// POST /auth/token: sign-in for the native app. Same credentials, same attempt budget and the same
+// session table as the web form, but JSON in / JSON out, no Origin requirement (no browser involved)
+// and no cookie. The token is shown once; only its hash is stored.
+const jsonError = (error: string, status: number, headers: HeadersInit = {}) => Response.json({ error }, { status, headers });
+async function issueToken(request: Request, env: Cloudflare.Env, version: string) {
+  const body = await readJson(request);
+  if (!body) return jsonError('Geçerli giriş bilgilerini gönder.', 400);
+  const { username, password, device } = body;
+  if (device !== undefined && (typeof device !== 'string' || device.length > 64)) return jsonError('Geçerli giriş bilgilerini gönder.', 400);
+  if (typeof username !== 'string' || typeof password !== 'string' || !username || username.length > 64 || !password || password.length > 256) return jsonError('Kullanıcı adı veya parola hatalı.', 401);
+  const now = seconds();
+  const key = await attemptKey(request);
+  const attempt = await countAttempt(env, key, now);
+  if (!attempt || attempt.attempts > 10) {
+    const retryAfter = Math.max(1, (attempt?.expires_at ?? now + ATTEMPT_WINDOW) - now);
+    return jsonError('Çok fazla giriş denemesi. Biraz sonra tekrar dene.', 429, { 'Retry-After': String(retryAfter) });
+  }
+  if (!await credentialsMatch(env, username, password)) return jsonError('Kullanıcı adı veya parola hatalı.', 401);
+  const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+  const expiresAt = now + REMEMBER_SECONDS;
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM orbit_auth_sessions WHERE expires_at <= ? OR credential_version != ?').bind(now, version),
+    env.DB.prepare('DELETE FROM orbit_auth_attempts WHERE expires_at <= ? OR key = ?').bind(now, key),
+    env.DB.prepare('INSERT INTO orbit_auth_sessions (token_hash, credential_version, remembered, created_at, refreshed_at, expires_at) VALUES (?, ?, 1, ?, ?, ?)')
+      .bind(await hash(APP_TOKEN_DOMAIN + token), version, now, now, expiresAt),
+  ]);
+  return Response.json({ token, expiresAt: isoSeconds(expiresAt) });
+}
+
+type Timing ={ session: number; source: string; appStart: number; appEnd: number };
 // Server-Timing carries durations (ms) and a hit/miss label only, never data.
 export async function withAuthentication(request: Request, env: Cloudflare.Env, next: Next): Promise<Response> {
   const started = Date.now();
@@ -188,16 +256,33 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
   try {
     if (!env.ORBIT_AUTH_USERNAME || !validPasswordHash(env.ORBIT_AUTH_PASSWORD_HASH)) {
       const error = 'Giriş henüz yapılandırılmadı. Çalışma alanı güvenlik için kapalı.';
-      return secureResponse(url.pathname.startsWith('/api/') ? Response.json({ error }, { status: 503 }) : loginPage({ configured: false, status: 503, error }));
+      return secureResponse(url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/token') ? Response.json({ error }, { status: 503 }) : loginPage({ configured: false, status: 503, error }));
     }
     const version = await hash(`${env.ORBIT_AUTH_USERNAME}:${env.ORBIT_AUTH_PASSWORD_HASH}`);
     if (url.pathname === '/auth/login') {
       if (request.method !== 'POST') return secureResponse(new Response(null, { status: 405, headers: { Allow: 'POST' } }));
       return secureResponse(await login(request, env, version));
     }
+    if (url.pathname === '/auth/token') {
+      if (request.method !== 'POST') return secureResponse(new Response(null, { status: 405, headers: { Allow: 'POST' } }));
+      return secureResponse(await issueToken(request, env, version));
+    }
     const token = cookieValue(request);
     const tokenHash = token ? await hash(token) : null;
     const now = seconds();
+    // Native app: `Authorization: Bearer` replaces the cookie for this request (no fallback to it).
+    const bearer = bearerValue(request);
+    const bearerMode = bearer !== null;
+    const bearerHash = bearer ? await hash(APP_TOKEN_DOMAIN + bearer) : null;
+    if (url.pathname === '/auth/token/revoke') {
+      if (request.method !== 'POST') return secureResponse(new Response(null, { status: 405, headers: { Allow: 'POST' } }));
+      if (!bearerHash) return secureResponse(unauthorized());
+      forgetSession(bearerHash);
+      const removed = await env.DB.prepare('DELETE FROM orbit_auth_sessions WHERE token_hash = ? AND credential_version = ? AND expires_at > ?').bind(bearerHash, version, now).run();
+      // A request that read the session while the DELETE was running may have re-cached it.
+      forgetSession(bearerHash);
+      return secureResponse(removed.meta.changes ? Response.json({ revoked: true }) : unauthorized());
+    }
     if (url.pathname === '/auth/logout') {
       if (request.method !== 'POST') return secureResponse(new Response(null, { status: 405, headers: { Allow: 'POST' } }));
       if (!sameOrigin(request)) return secureResponse(new Response(null, { status: 403 }));
@@ -213,11 +298,12 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
     const withState = request.method === 'GET' && url.pathname === '/api/state';
     let session: Session | null = null;
     let stateRow: unknown;
-    if (tokenHash) {
+    const sessionHash = bearerMode ? bearerHash : tokenHash;
+    if (sessionHash) {
       const lookupStart = Date.now();
       // Reads may reuse a lookup that is at most a few seconds old (session-cache.ts);
       // anything that changes data re-checks D1 every time.
-      const found = await lookupSession(env, { tokenHash, version, now, fresh: !['GET', 'HEAD', 'OPTIONS'].includes(request.method) || WRITING_GETS.has(url.pathname), withState });
+      const found = await lookupSession(env, { tokenHash: sessionHash, version, now, fresh: !['GET', 'HEAD', 'OPTIONS'].includes(request.method) || WRITING_GETS.has(url.pathname), withState });
       timing.session = Date.now() - lookupStart;
       timing.source = found.source;
       session = found.session;
@@ -227,31 +313,37 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
       if (!['GET', 'HEAD'].includes(request.method)) return secureResponse(new Response(null, { status: 405 }));
       return secureResponse(session ? redirect(safeNext(url.searchParams.get('next'))) : loginPage({ next: safeNext(url.searchParams.get('next')) }));
     }
+    if (!session && !bearerMode && appOAuthLeg(request, url)) return secureResponse(await next());
     if (!session) {
       const isPage = request.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/auth/') && !request.headers.has('rsc') && !url.searchParams.has('_rsc') && (request.headers.get('accept')?.includes('text/html') || url.pathname === '/');
       return secureResponse(isPage ? redirect(`/login${url.pathname === '/' && !url.search ? '' : `?next=${encodeURIComponent(safeNext(url.pathname + url.search))}`}`) : unauthorized());
     }
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !sameOrigin(request)) return secureResponse(new Response('Geçersiz istek kaynağı.', { status: 403 }));
+    // CSRF is a cookie problem: a Bearer token is attached by hand, never by the browser.
+    if (!bearerMode && !['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !sameOrigin(request)) return secureResponse(new Response('Geçersiz istek kaynağı.', { status: 403 }));
     let refreshedCookie: string[] | undefined;
+    let tokenExpiresAt: number | undefined;
     // Hashed bundles never renew the session or carry a cookie: they stay cacheable.
     if (!isStatic && session.remembered && now - session.refreshed_at >= DAY) {
       const update = await env.DB.prepare('UPDATE orbit_auth_sessions SET refreshed_at = ?, expires_at = ? WHERE token_hash = ? AND expires_at > ?')
         .bind(now, now + REMEMBER_SECONDS, session.token_hash, now).run();
       if (!update.meta.changes) { forgetSession(session.token_hash); return secureResponse(unauthorized()); }
       updateCachedSession(session.token_hash, { refreshed_at: now, expires_at: now + REMEMBER_SECONDS });
-      refreshedCookie = [cookie(request, token!, true), expiryMark(request, now + REMEMBER_SECONDS, true)];
+      // Bearer sessions slide forward the same way but never receive a cookie; the new end is a response header.
+      if (bearerMode) tokenExpiresAt = now + REMEMBER_SECONDS;
+      else refreshedCookie = [cookie(request, token!, true), expiryMark(request, now + REMEMBER_SECONDS, true)];
     }
-    if (!refreshedCookie && (url.pathname === '/auth/session' || (request.method === 'GET' && (url.pathname === '/' || request.headers.get('sec-fetch-dest') === 'document')))) {
+    if (!bearerMode && !refreshedCookie && (url.pathname === '/auth/session' || (request.method === 'GET' && (url.pathname === '/' || request.headers.get('sec-fetch-dest') === 'document')))) {
       // Upgrade existing Strict cookies without extending the database expiry.
       refreshedCookie = [cookie(request, token!, Boolean(session.remembered), false, session.expires_at), expiryMark(request, session.expires_at, Boolean(session.remembered))];
     }
     timing.appStart = Date.now();
     const response = url.pathname === '/auth/session'
-      ? Response.json({ authenticated: true, remembered: Boolean(session.remembered) })
-      : await authenticatedRequest.run({ username: env.ORBIT_AUTH_USERNAME, ...(withState ? { stateRow } : {}) }, next);
+      ? Response.json({ authenticated: true, remembered: Boolean(session.remembered), ...(bearerMode ? { expiresAt: isoSeconds(tokenExpiresAt ?? session.expires_at) } : {}) })
+      : await authenticatedRequest.run({ username: env.ORBIT_AUTH_USERNAME, ...(bearerMode ? { bearer: true } : {}), ...(withState ? { stateRow } : {}) }, next);
     timing.appEnd = Date.now();
     const hashedAsset = request.method === 'GET' && response.status === 200 && isStatic && !refreshedCookie;
     const secured = secureResponse(response, refreshedCookie, hashedAsset);
+    if (tokenExpiresAt) secured.headers.set('X-Orbit-Token-Expires-At', isoSeconds(tokenExpiresAt));
     // Tells the service worker this is the authenticated app shell (safe to keep on the device).
     if (request.method === 'GET' && url.pathname === '/' && secured.status === 200 && /text\/html/i.test(secured.headers.get('Content-Type') ?? '')) secured.headers.set('X-Orbit-Shell', '1');
     return secured;

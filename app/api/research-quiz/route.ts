@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { authenticatedUser, unauthorized } from '../../../auth/context';
+import { authenticatedUser, bearerRequest, unauthorized } from '../../../auth/context';
 import { createModelProvider, resolveModelConfig } from '../../../generation/provider';
 import type { ProviderBindings } from '../../../generation/provider';
 import { getDatabase } from '../../../db/client';
@@ -13,7 +13,7 @@ const schema={type:'object',additionalProperties:false,required:['questions'],pr
 const clean=(value:unknown,max:number)=>typeof value==='string'?value.trim().slice(0,max):'';
 export async function POST(request:Request){
   const owner=authenticatedUser();if(!owner)return unauthorized();
-  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'Geçersiz istek kaynağı.'},403);
+  if(request.headers.get('origin')!==new URL(request.url).origin&&!(bearerRequest()&&!request.headers.get('origin')))return json({error:'Geçersiz istek kaynağı.'},403);
   let store:GenerationRepository|undefined,lock='';
   try{
     const raw=await request.text();if(raw.length>30000)return json({error:'Araştırma notu test için fazla uzun.'},413);
