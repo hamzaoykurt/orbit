@@ -11,7 +11,7 @@ const url=(file,replacements={})=>{
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 };
 const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),serviceUrl=url('../generation/service.ts');
-const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts');
+const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts'),providerErrorsUrl=url('../generation/provider-errors.ts');
 const {GenerationRepository}=await import(repoUrl),{GenerationService}=await import(serviceUrl),{createModelProvider}=await import(providerUrl);
 const {resolveModelConfig}=await import(providerUrl);
 const practice=await import(url('../app/rebuild/practice-model.ts'));
@@ -36,7 +36,7 @@ test('no configured provider fails explicitly; there is no local fallback',async
 
 test('Gemini uses server-side key and schema, ignores thought parts and never falls back on quota errors',async()=>{
   const config=resolveModelConfig({AI_PROVIDER:'gemini',GEMINI_API_KEY:'test-gemini-key',OPENAI_API_KEY:'unused-openai'});
-  assert.equal(config.model,'gemini-2.0-flash');assert.equal(config.apiKey,'test-gemini-key');
+  assert.equal(config.model,'gemini-3.8-flash');assert.equal(config.modelPinned,false);assert.equal(resolveModelConfig({GEMINI_API_KEY:'k',GEMINI_MODEL:' gemini-x '}).model,'gemini-x');assert.equal(config.apiKey,'test-gemini-key');
   assert.equal(resolveModelConfig({AI_PROVIDER:'gemini',OPENAI_API_KEY:'unused'}).apiKey,undefined);
   assert.throws(()=>resolveModelConfig({AI_PROVIDER:'invalid'}),/config-invalid/);
   let sent,calls=0;
@@ -44,7 +44,8 @@ test('Gemini uses server-side key and schema, ignores thought parts and never fa
   assert.deepEqual(await provider({name:'test',instructions:'Generate',input:{request:'new'},schema:{type:'object'}}),project);
   assert.equal(calls,1);assert.equal(sent.headers['x-goog-api-key'],'test-gemini-key');assert.ok(!sent.endpoint.includes('test-gemini-key'));
   assert.equal(sent.body.generationConfig.responseMimeType,'application/json');assert.deepEqual(sent.body.generationConfig.responseSchema,{type:'object'});
-  calls=0;await assert.rejects(createModelProvider(config,async()=>{calls++;return new Response('quota',{status:429});})({name:'test',input:{},schema:{}}),/provider-http-429/);assert.equal(calls,1);
+  calls=0;await assert.rejects(createModelProvider({...config,model:'gemini-x',modelPinned:true},async()=>{calls++;return new Response('quota',{status:429});})({name:'test',input:{},schema:{}}),/provider-http-429/);assert.equal(calls,1);
+  const hosts=new Set();calls=0;await assert.rejects(createModelProvider(config,async endpoint=>{calls++;hosts.add(new URL(endpoint).host);return new Response('quota',{status:429});})({name:'test',input:{},schema:{}}),/provider-http-429/);assert.equal(calls,3);assert.deepEqual([...hosts],['generativelanguage.googleapis.com']);
   for(const payload of [{promptFeedback:{blockReason:'SAFETY'}},{candidates:[{finishReason:'MAX_TOKENS'}]},{candidates:[{finishReason:'STOP',content:{parts:[{text:'not json'}]}}]}])await assert.rejects(createModelProvider(config,async()=>Response.json(payload))({name:'test',input:{},schema:{}}));
 });
 
@@ -204,7 +205,7 @@ const contextUrl=url('../auth/context.ts'),{authenticatedRequest}=await import(c
 const api=await import(url('../app/api/ideas/route.ts',{
   "import { env } from 'cloudflare:workers';":'const env = globalThis.__generationTestEnv;',
   "import { getDatabase } from '../../../db/client';":'const getDatabase = () => globalThis.__generationTestDb;',
-  "'../../../auth/context'":JSON.stringify(contextUrl),"'../../../generation/repository'":JSON.stringify(repoUrl),"'../../../generation/provider'":JSON.stringify(providerUrl),"'../../../generation/service'":JSON.stringify(serviceUrl),"'../../rebuild/idea-engine'":JSON.stringify(engineUrl),
+  "'../../../auth/context'":JSON.stringify(contextUrl),"'../../../generation/repository'":JSON.stringify(repoUrl),"'../../../generation/provider'":JSON.stringify(providerUrl),"'../../../generation/provider-errors'":JSON.stringify(providerErrorsUrl),"'../../../generation/service'":JSON.stringify(serviceUrl),"'../../rebuild/idea-engine'":JSON.stringify(engineUrl),
 }));
 const request=(body,origin='https://orbit.test')=>new Request('https://orbit.test/api/ideas',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
 test('API denies anonymous and cross-origin requests, validates inputs and exposes no secret when unavailable',async()=>{
@@ -334,4 +335,63 @@ test('API validates Visual Lab requests and new generation types still require c
     for(const type of ['digital_project','image_prompt'])assert.equal((await api.POST(request({action:'generate',type}))).status,503);
     assert.equal((await api.GET(new Request('https://orbit.test/api/ideas?type=invalid'))).status,400);
   });
+});
+
+const geminiOk=output=>Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(output)}]}}]});
+const modelOf=endpoint=>String(endpoint).endsWith('/models')?'models':String(endpoint).match(/models\/([^:/]+):generateContent$/)?.[1];
+const geminiError=(status,reason)=>Response.json({error:{code:status,status:'X',details:reason?[{'@type':'type.googleapis.com/google.rpc.ErrorInfo',reason}]:[]}},{status});
+const ask=provider=>provider({name:'t',instructions:'i',input:{},schema:{type:'object'}});
+
+test('unset GEMINI_MODEL steps down from a retired model; a pinned model is never swapped',async()=>{
+  const seen=[];
+  const config=resolveModelConfig({GEMINI_API_KEY:'k'});
+  assert.deepEqual(await ask(createModelProvider(config,async endpoint=>{seen.push(modelOf(endpoint));return seen.length<3?new Response(null,{status:404}):geminiOk(project);})),project);
+  assert.deepEqual(seen,['gemini-3.8-flash','gemini-3.6-flash','gemini-2.5-flash']);
+  const pinnedSeen=[];
+  await assert.rejects(ask(createModelProvider(resolveModelConfig({GEMINI_API_KEY:'k',GEMINI_MODEL:'gemini-9-ultra'}),async endpoint=>{
+    const model=modelOf(endpoint);pinnedSeen.push(model);
+    if(model==='models')return Response.json({models:[{name:'models/gemini-3.9-flash-tts',supportedGenerationMethods:['generateContent']},{name:'models/gemini-3.1-flash-lite',supportedGenerationMethods:['generateContent']},{name:'models/gemini-3.7-flash',supportedGenerationMethods:['generateContent']},{name:'models/gemini-embedding-001',supportedGenerationMethods:['embedContent']}]});
+    return new Response(null,{status:404});
+  })),/provider-http-404/);
+  assert.deepEqual(pinnedSeen,['gemini-9-ultra','models','gemini-3.7-flash','gemini-3.1-flash-lite']);
+});
+
+test('Gemini failures are classified: invalid key arrives as 400, truncation and safety are told apart',async()=>{
+  const config=resolveModelConfig({GEMINI_API_KEY:'k',GEMINI_MODEL:'gemini-x'});
+  const fail=async response=>{try{await ask(createModelProvider(config,async()=>response));return 'resolved';}catch(error){return error.message;}};
+  assert.equal(await fail(geminiError(400,'API_KEY_INVALID')),'provider-key-invalid');
+  assert.equal(await fail(geminiError(400)),'provider-http-400');
+  assert.equal(await fail(geminiError(403,'SERVICE_DISABLED')),'provider-service-disabled');
+  assert.equal(await fail(geminiError(503)),'provider-http-503');
+  assert.equal(await fail(Response.json({candidates:[{finishReason:'MAX_TOKENS'}]})),'provider-truncated');
+  assert.equal(await fail(Response.json({candidates:[{finishReason:'SAFETY'}]})),'provider-refusal');
+  const sent=JSON.parse((await (async()=>{let body;await ask(createModelProvider(config,async(endpoint,options)=>{body=options.body;return geminiOk(project);}));return {body};})()).body);
+  assert.ok(sent.generationConfig.maxOutputTokens>=16000);
+});
+
+test('provider failures reach the user as specific Turkish messages, never the misleading "model" text for a bad key',async()=>{
+  const {providerFailureCode,providerFailureMessage,providerFailureStatus}=await import(providerErrorsUrl);
+  const text=message=>providerFailureMessage(providerFailureCode(new Error(message)));
+  assert.match(text('provider-key-invalid'),/GEMINI_API_KEY/);assert.doesNotMatch(text('provider-key-invalid'),/Model ayar/);
+  assert.match(text('provider-http-404'),/GEMINI_MODEL/);assert.match(text('provider-http-503'),/yanıt vermiyor/);
+  assert.match(text('provider-truncated'),/yarıda/);assert.match(text('anything else'),/ulaşılamadı/);
+  assert.equal(providerFailureStatus(providerFailureCode(new Error('provider-http-429'))),429);
+  assert.equal(providerFailureStatus('provider-runtime'),503);
+});
+
+test('backup provider is opt-in: AI_FALLBACK plus the backup key, otherwise the primary failure surfaces',async()=>{
+  const {createFailoverProvider}=await import(providerUrl);
+  const calls=[];
+  const transport=async(endpoint,options)=>{calls.push(new URL(endpoint).host);
+    if(String(endpoint).includes('generativelanguage'))return new Response(null,{status:500});
+    return response(project);};
+  const base={GEMINI_API_KEY:'g',OPENAI_API_KEY:'o'};
+  await assert.rejects(ask(createFailoverProvider(base,transport)),/provider-http-500/);
+  assert.deepEqual([...new Set(calls)],['generativelanguage.googleapis.com']);
+  calls.length=0;
+  assert.deepEqual(await ask(createFailoverProvider({...base,AI_FALLBACK:'openai'},transport)),project);
+  assert.ok(calls.includes('api.openai.com'));
+  calls.length=0;
+  await assert.rejects(ask(createFailoverProvider({GEMINI_API_KEY:'g',AI_FALLBACK:'openai'},transport)),/provider-http-500/);
+  assert.ok(!calls.includes('api.openai.com'));
 });
