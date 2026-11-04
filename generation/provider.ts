@@ -1,13 +1,36 @@
 import { fetchFollowingRedirects } from './safe-fetch';
 export type ModelRequest = { name: string; instructions: string; input: unknown; schema: object; signal?: AbortSignal };
 export type ModelProvider = (request: ModelRequest) => Promise<unknown>;
-export type ModelConfig = { apiKey?: string; model?: string; baseUrl?: string; provider?: 'openai' | 'gemini' };
-export type ProviderBindings = { AI_PROVIDER?: string; OPENAI_API_KEY?: string; OPENAI_MODEL?: string; OPENAI_BASE_URL?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string };
+export type ModelConfig = { apiKey?: string; model?: string; baseUrl?: string; provider?: 'openai' | 'gemini'; modelPinned?: boolean };
+// Google retires Gemini models on a published schedule (gemini-2.0-flash: 2026-06-01 at the earliest), so an
+// unset GEMINI_MODEL means "newest first, step down on 404/429" instead of one hard-coded name.
+// Source: https://aistudio.google.com/docs/deprecations and /docs/models (read 2026-11-04).
+export const GEMINI_MODEL_CHAIN = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
+export type ProviderBindings = { AI_PROVIDER?: string; AI_FALLBACK?: string; OPENAI_API_KEY?: string; OPENAI_MODEL?: string; OPENAI_BASE_URL?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string };
 export function resolveModelConfig(env:ProviderBindings):ModelConfig {
   const provider=env.AI_PROVIDER?.trim().toLowerCase() || (env.GEMINI_API_KEY?'gemini':'openai');
-  if(provider==='gemini')return {provider,apiKey:env.GEMINI_API_KEY,model:env.GEMINI_MODEL?.trim()||'gemini-2.0-flash'};
+  if(provider==='gemini'){const pinned=env.GEMINI_MODEL?.trim();return {provider,apiKey:env.GEMINI_API_KEY,model:pinned||GEMINI_MODEL_CHAIN[0],modelPinned:Boolean(pinned)};}
   if(provider==='openai')return {provider,apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL?.trim()||'gpt-5-mini',baseUrl:env.OPENAI_BASE_URL};
   throw new Error('provider-config-invalid');
+}
+
+// Optional backup provider. It is opt-in (AI_FALLBACK=openai|gemini plus that provider's key) because a backup can
+// be a paid API; with nothing set the primary provider's failure is reported as is, never silently replaced.
+export function createFailoverProvider(env: ProviderBindings, transport: typeof fetch = fetch): ModelProvider {
+  const primary = resolveModelConfig(env);
+  const backupName = env.AI_FALLBACK?.trim().toLowerCase();
+  const backup = backupName === 'openai' || backupName === 'gemini' ? resolveModelConfig({ ...env, AI_PROVIDER: backupName }) : undefined;
+  const main = createModelProvider(primary, transport);
+  if (!backup?.apiKey || backup.provider === primary.provider) return main;
+  const second = createModelProvider(backup, transport);
+  return async (request) => {
+    try { return await main(request); }
+    catch (error) {
+      if (request.signal?.aborted) throw error;
+      console.warn('Orbit AI backup provider used after', error instanceof Error ? error.message : 'error');
+      try { return await second(request); } catch { throw error; }
+    }
+  };
 }
 
 export function createModelProvider(config: ModelConfig, transport: typeof fetch = fetch): ModelProvider {
@@ -66,39 +89,69 @@ function geminiSchema(schema: object): Record<string, unknown> {
   return result;
 }
 
+const NOT_TEXT_MODEL = /(tts|live|image|embedding|audio|robotics|computer-use|aqa|learnlm|veo|imagen|native)/;
+const versionOf = (name: string) => (name.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? '0');
+
+async function geminiFailure(response: Response): Promise<Error> {
+  let reason = '';
+  try {
+    const body = JSON.parse((await response.text()).slice(0, 8192)) as { error?: { details?: { reason?: unknown }[] } };
+    reason = String(body.error?.details?.find(item => typeof item?.reason === 'string')?.reason ?? '');
+  } catch { /* the status code alone still decides */ }
+  // Google answers an unknown, revoked or expired key with 400 (not 401/403): only the reason tells it apart from a bad request.
+  if (response.status === 400 && reason === 'API_KEY_INVALID') return new Error('provider-key-invalid');
+  if (response.status === 403 && reason === 'SERVICE_DISABLED') return new Error('provider-service-disabled');
+  return new Error(`provider-http-${response.status}`);
+}
+
 async function generateGemini(config:ModelConfig,request:ModelRequest,transport:typeof fetch):Promise<unknown> {
-  const model=config.model||'gemini-2.0-flash';
-  if(!/^gemini-[a-zA-Z0-9._-]+$/.test(model))throw new Error('provider-config-invalid');
-  // One configured provider only: quota errors never trigger a paid fallback.
+  const pinned=config.modelPinned===false||!config.model?undefined:config.model;
+  const order=pinned?[pinned]:GEMINI_MODEL_CHAIN;
+  if(order.some(name=>!/^gemini-[a-zA-Z0-9._-]+$/.test(name)))throw new Error('provider-config-invalid');
   const call=async (selected:string)=>transport(`https://generativelanguage.googleapis.com/v1beta/models/${selected}:generateContent`,{
     method:'POST',signal:request.signal||AbortSignal.timeout(45_000),
     headers:{'x-goog-api-key':config.apiKey!,'Content-Type':'application/json'},
-    body:JSON.stringify({systemInstruction:{parts:[{text:`${request.instructions}\n\nReturn only one JSON object matching this output contract. Keep field names and enum values exactly as specified; translate content only. Do not wrap the object or add markdown. Respect all string length and array size limits.\n${JSON.stringify(request.schema)}`}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
-    generationConfig:{responseMimeType:'application/json',responseSchema:geminiSchema(request.schema),maxOutputTokens:6500},
+    body:JSON.stringify({systemInstruction:{parts:[{text:`${request.instructions}
+
+Return only one JSON object matching this output contract. Keep field names and enum values exactly as specified; translate content only. Do not wrap the object or add markdown. Respect all string length and array size limits.
+${JSON.stringify(request.schema)}`}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
+    // Thinking models spend part of this budget before the answer; a small cap ends in MAX_TOKENS.
+    generationConfig:{responseMimeType:'application/json',responseSchema:geminiSchema(request.schema),maxOutputTokens:16384},
     }),
   });
-  let response=await call(model);
-  // Model availability differs by Google project and region. If the configured
-  // model is missing, discover an available Gemini model from the same key and
-  // retry once; this never falls back to another provider or a local pool.
-  if(response.status===404){
+  // Model availability differs by Google project and region and models get retired. A missing model (404) or an
+  // exhausted per-model quota (429, when no model is pinned) steps down to the next Gemini model of the SAME
+  // key; it never switches provider. A pinned GEMINI_MODEL is used as is.
+  let response!:Response;
+  const tried=new Set<string>();
+  for(const [index,name] of order.entries()){
+    tried.add(name);response=await call(name);
+    const stepDown=response.status===404||(!pinned&&response.status===429&&index<order.length-1);
+    if(!stepDown)break;
     await response.body?.cancel();
+    if(index===order.length-1)response=new Response(null,{status:response.status});
+  }
+  if(response.status===404){
+    // Last resort: ask the key which text models it can use. Stable full flash models first, lite and special-purpose ones last.
     const listed=await transport('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':config.apiKey!},signal:request.signal||AbortSignal.timeout(15_000)});
     if(listed.ok){
       const models=await listed.json() as {models?:{name?:string,supportedGenerationMethods?:string[]}[]};
-      const candidates=(models.models||[]).filter(item=>item.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-/.test(item.name||'')).map(item=>item.name!.replace(/^models\//,'')).sort((a,b)=>{
-        const rank=(name:string)=>name.includes('flash')?(name.includes('lite')?0:1):2; return rank(a)-rank(b);
-      });
+      const candidates=(models.models||[]).filter(item=>item.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-[a-zA-Z0-9._-]+$/.test(item.name||'')).map(item=>item.name!.replace(/^models\//,'')).filter(name=>!NOT_TEXT_MODEL.test(name)&&!tried.has(name)&&!/preview|exp/.test(name)).sort((a,b)=>{
+        const rank=(name:string)=>name.includes('flash')?(name.includes('lite')?1:0):2;
+        return rank(a)-rank(b)||Number(versionOf(b))-Number(versionOf(a));
+      }).slice(0,4);
       for(const available of candidates){response=await call(available);if(response.status!==404)break;await response.body?.cancel();}
     }
   }
-  if(!response.ok){await response.body?.cancel();throw new Error(`provider-http-${response.status}`);}
+  if(!response.ok)throw await geminiFailure(response);
   const reader=response.body?.getReader();if(!reader)throw new Error('provider-empty');
   let size=0,raw='';const decoder=new TextDecoder();
   try{for(;;){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>128*1024){await reader.cancel();throw new Error('provider-too-large');}raw+=decoder.decode(value,{stream:true});}}finally{reader.releaseLock();}
   const payload=JSON.parse(raw+decoder.decode());
   if(payload.error||payload.promptFeedback?.blockReason)throw new Error('provider-refusal');
   const candidate=payload.candidates?.[0];
+  if(candidate?.finishReason==='MAX_TOKENS')throw new Error('provider-truncated');
+  if(['SAFETY','PROHIBITED_CONTENT','BLOCKLIST','SPII','RECITATION'].includes(candidate?.finishReason))throw new Error('provider-refusal');
   if(candidate?.finishReason!=='STOP')throw new Error('provider-incomplete');
   const text=(candidate.content?.parts||[]).filter((part:{thought?:boolean;text?:unknown})=>!part.thought&&typeof part.text==='string').map((part:{text:string})=>part.text).join('');
   if(!text)throw new Error('provider-empty');

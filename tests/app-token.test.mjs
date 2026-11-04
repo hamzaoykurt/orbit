@@ -16,6 +16,8 @@ const stateKey = 'app-token-test';
 let mf, database;
 const googleCalls = [];
 const calendarCalls = [];
+// What the faked Google answers next: the token endpoint (tokenMode) and the Calendar API (apiMode).
+let tokenMode = 'ok', apiMode = 'ok';
 before(async () => {
   const bundle = await build({
     stdin: {
@@ -40,13 +42,19 @@ before(async () => {
       const url = new URL(fake.url);
       if (url.pathname.startsWith('/calendar/v3/')) {
         calendarCalls.push({ url: fake.url, method: fake.method, auth: fake.headers.get('authorization') });
+        if (apiMode === 'api_disabled') return Response.json({ error: { code: 403, errors: [{ reason: 'accessNotConfigured' }] } }, { status: 403 });
+        if (apiMode === 'scope') return Response.json({ error: { code: 403, errors: [{ reason: 'insufficientPermissions' }] } }, { status: 403 });
         return fake.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json(fake.method === 'POST' ? { id: 'ev-created' } : { items: [{ id: 'ev-listed' }] });
       }
       if (url.pathname === '/revoke') { calendarCalls.push({ url: fake.url, method: fake.method }); return new Response('{}'); }
       const body = new URLSearchParams(await fake.text());
       if (body.get('grant_type') === 'refresh_token') { calendarCalls.push({ url: fake.url, method: fake.method, refresh: true }); return Response.json({ access_token: 'access-test', expires_in: 3600 }); }
       googleCalls.push({ url: fake.url, code: body.get('code'), redirect: body.get('redirect_uri') });
-      return Response.json({ refresh_token: 'refresh-test-value', scope: 'calendar.events' });
+      if (tokenMode === 'invalid_client') return Response.json({ error: 'invalid_client', error_description: 'Unauthorized' }, { status: 401 });
+      if (tokenMode === 'invalid_grant') return Response.json({ error: 'invalid_grant' }, { status: 400 });
+      if (tokenMode === 'no_refresh') return Response.json({ access_token: 'a', scope: 'https://www.googleapis.com/auth/calendar.events' });
+      if (tokenMode === 'no_calendar_scope') return Response.json({ refresh_token: 'refresh-test-value', scope: 'openid https://www.googleapis.com/auth/userinfo.email' });
+      return Response.json({ refresh_token: 'refresh-test-value', scope: 'https://www.googleapis.com/auth/calendar.events' });
     },
   });
   database = await mf.getD1Database('DB');
@@ -455,4 +463,38 @@ test('when D1 fails during the app link the system browser gets a short Turkish 
   } finally {
     await database.batch(migration.map(query => database.prepare(query)));
   }
+});
+
+test('Google linking failures say what is wrong: bad client, used code, no refresh token, calendar box unticked', async () => {
+  const { token } = await issue();
+  await database.prepare('DELETE FROM orbit_google_calendar_credentials').run();
+  const cases = [['invalid_client', /Google ayarı kabul edilmedi/], ['invalid_grant', /İzin kodu kabul edilmedi/], ['no_refresh', /Kalıcı izin alınamadı/], ['no_calendar_scope', /Takvim izni verilmedi/]];
+  try {
+    for (const [mode, expected] of cases) {
+      tokenMode = mode;
+      const { state, binding } = await startAppLink(token);
+      const page = await request(`/api/google-calendar/callback?code=auth-code-y&state=${state}`, { headers: { cookie: binding } });
+      assert.match(await page.text(), expected, mode);
+      assert.equal(await database.prepare('SELECT 1 FROM orbit_google_calendar_credentials').first(), null, `${mode}: nothing is stored`);
+      assert.equal((await (await request('/api/google-calendar/status', { headers: bearer(token) })).json()).connected, false, mode);
+    }
+  } finally { tokenMode = 'ok'; }
+});
+
+test('a connected calendar whose Google API is switched off, or lacks the permission, reports that instead of "unreachable"', async () => {
+  const { token } = await issue();
+  await connectGoogle(token);
+  const list = () => request('/api/google-calendar/events?timeMin=2026-10-01T00:00:00Z&timeMax=2026-11-01T00:00:00Z', { headers: bearer(token) });
+  try {
+    apiMode = 'api_disabled';
+    const disabled = await list();
+    assert.equal(disabled.status, 503);
+    assert.match((await disabled.json()).error, /Google Calendar API.*etkinleştir/);
+    apiMode = 'scope';
+    const scope = await list();
+    assert.equal(scope.status, 403);
+    assert.deepEqual(Object.keys(await scope.json()).sort(), ['error', 'reconnect']);
+  } finally { apiMode = 'ok'; }
+  assert.equal((await list()).status, 200);
+  await request('/api/google-calendar/disconnect', { method: 'DELETE', headers: bearer(token) });
 });

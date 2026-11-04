@@ -2,7 +2,8 @@ import { env } from 'cloudflare:workers';
 import { authenticatedUser, bearerRequest, unauthorized } from '../../../auth/context';
 import { getDatabase } from '../../../db/client';
 import { GenerationRepository } from '../../../generation/repository';
-import { createModelProvider, resolveModelConfig } from '../../../generation/provider';
+import { createFailoverProvider, resolveModelConfig } from '../../../generation/provider';
+import { providerFailureCode, providerFailureMessage, providerFailureStatus } from '../../../generation/provider-errors';
 import type { ProviderBindings } from '../../../generation/provider';
 import { GenerationError, GenerationService } from '../../../generation/service';
 import { CREATE_CATEGORIES, DIGITAL_PLATFORMS, GENERATION_UNAVAILABLE, RESEARCH_CATEGORIES, SOCIAL_CATEGORIES } from '../../rebuild/idea-engine';
@@ -63,20 +64,17 @@ export async function POST(request: Request) {
     if(requiresModel&&!config.apiKey)return json({error:'AI bağlantısı henüz kurulmadı. Sunucuya seçilen sağlayıcının API anahtarı eklenmeli.',code:'not_configured'},503);
     if(!await store.allowRequest())throw new GenerationError('rate-limited',429);
     const token=crypto.randomUUID();if(!await store.acquire(token))throw new GenerationError('generation-in-progress',409);lock=token;
-    const service=new GenerationService(store,createModelProvider(config),`${config.provider}/${config.model}`);
+    const service=new GenerationService(store,createFailoverProvider(bindings()),`${config.provider}/${config.model}`);
     const signal=AbortSignal.any([request.signal,AbortSignal.timeout(95_000)]);
     const idea=body.action==='generate'?await service.generate({type:body.type,goal:body.goal,category:body.category,platform:body.platform,words:body.words,brief:body.brief?.trim(),visualMode:body.visualMode,sourceId:body.sourceId} as IdeaRequest,signal):existing?.type==='digital_project'?await service.generateDigitalProjectPlan(body.id,signal):existing?.type==='research'?await service.generateResearchPlan(body.id,signal):await service.accept(body.id,signal);
     return json({idea});
   }catch(error){
-    const providerCode=error instanceof Error?({'provider-http-429':'provider-quota','provider-http-401':'provider-key','provider-http-403':'provider-key','provider-http-404':'provider-model'} as Record<string,string>)[error.message]:undefined;
-    const safeProviderCode=error instanceof Error&&/^provider-(http-\d{3}|config-invalid|not-configured|incomplete|empty|refusal|too-large|malformed)$/.test(error.message)?error.message:undefined;
-    const code=error instanceof GenerationError?error.code:providerCode||safeProviderCode||'provider-runtime';
+    const code=error instanceof GenerationError?error.code:providerFailureCode(error);
     // Log only a bounded diagnostic code, never keys, provider bodies or private input.
     console.warn('Orbit generation failed',code);
     if(code==='no-digital-result')return json({error:'Yalnızca yazılımdan oluşan, yeni bir dijital proje bulunamadı. Tekrar deneyebilirsin.',code},503);
     if(code==='visual-source-mismatch')return json({error:'AI görselin ana konusunu koruyamadı. Aynı kaynakla tekrar deneyebilirsin.',code},503);
     const messages:Record<string,string>={'generation-in-progress':'Bir üretim zaten sürüyor. Bitince tekrar dene.','rate-limited':'Çok hızlı istek gönderildi. Bir dakika sonra tekrar dene.','no-novel-result':'Öncekilerden yeterince farklı bir fikir üretilemedi. Tekrar dene.','idea-not-found':'Bu fikir geçmişte bulunamadı.','invalid-request':'Geçersiz üretim isteği.','invalid-provider-output':'AI geçerli bir yanıt üretemedi. Tekrar dene; özel verilerin gönderilmedi.'};
-    const providerMessages:Record<string,string>={'provider-quota':'AI sağlayıcısının kullanım sınırına ulaşıldı. Kota yenilenince tekrar dene. Başka veya ücretli bir sağlayıcıya geçilmedi.','provider-key':'AI anahtarı geçersiz veya bu modele erişimi yok. Sunucudaki sağlayıcı ayarını kontrol et.','provider-model':'Seçilen AI modeli bulunamadı. Sunucudaki model ayarını kontrol et.','provider-not-configured':'Gemini anahtarı sunucuya ulaşmıyor. Cloudflare ortamında GEMINI_API_KEY gizli değişkenini kontrol et.','provider-http-400':'Gemini isteği kabul etmedi. Model ayarını kontrol et; özel verilerin gönderilmedi.','provider-malformed':'Gemini geçerli JSON döndürmedi. Tekrar dene; özel verilerin gönderilmedi.','provider-runtime':'AI sağlayıcısı çalışırken beklenmeyen bir bağlantı hatası oluştu. Cloudflare Worker loglarında sağlayıcı yanıtını kontrol etmek gerekiyor.'};
-    return json({error:messages[code]||providerMessages[code]||GENERATION_UNAVAILABLE,code},error instanceof GenerationError?error.status:code==='provider-quota'?429:503);
+    return json({error:messages[code]||providerFailureMessage(code)||GENERATION_UNAVAILABLE,code},error instanceof GenerationError?error.status:providerFailureStatus(code));
   }finally{if(store&&lock)await store.release(lock).catch(()=>{});}
 }

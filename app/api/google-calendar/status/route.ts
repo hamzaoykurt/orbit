@@ -11,6 +11,7 @@ export async function GET() {
     const credential = config.configured ? await readGoogleCredential(owner) : null;
     return Response.json({
       configured: config.configured,
+      ...(config.configured ? {} : { missing: config.missing }),
       connected: Boolean(credential),
       calendarId: credential?.calendar_id || config.calendarId,
     }, { headers: { 'Cache-Control': 'no-store' } });

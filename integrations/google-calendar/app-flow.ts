@@ -36,11 +36,16 @@ async function take(hashPromise: Promise<string>) {
 export const takeLinkTicket = (ticket: string) => TOKEN_SHAPE.test(ticket) ? take(linkTicketHash(ticket)) : Promise.resolve(null);
 export const takeAppState = (state: string, binding: string | null) => TOKEN_SHAPE.test(state) && binding ? take(appStateHash(state, binding)) : Promise.resolve(null);
 
-export type AppResult = 'connected' | 'denied' | 'failed' | 'expired';
+export type AppResult = 'connected' | 'denied' | 'failed' | 'expired' | 'config' | 'grant' | 'refresh' | 'scope';
 const COPY: Record<AppResult, { status: number; title: string; text: string }> = {
   connected: { status: 200, title: 'Google Takvim bağlandı', text: 'Orbit uygulamasına dönebilirsin. Bu sekmeyi kapatabilirsin.' },
   denied: { status: 200, title: 'İzin verilmedi', text: 'Google Takvim bağlanmadı. İstersen Orbit uygulamasından yeniden deneyebilirsin.' },
   failed: { status: 400, title: 'Bağlantı kurulamadı', text: 'Orbit uygulamasına dönüp Google Takvim bağlantısını yeniden başlat.' },
+  // Reasons found while swapping Google's code for tokens. Each tells the person (or the owner) what to fix.
+  config: { status: 400, title: 'Google ayarı kabul edilmedi', text: 'Google, sunucudaki OAuth ayarını (istemci kimliği, gizli anahtar veya yönlendirme adresi) kabul etmedi. Orbit sahibinin Google Cloud Console ayarını kontrol etmesi gerekiyor.' },
+  grant: { status: 400, title: 'İzin kodu kabul edilmedi', text: 'Google bu izin kodunu reddetti; süresi dolmuş ya da bir kez kullanılmış olabilir. Orbit uygulamasında Google Takvim bağlantısını yeniden başlat.' },
+  refresh: { status: 400, title: 'Kalıcı izin alınamadı', text: 'Google kalıcı bağlantı anahtarı vermedi. myaccount.google.com/permissions adresinden Orbit için verdiğin izni kaldırıp bağlantıyı yeniden başlat.' },
+  scope: { status: 200, title: 'Takvim izni verilmedi', text: 'Google izin ekranında takvim kutusu işaretlenmeden devam edildi. Bağlantıyı yeniden başlat ve takvim etkinliklerine izin ver.' },
   expired: { status: 410, title: 'Bağlantının süresi doldu', text: 'Bu bağlantı tek kullanımlık ve kısa ömürlü. Orbit uygulamasında Google Takvim bağlantısını yeniden başlat.' },
 };
 // Static page: no scripts, no external requests, nothing from the URL is echoed back.

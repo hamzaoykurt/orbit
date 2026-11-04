@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   const owner = authenticatedUser();
   if (!owner) return unauthorized();
-  if (!googleCalendarConfig().configured) return Response.json({ error: 'Google Takvim sunucu ayarları eksik.' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+  const config = googleCalendarConfig();
+  if (!config.configured) return Response.json({ error: `Google Takvim sunucu ayarları eksik: ${config.missing.join(', ')}.`, missing: config.missing }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
   const ticket = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + LINK_LIFETIME_SECONDS;

@@ -1,14 +1,19 @@
 import { authenticatedUser } from '../../../../auth/context';
 import { digest, encryptRefreshToken, googleCalendarConfig } from '../../../../integrations/google-calendar/server';
+import type { AppResult } from '../../../../integrations/google-calendar/app-flow';
 import { appReturnPage, bindingCookie, readBinding, takeAppState } from '../../../../integrations/google-calendar/app-flow';
 import { getDatabase } from '../../../../db/client';
 
 export const dynamic = 'force-dynamic';
 
-const finish = (request: Request, result: 'connected' | 'denied' | 'failed') => {
+type Outcome = AppResult;
+const CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar'];
+// The web UI knows connected | denied | failed; the finer reasons only matter on the app's return page.
+const webResult = (result: Outcome) => (result === 'connected' || result === 'denied' || result === 'failed' ? result : result === 'scope' ? 'denied' : 'failed');
+const finish = (request: Request, result: Outcome) => {
   const url = new URL('/', request.url);
   url.searchParams.set('view', 'calendar');
-  url.searchParams.set('google-calendar', result);
+  url.searchParams.set('google-calendar', webResult(result));
   return new Response(null, { status: 303, headers: { Location: url.toString(), 'Cache-Control': 'no-store' } });
 };
 
@@ -24,7 +29,7 @@ export async function GET(request: Request) {
   const owner = appOwner ?? authenticatedUser();
   // No web session and no matching app flow (or D1 down): this is the system browser, so answer with a page, not JSON.
   if (!owner) return appReturnPage('failed', lookupFailed ? 503 : 401);
-  const done = (result: 'connected' | 'denied' | 'failed') => {
+  const done = (result: Outcome) => {
     if (!appOwner) return finish(request, result);
     const page = appReturnPage(result);
     page.headers.append('Set-Cookie', bindingCookie(request, '', true));
@@ -50,8 +55,17 @@ export async function GET(request: Request) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ code, client_id: config.clientId, client_secret: config.clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' }),
     });
-    const payload = await response.json().catch(() => ({})) as { refresh_token?: string; scope?: string };
-    if (!response.ok || !payload.refresh_token) return done('failed');
+    const payload = await response.json().catch(() => ({})) as { refresh_token?: string; scope?: string; error?: string };
+    if (!response.ok || !payload.refresh_token) {
+      // Google's own error code (a short snake_case word, never a secret) is the only way to tell these apart later.
+      const reason = typeof payload.error === 'string' && /^[a-z_]{1,40}$/.test(payload.error) ? payload.error : 'none';
+      console.warn('Google Calendar token exchange failed', response.status, reason, response.ok ? 'no refresh_token' : '');
+      if (response.ok) return done('refresh');
+      return done(['invalid_client', 'unauthorized_client', 'redirect_uri_mismatch'].includes(reason) ? 'config' : reason === 'invalid_grant' ? 'grant' : 'failed');
+    }
+    // Google lets the person untick individual permissions on the consent screen; without the calendar one
+    // the connection would look "connected" and then fail on every read.
+    if (payload.scope && !payload.scope.split(' ').some((scope) => CALENDAR_SCOPES.includes(scope))) return done('scope');
     const encrypted = await encryptRefreshToken(payload.refresh_token, owner, config.encryptionSecret);
     await database.prepare(`INSERT INTO orbit_google_calendar_credentials
       (owner, refresh_token_ciphertext, refresh_token_iv, calendar_id, scope, connected_at, updated_at)

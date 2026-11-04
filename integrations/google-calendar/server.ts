@@ -25,7 +25,8 @@ export function googleCalendarConfig() {
   const calendarId = process.env.GOOGLE_CALENDAR_ID?.trim()
     || process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_ID?.trim()
     || 'primary';
-  return { clientId, clientSecret, encryptionSecret, calendarId, configured: Boolean(clientId && clientSecret && encryptionSecret) };
+  const missing = [!clientId && 'GOOGLE_OAUTH_CLIENT_ID', !clientSecret && 'GOOGLE_OAUTH_CLIENT_SECRET', !encryptionSecret && 'GOOGLE_TOKEN_ENCRYPTION_KEY'].filter((name): name is string => Boolean(name));
+  return { clientId, clientSecret, encryptionSecret, calendarId, missing, configured: missing.length === 0 };
 }
 
 export async function digest(value: string) {
@@ -94,12 +95,26 @@ export async function getGoogleAccessToken(owner: string) {
   return { accessToken: payload.access_token, calendarId: row.calendar_id || config.calendarId };
 }
 
+async function googleReason(response: Response) {
+  try {
+    const body = JSON.parse((await response.text()).slice(0, 8192)) as { error?: { errors?: { reason?: unknown }[]; details?: { reason?: unknown }[] } };
+    return [...(body.error?.errors ?? []), ...(body.error?.details ?? [])].map((item) => String(item?.reason ?? '')).join(' ');
+  } catch { return ''; }
+}
+
 export async function googleCalendarFetch(owner: string, path: (calendarId: string) => string, init: RequestInit = {}) {
   const { accessToken, calendarId } = await getGoogleAccessToken(owner);
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${accessToken}`);
   const response = await fetch(`${CALENDAR_API}${path(calendarId)}`, { ...init, headers });
   if (response.status === 401) throw new GoogleCalendarError('Google Takvim izni geçersiz. Yeniden bağlanmalısın.', 401, true);
+  if (response.status === 403) {
+    // 403 is overloaded at Google: a disabled API and a missing permission need different fixes and both
+    // used to surface as "service unreachable". Rate-limit 403s pass through unchanged.
+    const reason = await googleReason(response.clone());
+    if (/accessNotConfigured|SERVICE_DISABLED/.test(reason)) throw new GoogleCalendarError('Google Calendar API, bağlı Google Cloud projesinde etkin değil. Google Cloud Console > APIs & Services bölümünden Google Calendar API’yi etkinleştir.', 503);
+    if (/insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT/.test(reason)) throw new GoogleCalendarError('Takvim izni eksik. Bağlantıyı yeniden başlat ve izin ekranında takvim kutusunu işaretle.', 403, true);
+  }
   return response;
 }
 
