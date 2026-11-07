@@ -10,8 +10,8 @@ const url=(file,replacements={})=>{
   for(const [from,to] of Object.entries(replacements))code=code.replaceAll(from,to);
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 };
-const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),serviceUrl=url('../generation/service.ts');
-const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts'),providerErrorsUrl=url('../generation/provider-errors.ts');
+const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts'),diversityUrl=url('../generation/diversity.ts'),serviceUrl=url('../generation/service.ts',{"'../app/rebuild/idea-engine'":JSON.stringify(engineUrl),"'./diversity'":JSON.stringify(diversityUrl)});
+const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),providerErrorsUrl=url('../generation/provider-errors.ts');
 const {GenerationRepository}=await import(repoUrl),{GenerationService}=await import(serviceUrl),{createModelProvider}=await import(providerUrl);
 const {resolveModelConfig}=await import(providerUrl);
 const practice=await import(url('../app/rebuild/practice-model.ts'));
@@ -185,7 +185,7 @@ test('category and platform filters reach generation and enforce the selected di
   assert.equal(result.platform,'automation');assert.equal(requests[0].input.preferredPlatform,'automation');assert.match(requests[0].instructions,/selected platform "automation"/);
   const researchStore=(await repo('research-filter')).store,researchRequests=[];
   await new GenerationService(researchStore,async request=>{researchRequests.push(request);return topic;},'test',()=>.8).generate({type:'research',category:'science'});
-  assert.equal(researchRequests[0].input.category,'science');assert.match(researchRequests[0].instructions,/Ancient history.*never the default/);
+  assert.equal(researchRequests[0].input.category,'science');assert.match(researchRequests[0].instructions,/today's science/);assert.doesNotMatch(researchRequests[0].instructions,/ancient|antique|archaeolog|vintage/i);
 });
 
 test('an interrupted plan does not accept or partially save the project',async()=>{
@@ -268,8 +268,7 @@ test('Visual Lab generates concepts, full prompts and sourced variations with du
   const prompt=await service.generateVisualPrompt({sourceId:concept.id});assert.equal(prompt.parentId,concept.id);assert.ok(prompt.text.length>600);
   const conceptCall=calls.find(x=>x.name==='orbit_suggestion'&&x.input.visualMode===undefined);
   const promptCall=calls.find(x=>x.name==='orbit_suggestion'&&x.input.visualMode==='prompt');
-  assert.match(conceptCall.instructions,/contemporary or era-neutral visual world/);
-  assert.match(conceptCall.instructions,/Historical, ancient.*never a general creativity shortcut/);
+  assert.match(conceptCall.instructions,/contemporary, present-day visual world/);assert.doesNotMatch(conceptCall.instructions+conceptCall.input.direction,/ancient|antique|vintage|sepia|aged/i);
   assert.match(conceptCall.input.direction,/contemporary or era-neutral world/);
   assert.match(promptCall.instructions,/technical image-generation prompt in natural English/);
   assert.match(promptCall.instructions,/Do not age, historicize, modernize, polish or make the source more cinematic by default/);
