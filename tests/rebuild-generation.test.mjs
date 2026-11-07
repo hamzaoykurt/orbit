@@ -10,7 +10,7 @@ const url=(file,replacements={})=>{
   for(const [from,to] of Object.entries(replacements))code=code.replaceAll(from,to);
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 };
-const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts'),diversityUrl=url('../generation/diversity.ts'),serviceUrl=url('../generation/service.ts',{"'../app/rebuild/idea-engine'":JSON.stringify(engineUrl),"'./diversity'":JSON.stringify(diversityUrl)});
+const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts'),diversityUrl=url('../generation/diversity.ts'),studioUrl=url('../generation/prompt-studio.ts',{"'../app/rebuild/idea-engine'":JSON.stringify(engineUrl)}),serviceUrl=url('../generation/service.ts',{"'./prompt-studio'":JSON.stringify(studioUrl),"'../app/rebuild/idea-engine'":JSON.stringify(engineUrl),"'./diversity'":JSON.stringify(diversityUrl)});
 const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),providerErrorsUrl=url('../generation/provider-errors.ts');
 const {GenerationRepository}=await import(repoUrl),{GenerationService}=await import(serviceUrl),{createModelProvider}=await import(providerUrl);
 const {resolveModelConfig}=await import(providerUrl);
@@ -206,7 +206,7 @@ const contextUrl=url('../auth/context.ts'),{authenticatedRequest}=await import(c
 const api=await import(url('../app/api/ideas/route.ts',{
   "import { env } from 'cloudflare:workers';":'const env = globalThis.__generationTestEnv;',
   "import { getDatabase } from '../../../db/client';":'const getDatabase = () => globalThis.__generationTestDb;',
-  "'../../../auth/context'":JSON.stringify(contextUrl),"'../../../generation/repository'":JSON.stringify(repoUrl),"'../../../generation/provider'":JSON.stringify(providerUrl),"'../../../generation/provider-errors'":JSON.stringify(providerErrorsUrl),"'../../../generation/service'":JSON.stringify(serviceUrl),"'../../rebuild/idea-engine'":JSON.stringify(engineUrl),
+  "'../../../auth/context'":JSON.stringify(contextUrl),"'../../../generation/repository'":JSON.stringify(repoUrl),"'../../../generation/provider'":JSON.stringify(providerUrl),"'../../../generation/provider-errors'":JSON.stringify(providerErrorsUrl),"'../../../generation/service'":JSON.stringify(serviceUrl),"'../../../generation/prompt-studio'":JSON.stringify(studioUrl),"'../../rebuild/idea-engine'":JSON.stringify(engineUrl),
 }));
 const request=(body,origin='https://orbit.test')=>new Request('https://orbit.test/api/ideas',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
 test('API denies anonymous and cross-origin requests, validates inputs and exposes no secret when unavailable',async()=>{
@@ -263,7 +263,7 @@ test('Visual Lab generates concepts, full prompts and sourced variations with du
     calls.push(request);if(request.name==='orbit_visual_source')return {sourceMatch:true};
     if(request.name==='orbit_novelty'){assert.equal(request.input.source,undefined);return {duplicate:false};}
     const number=++counter;
-    return {title:`Işık bahçesi ${number}`,text:number===1?'Gece açan cam çiçeklerden oluşan bir bahçe.':`${number} numaralı sahne: `+'Gece ışığında cam çiçekler, yumuşak gölgeler ve derin lacivert bir arka plan. '.repeat(15),domain:'Deneysel fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
+    return {title:`Işık bahçesi ${number}`,text:number===1?'Gece açan cam çiçeklerden oluşan bir bahçe.':`${number} numaralı sahne: `+'Gece ışığında cam çiçekler, yumuşak gölgeler ve derin lacivert bir arka plan. '.repeat(15),domain:'Deneysel fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make',summary:'Kısa Türkçe özet.',visualKind:'photo_scene'};
   },'test',()=>.8);
   const concept=await service.generateVisualConcept();assert.equal(concept.visualMode,'concept');
   const prompt=await service.generateVisualPrompt({sourceId:concept.id});assert.equal(prompt.parentId,concept.id);assert.ok(prompt.text.length>600);
@@ -290,19 +290,19 @@ test('DIGITAL acceptance does not persist a plan that introduces a hardware requ
 });
 test('Visual Lab retries unrelated variations instead of saving them under the source',async()=>{
   const {store}=await repo();let n=0,checks=0;
-  const source=await new GenerationService(store,async()=>({title:'Mantarlar',text:'Ormandaki mantarların makro fotoğrafı.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'}),'test').generateVisualPrompt();
+  const source=await new GenerationService(store,async()=>({title:'Mantarlar',text:'Ormandaki mantarların makro fotoğrafı.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make',summary:'Kısa Türkçe özet.',visualKind:'photo_scene'}),'test').generateVisualPrompt();
   const service=new GenerationService(store,async request=>{
     if(request.name==='orbit_visual_source'){assert.equal(request.input.source.id,source.id);return {sourceMatch:++checks>1};}
     if(request.name==='orbit_novelty'){assert.equal(request.input.source,undefined);return {duplicate:false};}
     assert.match(request.input.direction,/preserving its main subject/);
-    return ++n===1?{title:'Atölye',text:'Cam üfleyen bir ustanın fotoğrafı.',domain:'Zanaat',type:'image_prompt',kind:'MAKE',goal:'make'}:{title:'Gece mantarları',text:'Mor ay ışığında alçak açıdan görülen orman mantarları, yumuşak sis.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make'};
+    return ++n===1?{title:'Atölye',text:'Cam üfleyen bir ustanın fotoğrafı.',domain:'Zanaat',type:'image_prompt',kind:'MAKE',goal:'make',summary:'Kısa Türkçe özet.',visualKind:'photo_scene'}:{title:'Gece mantarları',text:'Mor ay ışığında alçak açıdan görülen orman mantarları, yumuşak sis.',domain:'Fotoğraf',type:'image_prompt',kind:'MAKE',goal:'make',summary:'Kısa Türkçe özet.',visualKind:'photo_scene'};
   },'test');
   const variation=await service.generateVisualVariation({sourceId:source.id});
   assert.match(variation.text,/mantarları/);assert.equal(n,2);assert.equal((await store.all()).length,2);
 });
 test('an already detailed visual concept can become a copyable prompt without a fingerprint collision',async()=>{
   const {store}=await repo();
-  const output={title:'Kristal bahçe',text:'Mor ışıkla parlayan kristal çiçeklerin üzerinde saydam bir kelebek. Sisli arka plan, makro görünüm.',domain:'Botanik',type:'image_prompt',kind:'MAKE',goal:'make'};
+  const output={title:'Kristal bahçe',text:'Mor ışıkla parlayan kristal çiçeklerin üzerinde saydam bir kelebek. Sisli arka plan, makro görünüm.',domain:'Botanik',type:'image_prompt',kind:'MAKE',goal:'make',summary:'Kısa Türkçe özet.',visualKind:'photo_scene'};
   const service=new GenerationService(store,async request=>request.name==='orbit_visual_source'?{sourceMatch:true}:request.name==='orbit_novelty'?{duplicate:false}:output,'test');
   const concept=await service.generateVisualConcept();
   const prompt=await service.generateVisualPrompt({sourceId:concept.id});
@@ -321,7 +321,7 @@ test('visual prompts carry an explicit brief as untrusted subject data',async()=
   const service=new GenerationService(store,async request=>{
     if(request.name==='orbit_novelty')return {duplicate:false};
     suggestion=request;
-    return {title:'Cam bisiklet',text:'A bicycle made from colored glass on a rain-washed contemporary city street.',domain:'Ürün fotoğrafı',type:'image_prompt',kind:'MAKE',goal:'make'};
+    return {title:'Cam bisiklet',text:'A bicycle made from colored glass on a rain-washed contemporary city street.',domain:'Ürün fotoğrafı',type:'image_prompt',kind:'MAKE',goal:'make',summary:'Kısa Türkçe özet.',visualKind:'photo_scene'};
   },'test');
   await service.generateVisualPrompt({brief:'  Yağmur sonrası şehirde renkli cam bisiklet  '});
   assert.equal(suggestion.input.userBrief,'Yağmur sonrası şehirde renkli cam bisiklet');
@@ -516,5 +516,121 @@ test('API: Rebuild categories pick the card type, new options are validated, wil
     assert.equal(await bad({category:'daily_life',type:'project'}),200);
     // an old client sends only the legacy fields
     assert.equal(await bad({type:'research',category:'science'}),200);assert.equal(await bad({type:'project'}),200);
+  });}finally{globalThis.fetch=realFetch;for(const key of Object.keys(globalThis.__generationTestEnv))delete globalThis.__generationTestEnv[key];}
+});
+
+// ---- Prompt Studio: image_prompt v2 + video_prompt ----
+const imageOut=(over={})=>({title:'Sessiz gürültü',text:'A poster where the headline "SESSİZ GÜRÜLTÜ" in a heavy display grotesk is cropped by the frame edges, letters stacked over a cyan speaker cone, tight tracking, headline dominates the lower two thirds.',domain:'Tipografik afiş',type:'image_prompt',kind:'MAKE',goal:'make',summary:'Dev harflerle kadrajdan taşan, hoparlör görselinin üzerine oturan afiş.',visualKind:'poster_type',...over});
+const seg=(...rows)=>rows.map(([start,end])=>({start,end,action:'Bir şey olur.',camera:'sabit'}));
+const videoOut=(over={})=>({title:'Harf yağmuru',text:'A 10 second vertical kinetic typography piece: the word "AKIŞ" slides in on a snappy ease-out, splits into letters and settles, 0-3s entrance, 3-10s drift and hold.',domain:'Kinetik tipografi',type:'video_prompt',kind:'MAKE',goal:'make',summary:'Tek kelimenin harflere bölünüp yerine oturduğu dikey kinetik tipografi.',videoKind:'kinetic_type',
+  timeline:seg([0,3],[3,10]),camera:'Sabit kadraj, sonda hafif yakınlaşma.',motion:'Hızlı ease-out girişler, yaylanma ile oturma.',transitions:'Sert kesme yok; harf kaydırması.',typographyAnimation:'Harfler 40 ms gecikmeyle sırayla girer.',audio:'Tok bir vuruş, 100 BPM hissi.',...over});
+let studioRepo;
+const studioService=(output,calls=[])=>new GenerationService(studioRepo.store,async req=>{calls.push(req);return req.name==='orbit_visual_source'?{sourceMatch:true}:req.name==='orbit_novelty'?{duplicate:false}:typeof output==='function'?output(req):output;},'test',()=>.4);
+test('Prompt Studio image: typography, work type and target model reach the brief; summary and quoted text are stored',async()=>{
+  studioRepo=await repo();const calls=[];
+  const idea=await studioService(imageOut(),calls).generate({type:'image_prompt',visualMode:'prompt',visualKind:'poster_type',targetModel:'ideogram',typoText:'SESSİZ GÜRÜLTÜ',typoStyle:'display',typoLayout:'oversized_crop',typoHierarchy:'title_sub',typoRelation:'integrated'});
+  const call=calls.find(x=>x.name==='orbit_suggestion');
+  assert.match(call.instructions,/TYPOGRAPHY IS A MAIN DESIGN ELEMENT/);assert.match(call.instructions,/Format for Ideogram/);assert.match(call.instructions,/typographic poster/);
+  assert.equal(call.input.typography.text,'SESSİZ GÜRÜLTÜ');assert.equal(call.input.typography.layout,'oversized_crop');assert.equal(call.input.targetModel,'ideogram');
+  assert.ok(call.input.seed.lenses.length&&call.input.memory&&call.input.history);assert.equal(call.temperature,1.15);
+  assert.ok(call.schema.properties.visualKind.enum.includes('poster_type'));assert.ok(call.schema.required.includes('summary'));
+  assert.ok(idea.summary.startsWith('Dev harflerle'));assert.equal(idea.visualKind,'poster_type');assert.equal(idea.targetModel,'ideogram');assert.equal(idea.typography.style,'display');assert.equal(idea.visualMode,'prompt');
+  assert.ok((await import(engineUrl)).isIdea(idea));assert.deepEqual(await studioRepo.store.get(idea.id),{...idea});
+  // no typography selected: no lettering block
+  studioRepo=await repo();const calls2=[];
+  await studioService(imageOut({text:'A glass bicycle on a rain-washed street at dusk, low viewpoint.',visualKind:'photo_scene'}),calls2).generate({type:'image_prompt',visualMode:'prompt',targetModel:'midjourney'});
+  const call2=calls2.find(x=>x.name==='orbit_suggestion');assert.doesNotMatch(call2.instructions,/TYPOGRAPHY IS A MAIN/);assert.match(call2.instructions,/Format for Midjourney/);assert.match(call2.instructions,/No "--" parameters/);
+});
+test('Prompt Studio image: server rejects answers missing summary, quoted text or the chosen work type',async()=>{
+  const ask={type:'image_prompt',visualMode:'prompt',visualKind:'poster_type',typoText:'SESSİZ GÜRÜLTÜ'};
+  for(const [label,output] of [['no summary',imageOut({summary:undefined})],['text not quoted',imageOut({text:'A poster with the headline SESSİZ GÜRÜLTÜ in big grotesk letters over a speaker cone image, cropped.'})],['wrong text',imageOut({text:'A poster with "BAŞKA YAZI" over a speaker cone image, cropped letters and tight tracking.'})],['wrong kind',imageOut({visualKind:'editorial'})],['bad kind',imageOut({visualKind:'nope'})]]){
+    studioRepo=await repo();let n=0;
+    await assert.rejects(studioService(()=>{n++;return output;}).generate(ask),e=>e.code==='invalid-provider-output',label);
+    assert.equal(n,3,label);assert.deepEqual(await studioRepo.store.all(),[],label);
+  }
+  studioRepo=await repo();
+  await assert.rejects(studioService(imageOut({text:'A bold poster with an invented headline but no quotation marks around any lettering at all.'})).generate({type:'image_prompt',visualMode:'prompt',visualKind:'poster_type'}),e=>e.code==='invalid-provider-output');
+  studioRepo=await repo();assert.ok((await studioService(imageOut({text:'A bold poster with the invented headline "DUR" set in huge serif letters across the middle.'})).generate({type:'image_prompt',visualMode:'prompt',visualKind:'poster_type'})).typography);
+});
+test('Prompt Studio image variation keeps the source typography and work type',async()=>{
+  studioRepo=await repo();const calls=[];
+  const source=await studioService(imageOut(),calls).generate({type:'image_prompt',visualMode:'prompt',visualKind:'poster_type',typoText:'SESSİZ GÜRÜLTÜ',typoStyle:'display'});
+  const variation=await studioService(imageOut({text:'The same poster seen from above: "SESSİZ GÜRÜLTÜ" mirrored along a fold in the paper, light display letters, warm side light.'}),calls).generate({type:'image_prompt',visualMode:'variation',sourceId:source.id});
+  const call=calls.filter(x=>x.name==='orbit_suggestion').at(-1);
+  assert.equal(call.input.typography.text,'SESSİZ GÜRÜLTÜ');assert.equal(variation.visualKind,'poster_type');assert.equal(variation.typography.style,'display');assert.equal(variation.parentId,source.id);
+});
+test('Prompt Studio video: timeline, motion notes and model format are produced and stored',async()=>{
+  studioRepo=await repo();const calls=[];
+  const idea=await studioService(videoOut(),calls).generate({type:'video_prompt',videoKind:'kinetic_type',videoDuration:10,aspect:'9:16',targetModel:'remotion_ae',typoText:'AKIŞ',typoStyle:'grotesk'});
+  const call=calls.find(x=>x.name==='orbit_suggestion');
+  assert.match(call.instructions,/exactly 10 seconds/);assert.match(call.instructions,/9:16/);assert.match(call.instructions,/Remotion \/ After Effects build recipe/);assert.match(call.instructions,/TYPOGRAPHY IS A MAIN/);assert.match(call.instructions,/kinetic typography/);
+  assert.equal(call.schema.properties.timeline.minItems,2);assert.ok(call.schema.required.includes('audio'));assert.deepEqual(call.input.video,{kind:'kinetic_type',durationSec:10,aspect:'9:16'});
+  assert.equal(idea.type,'video_prompt');assert.equal(idea.video.timeline.length,2);assert.equal(idea.video.durationSec,10);assert.equal(idea.video.aspect,'9:16');assert.equal(idea.video.kind,'kinetic_type');assert.equal(idea.targetModel,'remotion_ae');assert.equal(idea.typography.text,'AKIŞ');assert.ok(idea.summary);
+  assert.ok((await import(engineUrl)).isIdea(idea));assert.equal((await studioRepo.store.page(Number.MAX_SAFE_INTEGER,'video_prompt')).items.length,1);
+  studioRepo=await repo();const calls2=[];
+  const plain=await studioService(videoOut({videoKind:'loop',text:'A seamless loop of a glass sphere rolling across a matte floor, last frame matching the first, soft top light.',typographyAnimation:''}),calls2).generate({type:'video_prompt'});
+  const c2=calls2.find(x=>x.name==='orbit_suggestion');assert.deepEqual(c2.input.video,{durationSec:10,aspect:'9:16'});assert.doesNotMatch(c2.instructions,/TYPOGRAPHY IS A MAIN/);assert.equal(plain.targetModel,'generic');assert.equal(plain.typography,undefined);
+});
+test('Prompt Studio video: incomplete or inconsistent answers fail with invalid-provider-output',async()=>{
+  const ask={type:'video_prompt',videoKind:'kinetic_type',videoDuration:10,aspect:'16:9',typoText:'AKIŞ'};
+  const cases={'no summary':videoOut({summary:''}),'no audio':videoOut({audio:undefined}),'no motion':videoOut({motion:''}),'one segment':videoOut({timeline:seg([0,10])}),'gap':videoOut({timeline:seg([0,3],[4,10])}),'overlap':videoOut({timeline:seg([0,5],[4,10])}),'not from zero':videoOut({timeline:seg([1,5],[5,10])}),'ends early':videoOut({timeline:seg([0,3],[3,9])}),'fractional':videoOut({timeline:seg([0,3.5],[3.5,10])}),'wrong kind':videoOut({videoKind:'loop'}),'text not quoted':videoOut({text:'A vertical piece where the word AKIŞ slides in on a snappy ease-out and settles into place.'}),'no type animation':videoOut({typographyAnimation:''}),'segment without camera':videoOut({timeline:[{start:0,end:3,action:'x'},{start:3,end:10,action:'y',camera:'z'}]})};
+  for(const [label,output] of Object.entries(cases)){
+    studioRepo=await repo();
+    await assert.rejects(studioService(output).generate(ask),e=>e.code==='invalid-provider-output',label);
+    assert.deepEqual(await studioRepo.store.all(),[],label);
+  }
+  studioRepo=await repo();assert.ok((await studioService(videoOut()).generate(ask)).video);
+});
+test('Prompt Studio video: variation and wilder rewrite inherit the source options and follow the existing limits',async()=>{
+  studioRepo=await repo();const calls=[];
+  const long=(text,extra={})=>videoOut({text,title:text.slice(2,14),timeline:seg([0,5],[5,15]),...extra});
+  const source=await studioService(long('A fifteen second square piece: the word "AKIŞ" unfolds from a folded paper strip, serif letters, soft daylight, calm pacing.'),calls).generate({type:'video_prompt',videoKind:'kinetic_type',videoDuration:15,aspect:'1:1',targetModel:'veo',typoText:'AKIŞ',typoStyle:'serif'});
+  assert.equal(source.video.durationSec,15);
+  const variation=await studioService(long('Same paper strip idea but shot from the side with a slow dolly, "AKIŞ" lifting off the fold in serif capitals, long soft shadows.'),calls).generate({type:'video_prompt',visualMode:'variation',sourceId:source.id});
+  const vcall=calls.filter(x=>x.name==='orbit_suggestion').at(-1);
+  assert.deepEqual(vcall.input.video,{kind:'kinetic_type',durationSec:15,aspect:'1:1'});assert.equal(vcall.input.targetModel,'veo');assert.equal(vcall.input.typography.text,'AKIŞ');
+  assert.equal(variation.parentId,source.id);assert.equal(variation.visualMode,'variation');assert.equal(variation.video.aspect,'1:1');assert.equal(variation.targetModel,'veo');
+  await assert.rejects(studioService(videoOut()).generate({type:'video_prompt',visualMode:'variation'}),e=>e.code==='invalid-request');
+  // wilder: type and options come from the source, temperature rises, the count is capped
+  let wild;
+  for(let i=1;i<=3;i++){
+    wild=await studioService(long(['Letters spelling "AKIŞ" erupt from a flooded tram floor while ceiling fans spin and fluorescent tubes flicker.','Giant neon jellyfish carry the word "AKIŞ" through a drained swimming pool at midnight, camera orbiting slowly.','A bakery conveyor belt delivers bread loaves branded "AKIŞ", each exploding into confetti stencils, handheld whip pans.'][i-1]),calls).generate({wilder:true,sourceIdeaId:source.id});
+    const wcall=calls.filter(x=>x.name==='orbit_suggestion').at(-1);
+    assert.equal(wcall.temperature,1.3);assert.match(wcall.instructions,/WILDER MODE/);assert.equal(wcall.input.wilderSource.id,source.id);assert.equal(wcall.input.video.durationSec,15);
+    assert.equal(wild.type,'video_prompt');assert.equal(wild.wilderOf,source.id);assert.equal(wild.video.aspect,'1:1');
+  }
+  await assert.rejects(studioService(long('A fourth wilder attempt with "AKIŞ" in the rain.')).generate({wilder:true,sourceIdeaId:source.id}),e=>e.code==='wilder-limit');
+});
+test('Prompt Studio API: bad options give 400 {error, code}; good ones pass validation; video history is filterable',async()=>{
+  await authenticatedRequest.run({username:'owner'},async()=>{
+    const bad=[
+      {type:'image_prompt',visualKind:'nope'},{type:'video_prompt',visualKind:'poster_type'},{type:'project',visualKind:'editorial'},
+      {type:'image_prompt',targetModel:'veo'},{type:'video_prompt',targetModel:'midjourney'},{type:'project',targetModel:'generic'},
+      {type:'image_prompt',typoText:''},{type:'image_prompt',typoText:'x'.repeat(81)},{type:'image_prompt',typoText:'iki "tırnak"'},{type:'image_prompt',typoText:'satır\nsonu'},{type:'image_prompt',typoText:42},{type:'project',typoText:'Merhaba'},
+      {type:'image_prompt',typoStyle:'comic'},{type:'image_prompt',typoLayout:'x'},{type:'image_prompt',typoHierarchy:'x'},{type:'image_prompt',typoRelation:'x'},
+      {type:'video_prompt',videoKind:'nope'},{type:'video_prompt',videoDuration:7},{type:'video_prompt',videoDuration:'10'},{type:'video_prompt',aspect:'4:3'},{type:'image_prompt',videoDuration:10},{type:'image_prompt',aspect:'1:1'},{type:'image_prompt',videoKind:'loop'},
+      {type:'video_prompt',visualMode:'concept'},{type:'video_prompt',visualMode:'variation'},{type:'video_prompt',brief:42},{type:'video_prompt',brief:'x'.repeat(1001)},{type:'video_prompt',wilder:true},
+    ];
+    for(const body of bad){const res=await api.POST(request({action:'generate',...body})),payload=await res.json();assert.equal(res.status,400,JSON.stringify(body));assert.equal(payload.code,'invalid-request',JSON.stringify(body));assert.equal(typeof payload.error,'string');}
+    const good=[
+      {type:'image_prompt',visualMode:'prompt',visualKind:'poster_type',targetModel:'flux',typoText:'Merhaba dünya',typoStyle:'handwritten',typoLayout:'diagonal',typoHierarchy:'layered',typoRelation:'behind_subject',brief:'Bir fikir'},
+      {type:'image_prompt',visualKind:'logo_mark',targetModel:'gpt_image'},{type:'image_prompt',visualMode:'concept',typoText:'ÇĞİÖŞÜ'},
+      {type:'video_prompt',videoKind:'ui_animation',videoDuration:30,aspect:'16:9',targetModel:'runway',typoText:'Başla',typoStyle:'mono',brief:'Bir fikir'},{type:'video_prompt',targetModel:'kling'},{type:'video_prompt',visualMode:'prompt'},
+    ];
+    for(const body of good){const res=await api.POST(request({action:'generate',...body})),payload=await res.json();assert.equal(res.status,503,JSON.stringify(body));assert.equal(payload.code,'not_configured',JSON.stringify(body));}
+    assert.notEqual((await api.GET(new Request('https://orbit.test/api/ideas?type=video_prompt'))).status,400);
+  });
+});
+test('Prompt Studio API end to end: a video request reaches Gemini with the studio schema and returns the stored idea',async()=>{
+  const realFetch=globalThis.fetch,seen=[];
+  globalThis.__generationTestDb=database();Object.assign(globalThis.__generationTestEnv,{GEMINI_API_KEY:'test-key'});
+  globalThis.fetch=async(endpoint,options)=>{const body=JSON.parse(options.body),instructions=body.systemInstruction.parts[0].text;seen.push(body);
+    const wire=JSON.parse(instructions.slice(instructions.lastIndexOf('\n')+1));
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(wire.properties.duplicate?{duplicate:false}:videoOut({text:'A ten second UI animation: cards slide in with a snappy ease-out and a toggle clicks over, 0-3s intro, 3-10s interaction.',videoKind:'ui_animation',typographyAnimation:'',timeline:seg([0,4],[4,10])}))}]}}]});};
+  try{await authenticatedRequest.run({username:'video'},async()=>{
+    const res=await api.POST(request({action:'generate',type:'video_prompt',videoKind:'ui_animation',videoDuration:10,aspect:'9:16',targetModel:'sora'})),payload=await res.json();
+    assert.equal(res.status,200,JSON.stringify(payload));assert.equal(payload.idea.type,'video_prompt');assert.equal(payload.idea.video.kind,'ui_animation');assert.equal(payload.idea.video.timeline.length,2);assert.equal(payload.idea.targetModel,'sora');
+    const sent=seen[0],instructions=sent.systemInstruction.parts[0].text;assert.match(instructions,/Format for Sora/);assert.equal(sent.generationConfig.temperature,1.15);
+    const history=await (await api.GET(new Request('https://orbit.test/api/ideas?type=video_prompt'))).json();assert.equal(history.items.length,1);assert.equal(history.items[0].video.durationSec,10);
   });}finally{globalThis.fetch=realFetch;for(const key of Object.keys(globalThis.__generationTestEnv))delete globalThis.__generationTestEnv[key];}
 });
