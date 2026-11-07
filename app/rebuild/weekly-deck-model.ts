@@ -1,3 +1,4 @@
+import { carryExtras } from '../preserve-extras';
 import { isIdea } from './idea-engine';
 import type { GoalKind, Idea } from './idea-engine';
 
@@ -25,7 +26,7 @@ const cleanGoals = (value: unknown): WeeklyGoal[] => {
     const item = record(entry);
     if (!safeId(item.id) || used.has(item.id) || typeof item.name !== 'string' || !item.name.trim()) return [];
     used.add(item.id);
-    return [{id:item.id,name:item.name.trim().slice(0,80),target:Math.min(99,Math.max(1,Math.floor(Number(item.target)||1))),kind:['body','english','make','research','social','any'].includes(String(item.kind)) ? item.kind as GoalKind : 'any' as const}];
+    return [carryExtras(item,{id:item.id,name:item.name.trim().slice(0,80),target:Math.min(99,Math.max(1,Math.floor(Number(item.target)||1))),kind:['body','english','make','research','social','any'].includes(String(item.kind)) ? item.kind as GoalKind : 'any' as const},['id','name','target','kind'])];
   });
 };
 export function normalizeDeck(value: unknown): WeeklyDeck {
@@ -43,13 +44,13 @@ export function normalizeDeck(value: unknown): WeeklyDeck {
         const mark = record(entry);
         if (typeof mark.id !== 'string' || typeof mark.at !== 'string' || ids.has(mark.id)) return [];
         ids.add(mark.id);
-        return [{id:mark.id,at:mark.at,...(isIdea(mark.idea)?{idea:mark.idea}:{})}];
+        return [carryExtras(mark,{id:mark.id,at:mark.at,...(isIdea(mark.idea)?{idea:mark.idea}:{})},['id','at','idea'])];
       });
     }
     const ideas = Object.fromEntries(Object.entries(record(week.ideas)).filter(([id,idea])=>safeId(id) && isIdea(idea))) as DeckWeek['ideas'];
-    weeks[key] = {goals:cleanGoals(week.goals),marks,ideas};
+    weeks[key] = carryExtras(week,{goals:cleanGoals(week.goals),marks,ideas},['goals','marks','ideas']);
   }
-  return {version:1,startedOn:validDay(saved.startedOn)?saved.startedOn:'',defaults:Array.isArray(saved.defaults)?cleanGoals(saved.defaults):base.defaults,weeks,seenIdeas:Array.isArray(saved.seenIdeas)?saved.seenIdeas.filter((id): id is string=>typeof id==='string').slice(-100):[]};
+  return carryExtras(saved,{version:1 as const,startedOn:validDay(saved.startedOn)?saved.startedOn:'',defaults:Array.isArray(saved.defaults)?cleanGoals(saved.defaults):base.defaults,weeks,seenIdeas:Array.isArray(saved.seenIdeas)?saved.seenIdeas.filter((id): id is string=>typeof id==='string').slice(-100):[]},['version','startedOn','defaults','weeks','seenIdeas']);
 }
 const legacyKind = (entry: LegacyActivity): GoalKind => {
   if (entry.areaId === 'body') return 'body';

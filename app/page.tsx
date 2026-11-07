@@ -46,6 +46,7 @@ import type { WeeklyDeck } from './rebuild/weekly-deck-model';
 import { emptyPractice, normalizePractice, acceptIntoPractice } from './rebuild/practice-model';
 import type { Practice } from './rebuild/practice-model';
 import type { FitnessSummary } from '../integrations/profitness/protocol';
+import { carryExtras } from './preserve-extras';
 import { normalizeHubLinks } from './hub/hub-model';
 import type { HubLink } from './hub/hub-model';
 import {
@@ -243,7 +244,8 @@ function mergePersistedState(value: unknown): PersistedState {
   const migratedMobileNav = saved.program || baseMobileNav.includes('weekplan') ? baseMobileNav
     : baseMobileNav.map((page, index, all) => page === 'kibleteyn' || (!all.includes('kibleteyn') && index === all.length - 1) ? 'weekplan' as PageKey : page);
 
-  return {
+  // Unknown top-level keys (written by the native app or a newer build) are carried along untouched.
+  return carryExtras(saved, {
     completed: { ...defaultState.completed, ...(saved.completed ?? {}) },
     customPersonal: {
       ...defaultState.customPersonal,
@@ -293,7 +295,7 @@ function mergePersistedState(value: unknown): PersistedState {
     mobileNav: migratedMobileNav,
     profile: { ...defaultState.profile, ...(saved.profile ?? {}) },
     settings: { ...defaultState.settings, ...savedSettings, ...(needsFeedbackMigration ? { sound: true, soundVolume: 110, haptics: true, feedbackVersion: 4 } : {}), theme: savedSettings.theme === 'light' || savedSettings.theme === 'dark' ? savedSettings.theme : 'system', appIcon: savedSettings.appIcon === 'dark' || savedSettings.appIcon === 'auto' ? savedSettings.appIcon : 'light' },
-  };
+  }, Object.keys(defaultState)) as PersistedState;
 }
 
 const personalLists = {

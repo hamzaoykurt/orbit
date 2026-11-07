@@ -1,3 +1,4 @@
+import { carryExtras } from '../preserve-extras';
 export type HubPlatform = 'youtube' | 'twitter' | 'github' | 'instagram' | 'web';
 
 // Single source for the Hub categories: filter chips, the Groq prompt and validation of model output all read this list.
@@ -96,7 +97,7 @@ export const normalizeHubLinks = (value: unknown): HubLink[] => {
     const item = entry as Partial<HubLink>;
     if (typeof item.id !== 'string' || typeof item.url !== 'string' || typeof item.title !== 'string') return [];
     const platform: HubPlatform = ['youtube', 'twitter', 'github', 'instagram', 'web'].includes(item.platform ?? '') ? item.platform as HubPlatform : 'web';
-    return [{
+    return [carryExtras(item, {
       id: item.id,
       url: item.url,
       platform,
@@ -114,7 +115,7 @@ export const normalizeHubLinks = (value: unknown): HubLink[] => {
       createdAt: typeof item.createdAt === 'string' ? item.createdAt : new Date(0).toISOString(),
       embedded: Array.isArray(item.embedded) ? item.embedded.filter((link): link is HubEmbeddedLink => Boolean(link && typeof link === 'object' && typeof link.url === 'string')) : [],
       images: Array.isArray(item.images) ? item.images.filter((image): image is string => typeof image === 'string').slice(0, 8) : [],
-    }];
+    }, ['id', 'url', 'platform', 'title', 'summary', 'purpose', 'estimated', 'untranslated', 'note', 'thumbnailUrl', 'author', 'categories', 'mainCategory', 'addedBy', 'createdAt', 'embedded', 'images'])];
   }).slice(0, 200);
 };
 

@@ -1,3 +1,4 @@
+import { carryExtras } from '../preserve-extras';
 import type { ProjectPlanning } from './planning-types';
 export type ProjectPhoto = { id: string; url: string; name: string; createdAt: string };
 export type ProjectNoteKind = 'decision'|'meeting'|'idea'|'research';
@@ -108,9 +109,9 @@ export function normalizeWorkspace(value:unknown):ProjectWorkspaceData{
     if(typeof note.id!=='string')return[];const kind=['decision','meeting','idea','research'].includes(String(note.kind))?note.kind as ProjectNoteKind:'idea';
     const links=(Array.isArray(note.links)?note.links:[]).filter(link=>link&&typeof link.id==='string'&&typeof link.title==='string'&&typeof link.url==='string'&&safeResourceUrl(link.url));
     const images=(Array.isArray(note.images)?note.images:[]).filter(image=>image&&typeof image.id==='string'&&typeof image.url==='string').map(image=>({...image,name:typeof image.name==='string'?image.name:'Görsel',createdAt:typeof image.createdAt==='string'?image.createdAt:'',caption:typeof image.caption==='string'?image.caption:''}));
-    return[{id:note.id,title:typeof note.title==='string'?note.title:'Yeni not',body:typeof note.body==='string'?note.body:'',kind,context:typeof note.context==='string'?note.context:'',outcome:typeof note.outcome==='string'?note.outcome:'',nextStep:typeof note.nextStep==='string'?note.nextStep:'',links,images}];
+    return[carryExtras(note,{id:note.id,title:typeof note.title==='string'?note.title:'Yeni not',body:typeof note.body==='string'?note.body:'',kind,context:typeof note.context==='string'?note.context:'',outcome:typeof note.outcome==='string'?note.outcome:'',nextStep:typeof note.nextStep==='string'?note.nextStep:'',links,images},['id','title','body','kind','context','outcome','nextStep','links','images'])];
   });
-  const mentor=raw.mentor&&raw.mentor.source==='mentor'&&typeof raw.mentor.importedAt==='string'?{source:'mentor' as const,importedAt:raw.mentor.importedAt,...(typeof raw.mentor.suggestedDesignLanguage==='string'?{suggestedDesignLanguage:raw.mentor.suggestedDesignLanguage}:{})}:undefined;
+  const mentor=raw.mentor&&raw.mentor.source==='mentor'&&typeof raw.mentor.importedAt==='string'?carryExtras(raw.mentor,{source:'mentor' as const,importedAt:raw.mentor.importedAt,...(typeof raw.mentor.suggestedDesignLanguage==='string'?{suggestedDesignLanguage:raw.mentor.suggestedDesignLanguage}:{})},['source','importedAt','suggestedDesignLanguage']):undefined;
   return {...emptyWorkspace,...raw,description:typeof raw.description==='string'?raw.description:'',diagrams:Array.isArray(raw.diagrams)?raw.diagrams:[],notes,links:Array.isArray(raw.links)?raw.links:[],...(mentor?{mentor}:{})};
 }
 export function moveDiagramNode(diagram: Diagram, id: string, x: number, y: number): Diagram {
