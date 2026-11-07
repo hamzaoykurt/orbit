@@ -41,10 +41,12 @@ before(async () => {
     outboundService: async fake => {
       const url = new URL(fake.url);
       if (url.pathname.startsWith('/calendar/v3/')) {
-        calendarCalls.push({ url: fake.url, method: fake.method, auth: fake.headers.get('authorization') });
+        calendarCalls.push({ url: fake.url, method: fake.method, auth: fake.headers.get('authorization'), body: fake.method === 'GET' ? '' : await fake.text() });
+        if (apiMode === 'gone' && fake.method !== 'GET') return Response.json({ error: { code: 404 } }, { status: 404 });
+        if (apiMode === 'gone410') return Response.json({ error: { code: 410 } }, { status: 410 });
         if (apiMode === 'api_disabled') return Response.json({ error: { code: 403, errors: [{ reason: 'accessNotConfigured' }] } }, { status: 403 });
         if (apiMode === 'scope') return Response.json({ error: { code: 403, errors: [{ reason: 'insufficientPermissions' }] } }, { status: 403 });
-        return fake.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json(fake.method === 'POST' ? { id: 'ev-created' } : { items: [{ id: 'ev-listed' }] });
+        return fake.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json(fake.method === 'POST' ? { id: 'ev-created' } : fake.method === 'PATCH' ? { id: 'ev-1', summary: 'yeni' } : { items: [{ id: 'ev-listed' }] });
       }
       if (url.pathname === '/revoke') { calendarCalls.push({ url: fake.url, method: fake.method }); return new Response('{}'); }
       const body = new URLSearchParams(await fake.text());
@@ -397,6 +399,38 @@ test('the sessionless doors are rate limited per client before D1 is touched', a
   const link = await request(`/api/google-calendar/connect?link=${'Q'.repeat(43)}`, { headers: { 'cf-connecting-ip': flood } });
   assert.equal(link.status, 429, 'same budget for the link door');
   assert.equal((await request(`/api/google-calendar/callback?code=c&state=${'Q'.repeat(43)}`, { headers: { 'cf-connecting-ip': '203.0.113.201' } })).status, 401, 'other clients are unaffected');
+});
+
+test('Google Calendar events: orbitEventId is stored on insert, PATCH edits only whitelisted fields, 404/410 become gone', async () => {
+  const { token } = await issue();
+  await connectGoogle(token);
+  const json = { 'content-type': 'application/json' };
+  const send = (method, body) => request('/api/google-calendar/events', { method, headers: { ...bearer(token), ...json }, body: JSON.stringify(body) });
+  const lastCall = () => calendarCalls[calendarCalls.length - 1];
+  assert.equal((await send('POST', { summary: 'A', orbitEventId: 'orb-1', extendedProperties: { private: { orbitEventId: 'forged' }, shared: { x: '1' } } })).status, 200);
+  assert.deepEqual(JSON.parse(lastCall().body), { summary: 'A', extendedProperties: { private: { orbitEventId: 'orb-1' } } });
+  const patched = await send('PATCH', { eventId: 'ev/1', summary: 'yeni', description: 'd', start: { dateTime: '2026-11-10T10:00:00.000Z' }, end: { date: '2026-11-11' }, orbitEventId: 'orb-1', attendees: [{ email: 'x@y.z' }], status: 'cancelled' });
+  assert.equal(patched.status, 200);
+  assert.deepEqual(await patched.json(), { id: 'ev-1', summary: 'yeni' });
+  assert.equal(lastCall().method, 'PATCH');
+  assert.match(lastCall().url, /\/events\/ev%2F1$/);
+  assert.deepEqual(JSON.parse(lastCall().body), { summary: 'yeni', description: 'd', start: { dateTime: '2026-11-10T10:00:00.000Z' }, end: { date: '2026-11-11' }, extendedProperties: { private: { orbitEventId: 'orb-1' } } });
+  for (const bad of [{}, { eventId: '' }, { eventId: 'e' }, { eventId: 'e', summary: ' ' }, { eventId: 'e', summary: 5 }, { eventId: 'e', start: { dateTime: 'nope' } }, { eventId: 'e', end: 'x' }])
+    assert.equal((await send('PATCH', bad)).status, 400, JSON.stringify(bad));
+  assert.equal((await request('/api/google-calendar/events', { method: 'PATCH', headers: json, body: '{"eventId":"e","summary":"x"}' })).status, 401, 'PATCH needs a token');
+  const count = calendarCalls.length;
+  await send('PATCH', { eventId: 'e' });
+  assert.equal(calendarCalls.length, count, 'invalid input never reaches Google');
+  for (const mode of ['gone', 'gone410']) {
+    apiMode = mode;
+    try {
+      const edit = await send('PATCH', { eventId: 'e', summary: 'x' });
+      assert.equal(edit.status, 200, mode);
+      assert.deepEqual(await edit.json(), { code: 'gone' });
+      if (mode === 'gone') { const del = await send('DELETE', { eventId: 'e' }); assert.equal(del.status, 200); assert.deepEqual(await del.json(), { deleted: true, code: 'gone' }); }
+      else { const del = await send('DELETE', { eventId: 'e' }); assert.deepEqual(await del.json(), { deleted: true, code: 'gone' }); }
+    } finally { apiMode = 'ok'; }
+  }
 });
 
 test('lowercase and uppercase Bearer schemes work, and Bearer wins over a valid cookie on writes', async () => {
