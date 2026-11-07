@@ -6,13 +6,14 @@ import { createFailoverProvider, resolveModelConfig } from '../../../generation/
 import { providerFailureCode, providerFailureMessage, providerFailureStatus } from '../../../generation/provider-errors';
 import type { ProviderBindings } from '../../../generation/provider';
 import { GenerationError, GenerationService } from '../../../generation/service';
+import { isStudioType, studioRequestInvalid } from '../../../generation/prompt-studio';
 import { CREATE_CATEGORIES, DIGITAL_PLATFORMS, GENERATION_UNAVAILABLE, IDEA_DIFFICULTIES, IDEA_DURATIONS, IDEA_MOODS, REBUILD_CATEGORIES, RESEARCH_CATEGORIES, SOCIAL_CATEGORIES } from '../../rebuild/idea-engine';
 import type { IdeaRequest, SuggestionType } from '../../rebuild/idea-engine';
 
 export const dynamic = 'force-dynamic';
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers:{'Cache-Control':'private, no-store'} });
 const bindings = () => env as unknown as ProviderBindings;
-const suggestionTypes = ['project','digital_project','image_prompt','research','activity','meal','vocabulary','speaking'];
+const suggestionTypes = ['project','digital_project','image_prompt','video_prompt','research','activity','meal','vocabulary','speaking'];
 const categoriesByType:Record<string,Set<string>>={project:new Set(CREATE_CATEGORIES.map(item=>item.value)),research:new Set(RESEARCH_CATEGORIES.map(item=>item.value)),activity:new Set(SOCIAL_CATEGORIES.map(item=>item.value))};
 const rebuildTypes=new Map<string,string>(REBUILD_CATEGORIES.map(item=>[item.value,item.type]));
 const digitalPlatforms=new Set<string>(DIGITAL_PLATFORMS.filter(item=>item.value!=='surprise').map(item=>item.value));
@@ -58,10 +59,11 @@ export async function POST(request: Request) {
     if(body.action==='generate'&&(Boolean(body.wilder)!==(body.sourceIdeaId!==undefined)||(body.wilder&&body.type==='image_prompt')))throw new GenerationError('invalid-request',400);
     if(body.platform&&(body.type!=='digital_project'||!digitalPlatforms.has(String(body.platform))))throw new GenerationError('invalid-request',400);
     if(body.words && (!Array.isArray(body.words)||body.words.length>20||body.words.some((word:unknown)=>typeof word!=='string'||word.length>60)))throw new GenerationError('invalid-request',400);
-    if(body.visualMode && (body.type!=='image_prompt'||!['concept','prompt','variation'].includes(body.visualMode)))throw new GenerationError('invalid-request',400);
-    if(body.sourceId && (body.type!=='image_prompt'||typeof body.sourceId!=='string'||!/^[-\w]{1,100}$/.test(body.sourceId)))throw new GenerationError('invalid-request',400);
+    if(body.visualMode && (!isStudioType(body.type)||!['concept','prompt','variation'].includes(body.visualMode)))throw new GenerationError('invalid-request',400);
+    if(body.sourceId && (!isStudioType(body.type)||typeof body.sourceId!=='string'||!/^[-\w]{1,100}$/.test(body.sourceId)))throw new GenerationError('invalid-request',400);
     if(body.visualMode==='variation'&&!body.sourceId)throw new GenerationError('invalid-request',400);
-    if(body.brief!==undefined&&(body.type!=='image_prompt'||typeof body.brief!=='string'||body.brief.length>1000))throw new GenerationError('invalid-request',400);
+    if(body.brief!==undefined&&(!isStudioType(body.type)||typeof body.brief!=='string'||body.brief.length>1000))throw new GenerationError('invalid-request',400);
+    if(studioRequestInvalid(body))throw new GenerationError('invalid-request',400);
     const config=resolveModelConfig(bindings());
     store=new GenerationRepository(getDatabase(),owner);await store.ensure();
     if(body.action==='decision') {
@@ -79,7 +81,7 @@ export async function POST(request: Request) {
     const service=new GenerationService(store,createFailoverProvider(bindings()),`${config.provider}/${config.model}`);
     const signal=AbortSignal.any([request.signal,AbortSignal.timeout(95_000)]);
     const mappedType=body.category?rebuildTypes.get(String(body.category)):undefined;
-    const idea=body.action==='generate'?await service.generate({type:body.type&&body.type!=='surprise'?body.type:mappedType??body.type,goal:body.goal,category:body.category,duration:body.duration,difficulty:body.difficulty,mood:body.mood,wilder:body.wilder===true,sourceIdeaId:body.sourceIdeaId,platform:body.platform,words:body.words,brief:body.brief?.trim(),visualMode:body.visualMode,sourceId:body.sourceId} as IdeaRequest,signal):existing?.type==='digital_project'?await service.generateDigitalProjectPlan(body.id,signal):existing?.type==='research'?await service.generateResearchPlan(body.id,signal):await service.accept(body.id,signal);
+    const idea=body.action==='generate'?await service.generate({type:body.type&&body.type!=='surprise'?body.type:mappedType??body.type,goal:body.goal,category:body.category,duration:body.duration,difficulty:body.difficulty,mood:body.mood,wilder:body.wilder===true,sourceIdeaId:body.sourceIdeaId,platform:body.platform,words:body.words,brief:body.brief?.trim(),visualMode:body.visualMode,sourceId:body.sourceId,visualKind:body.visualKind,targetModel:body.targetModel,typoText:body.typoText?.trim(),typoStyle:body.typoStyle,typoLayout:body.typoLayout,typoHierarchy:body.typoHierarchy,typoRelation:body.typoRelation,videoKind:body.videoKind,videoDuration:body.videoDuration,aspect:body.aspect} as IdeaRequest,signal):existing?.type==='digital_project'?await service.generateDigitalProjectPlan(body.id,signal):existing?.type==='research'?await service.generateResearchPlan(body.id,signal):await service.accept(body.id,signal);
     return json({idea});
   }catch(error){
     const code=error instanceof GenerationError?error.code:providerFailureCode(error);
