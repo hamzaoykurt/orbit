@@ -8,7 +8,17 @@ export const DIGITAL_PLATFORMS = [{value:'surprise',label:'Karışık'},{value:'
 export type ResearchCategory = typeof RESEARCH_CATEGORIES[number]['value'];
 export type SocialCategory = typeof SOCIAL_CATEGORIES[number]['value'];
 export type CreateCategory = typeof CREATE_CATEGORIES[number]['value'];
-export type IdeaCategory = ResearchCategory|SocialCategory|CreateCategory;
+// Rebuild v2 categories (server contract: oneri-rebuild-ingilizce.md, SUNUCU SÖZLEŞMESİ). Keys differ from the legacy per-type ones on purpose.
+export const REBUILD_CATEGORIES = [{value:'digital_product',label:'Dijital ürün/uygulama',type:'digital_project'},{value:'creative_making',label:'Yaratıcı üretim',type:'project'},{value:'research_learning',label:'Araştırma/öğrenme',type:'research'},{value:'visual_design',label:'Görsel/tasarım',type:'project'},{value:'handmade',label:'Fiziksel/el işi',type:'project'},{value:'social_outdoor',label:'Sosyal/dışarı',type:'activity'},{value:'movement',label:'Spor/sağlık',type:'activity'},{value:'money_work',label:'Para/iş',type:'project'},{value:'play_fun',label:'Oyun/eğlence',type:'project'},{value:'daily_life',label:'Günlük hayat',type:'project'}] as const;
+export type RebuildCategory = typeof REBUILD_CATEGORIES[number]['value'];
+export const IDEA_DURATIONS = ['15m','1h','half_day','weekend'] as const;
+export const IDEA_DIFFICULTIES = ['easy','medium','hard'] as const;
+export const IDEA_MOODS = ['energetic','tired','curious','social','solo'] as const;
+export type IdeaDuration = typeof IDEA_DURATIONS[number];
+export type IdeaDifficulty = typeof IDEA_DIFFICULTIES[number];
+export type IdeaMood = typeof IDEA_MOODS[number];
+export const MAX_WILDER = 3;
+export type IdeaCategory = ResearchCategory|SocialCategory|CreateCategory|RebuildCategory;
 export type WordSuggestion = { word: string; meaning: string; example: string };
 export type ProjectPlan = { description: string; goal: string; scope: string; tasks: string[]; approach: string };
 export type ResearchPlan = { subquestions: string[] };
@@ -21,12 +31,15 @@ export type Idea = {
   platform?: DigitalPlatform;
   visualMode?: 'concept' | 'prompt' | 'variation';
   parentId?: string;
+  // Rebuild v2 card fields; all optional so records saved before them still open.
+  category?: RebuildCategory; tag?: string; why?: string; first30?: string[]; difficulty?: IdeaDifficulty; duration?: string; mood?: IdeaMood;
+  wilderOf?: string; wilderCount?: number;
 };
 export type GeneratedIdea = Idea & {
   title: string; type: SuggestionType; domain: string; generatedAt: string; model: string;
   status: 'generated' | 'skipped' | 'rejected' | 'accepted';
 };
-export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; category?:IdeaCategory; platform?:DigitalPlatform; words?: string[]; brief?: string; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; signal?: AbortSignal };
+export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; category?:IdeaCategory; platform?:DigitalPlatform; words?: string[]; brief?: string; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; duration?: IdeaDuration; difficulty?: IdeaDifficulty; mood?: IdeaMood; wilder?: boolean; sourceIdeaId?: string; signal?: AbortSignal };
 export const GENERATION_UNAVAILABLE = 'AI üretimi şu anda kullanılamıyor. Lütfen daha sonra tekrar dene.';
 
 export function isIdea(value: unknown): value is Idea {

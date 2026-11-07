@@ -1,5 +1,5 @@
 import { fetchFollowingRedirects } from './safe-fetch';
-export type ModelRequest = { name: string; instructions: string; input: unknown; schema: object; signal?: AbortSignal };
+export type ModelRequest = { name: string; instructions: string; input: unknown; schema: object; temperature?: number; topP?: number; signal?: AbortSignal };
 export type ModelProvider = (request: ModelRequest) => Promise<unknown>;
 export type ModelConfig = { apiKey?: string; model?: string; baseUrl?: string; provider?: 'openai' | 'gemini'; modelPinned?: boolean };
 // Google retires Gemini models on a published schedule (gemini-2.0-flash: 2026-06-01 at the earliest), so an
@@ -34,9 +34,9 @@ export function createFailoverProvider(env: ProviderBindings, transport: typeof 
 }
 
 export function createModelProvider(config: ModelConfig, transport: typeof fetch = fetch): ModelProvider {
-  return async ({ name, instructions, input, schema, signal }) => {
+  return async ({ name, instructions, input, schema, temperature, topP, signal }) => {
     if (!config.apiKey) throw new Error('provider-not-configured');
-    if(config.provider==='gemini')return generateGemini(config,{name,instructions,input,schema,signal},transport);
+    if(config.provider==='gemini')return generateGemini(config,{name,instructions,input,schema,temperature,topP,signal},transport);
     const base = new URL(config.baseUrl || 'https://api.openai.com/v1/');
     if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw new Error('provider-config-invalid');
     const endpoint = new URL(`${base.href.replace(/\/$/, '')}/responses`);
@@ -46,7 +46,8 @@ export function createModelProvider(config: ModelConfig, transport: typeof fetch
       body: JSON.stringify({
         model: config.model || 'gpt-5-mini', store: false, instructions,
         input: JSON.stringify(input), max_output_tokens: 6500,
-        ...((config.model || 'gpt-5-mini').startsWith('gpt-5') ? { reasoning: { effort: 'low' } } : {}),
+        // GPT-5 reasoning models reject sampling parameters; other models take them.
+        ...((config.model || 'gpt-5-mini').startsWith('gpt-5') ? { reasoning: { effort: 'low' } } : { ...(temperature!==undefined?{temperature}:{}), ...(topP!==undefined?{top_p:topP}:{}) }),
         text: { format: { type: 'json_schema', name, strict: true, schema } },
       }),
     }, { transport, sameOriginOnly: true });
@@ -115,8 +116,9 @@ async function generateGemini(config:ModelConfig,request:ModelRequest,transport:
 
 Return only one JSON object matching this output contract. Keep field names and enum values exactly as specified; translate content only. Do not wrap the object or add markdown. Respect all string length and array size limits.
 ${JSON.stringify(request.schema)}`}]},contents:[{role:'user',parts:[{text:JSON.stringify(request.input)}]}],
+    // temperature/topP are official generationConfig fields (aistudio.google.com/api-reference/generate-content, read 2026-11-04); the docs say Gemini 3.6 Flash and newer ignore them silently.
     // Thinking models spend part of this budget before the answer; a small cap ends in MAX_TOKENS.
-    generationConfig:{responseMimeType:'application/json',responseSchema:geminiSchema(request.schema),maxOutputTokens:16384},
+    generationConfig:{responseMimeType:'application/json',responseSchema:geminiSchema(request.schema),maxOutputTokens:16384,...(request.temperature!==undefined?{temperature:request.temperature}:{}),...(request.topP!==undefined?{topP:request.topP}:{})},
     }),
   });
   // Model availability differs by Google project and region and models get retired. A missing model (404) or an

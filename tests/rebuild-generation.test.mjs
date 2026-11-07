@@ -10,8 +10,8 @@ const url=(file,replacements={})=>{
   for(const [from,to] of Object.entries(replacements))code=code.replaceAll(from,to);
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 };
-const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),serviceUrl=url('../generation/service.ts');
-const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts'),providerErrorsUrl=url('../generation/provider-errors.ts');
+const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/repository.ts',{"'./schema'":JSON.stringify(schemaUrl)}),engineUrl=url('../app/rebuild/idea-engine.ts'),diversityUrl=url('../generation/diversity.ts'),serviceUrl=url('../generation/service.ts',{"'../app/rebuild/idea-engine'":JSON.stringify(engineUrl),"'./diversity'":JSON.stringify(diversityUrl)});
+const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),providerErrorsUrl=url('../generation/provider-errors.ts');
 const {GenerationRepository}=await import(repoUrl),{GenerationService}=await import(serviceUrl),{createModelProvider}=await import(providerUrl);
 const {resolveModelConfig}=await import(providerUrl);
 const practice=await import(url('../app/rebuild/practice-model.ts'));
@@ -185,7 +185,7 @@ test('category and platform filters reach generation and enforce the selected di
   assert.equal(result.platform,'automation');assert.equal(requests[0].input.preferredPlatform,'automation');assert.match(requests[0].instructions,/selected platform "automation"/);
   const researchStore=(await repo('research-filter')).store,researchRequests=[];
   await new GenerationService(researchStore,async request=>{researchRequests.push(request);return topic;},'test',()=>.8).generate({type:'research',category:'science'});
-  assert.equal(researchRequests[0].input.category,'science');assert.match(researchRequests[0].instructions,/Ancient history.*never the default/);
+  assert.equal(researchRequests[0].input.category,'science');assert.match(researchRequests[0].instructions,/today's science/);assert.doesNotMatch(researchRequests[0].instructions,/ancient|antique|archaeolog|vintage/i);
 });
 
 test('an interrupted plan does not accept or partially save the project',async()=>{
@@ -268,11 +268,10 @@ test('Visual Lab generates concepts, full prompts and sourced variations with du
   const prompt=await service.generateVisualPrompt({sourceId:concept.id});assert.equal(prompt.parentId,concept.id);assert.ok(prompt.text.length>600);
   const conceptCall=calls.find(x=>x.name==='orbit_suggestion'&&x.input.visualMode===undefined);
   const promptCall=calls.find(x=>x.name==='orbit_suggestion'&&x.input.visualMode==='prompt');
-  assert.match(conceptCall.instructions,/contemporary or era-neutral visual world/);
-  assert.match(conceptCall.instructions,/Historical, ancient.*never a general creativity shortcut/);
+  assert.match(conceptCall.instructions,/contemporary, present-day visual world/);assert.doesNotMatch(conceptCall.instructions+conceptCall.input.direction,/ancient|antique|vintage|sepia|aged/i);
   assert.match(conceptCall.input.direction,/contemporary or era-neutral world/);
   assert.match(promptCall.instructions,/technical image-generation prompt in natural English/);
-  assert.match(promptCall.instructions,/Do not age, historicize, modernize, polish or make the source more cinematic by default/);
+  assert.match(promptCall.instructions,/Keep the source's own era, finish and tone/);
   assert.match(promptCall.input.direction,/preserving its main subject, intended era and reality type/);
   assert.ok((await import(engineUrl)).isIdea(prompt));
   const variation=await service.generateVisualVariation({sourceId:prompt.id});assert.equal(variation.visualMode,'variation');assert.equal(variation.parentId,prompt.id);
@@ -394,4 +393,127 @@ test('backup provider is opt-in: AI_FALLBACK plus the backup key, otherwise the 
   calls.length=0;
   await assert.rejects(ask(createFailoverProvider({GEMINI_API_KEY:'g',AI_FALLBACK:'openai'},transport)),/provider-http-500/);
   assert.ok(!calls.includes('api.openai.com'));
+});
+
+// ---- Rebuild v2: diversity seeds, memory, card schema, wilder mode, /api/ideas parameters ----
+const diversity=await import(url('../generation/diversity.ts'));
+const card={title:'Balkon sesi haritası',text:'Evinin etrafındaki sesleri üç noktadan kaydedip kısa bir ses haritası çıkar.',domain:'Ses',type:'project',kind:'MAKE',goal:'make',why:'Bildiğin mahalleyi sesle yeniden tanırsın.',first30:['Telefonu aç ve balkonda 60 saniye kayıt al.','Kaydı bir kâğıda üç kelimeyle etiketle.'],difficulty:'easy',duration:'~2 saat toplam',tag:'ses haritası'};
+const quiet=request=>request.name==='orbit_novelty'?{duplicate:false}:card;
+const seed=(n,over={})=>({id:`seed-${n}`,title:`Eski fikir ${n}`,text:`Tamamen farklı eski metin sayı ${n} ${'x'.repeat(n)}`,domain:`Alan ${n}`,type:'project',kind:'MAKE',goal:'make',generatedAt:new Date(2026,0,1,0,n).toISOString(),model:'t',status:'generated',...over});
+const overlap=(a,b)=>{const t=v=>new Set(v.split(' ').filter(w=>w.length>3)),x=t(a),y=t(b);return [...x].filter(w=>y.has(w)).length/new Set([...x,...y]).size;};
+
+test('every Rebuild category has about 30 sub-areas, three lenses per request vary with server randomness and no list pulls toward the old',()=>{
+  for(const [key,list] of Object.entries(diversity.SUBFIELDS)){assert.ok(list.length>=28&&list.length<=32,`${key}: ${list.length}`);assert.equal(new Set(list).size,list.length,key);}
+  assert.equal(Object.keys(diversity.SUBFIELDS).length,10);
+  const a=diversity.pickLenses(()=>0),b=diversity.pickLenses(()=>.99);
+  assert.equal(a.length,3);assert.notDeepEqual(a,b);assert.match(a[0],/^kısıt:/);assert.match(a[1],/^kişi\/durum:/);assert.match(a[2],/^iki alanı birleştir: .+ \+ .+/);
+  const [x,y]=a[2].replace('iki alanı birleştir: ','').split(' + ');assert.notEqual(x,y);
+  const picked=diversity.pickSubfields('movement',['daily_life'],(()=>{let v=.1;return()=>(v=(v+.31)%1);})());assert.equal(picked.length,2);assert.notEqual(picked[0],picked[1]);picked.forEach(item=>assert.ok(diversity.SUBFIELDS.movement.includes(item)));
+  const all=JSON.stringify([diversity.SUBFIELDS,diversity.CONSTRAINT_LENSES,diversity.PERSON_LENSES,diversity.FIELD_LENSES]);
+  assert.doesNotMatch(all,/antik|arkeoloji|antique|ancient|vintage/i);
+});
+
+test('each request carries fresh seeds and memory as title+tag only: last 30, rejected apart, accepted as interest',async()=>{
+  const {store}=await repo('memory');
+  for(let n=1;n<=40;n++){
+    const status=n===5?'rejected':n===6?'skipped':n===7?'accepted':'generated';
+    const idea=seed(n,{...(n===5?{tag:'reddedilen etiket'}:n===7?{tag:'kabul etiket'}:{})});
+    await store.insert(idea,`fp-${n}`);
+    if(status==='accepted')await store.accept({...idea,status});else if(status!=='generated')await store.decision(idea.id,status);
+  }
+  const calls=[];let r=0;
+  const service=new GenerationService(store,async request=>{calls.push(request);return request.name==='orbit_novelty'?{duplicate:false}:{...card,title:`Yeni ${calls.length}`,text:`Benzersiz${calls.length} cümle${calls.length*811} ifadesi${calls.length*17}`};},'test',()=>(r=(r+.37)%1));
+  await service.generate({type:'project',category:'daily_life'});await service.generate({type:'project',category:'daily_life'});
+  const [first,second]=calls.filter(call=>call.name==='orbit_suggestion');
+  assert.equal(first.input.memory.avoidSimilar.length,30);
+  assert.deepEqual(Object.keys(first.input.memory.avoidSimilar[0]).sort(),['tag','title']);
+  assert.equal(first.input.history,undefined);
+  assert.ok(first.input.memory.rejectedOrSkipped.some(item=>item.tag==='reddedilen etiket'));assert.equal(first.input.memory.rejectedOrSkipped.length,2);
+  assert.deepEqual(first.input.memory.acceptedInterest.map(item=>item.tag),['kabul etiket']);
+  assert.equal(first.input.seed.lenses.length,3);assert.equal(first.input.seed.inspiration.length,2);first.input.seed.inspiration.forEach(item=>assert.ok(diversity.SUBFIELDS.daily_life.includes(item)));
+  assert.notDeepEqual(first.input.seed,second.input.seed);
+});
+
+test('similarity limit is .5: a 60 percent overlap is a repeat now',async()=>{
+  assert.equal(diversity.SIMILARITY_LIMIT,.5);
+  assert.equal(overlap('aaaa bbbb cccc dddd','aaaa bbbb cccc eeee'),.6);
+  const {store}=await repo('limit');
+  await store.insert(seed(1,{text:'aaaa bbbb cccc dddd'}),'fp-limit');
+  const service=new GenerationService(store,async request=>request.name==='orbit_novelty'?{duplicate:false}:{...card,title:'Başka başlık',text:'aaaa bbbb cccc eeee'},'test',()=>.8);
+  await assert.rejects(service.generate({type:'project'}),/no-novel-result/);
+});
+
+test('cards: schema asks for the new fields, valid fields are stored, a new-style request without a full card is retried, legacy output still passes',async()=>{
+  const {store}=await repo('cards'),calls=[];
+  const service=new GenerationService(store,async request=>{calls.push(request);return quiet(request);},'test',()=>.8);
+  const made=await service.generate({type:'project',category:'handmade',difficulty:'hard',mood:'tired',duration:'1h'});
+  const props=calls[0].schema.properties;
+  for(const key of ['why','first30','difficulty','duration','tag'])assert.ok(props[key],key);
+  assert.equal(props.title.maxLength,60);assert.equal(props.why.maxLength,140);assert.equal(props.first30.maxItems,3);
+  assert.equal(made.category,'handmade');assert.equal(made.mood,'tired');assert.equal(made.difficulty,'hard');assert.equal(made.why,card.why);assert.deepEqual(made.first30,card.first30);assert.equal(made.tag,'ses haritası');
+  assert.match(calls[0].instructions,/about one hour in total/);assert.match(calls[0].instructions,/Difficulty must be hard/);assert.match(calls[0].instructions,/tired/);
+  assert.equal(calls[0].temperature,1.05);assert.equal(calls[0].topP,.95);
+  let attempts=0;
+  await assert.rejects(new GenerationService((await repo('cards-bare')).store,async()=>{attempts++;return project;},'test',()=>.8).generate({type:'project',category:'daily_life'}),/invalid-card/);assert.equal(attempts,3);
+  const legacy=await new GenerationService((await repo('cards-legacy')).store,async request=>request.name==='orbit_novelty'?{duplicate:false}:project,'test',()=>.8).generate({type:'project'});
+  assert.equal(legacy.why,undefined);assert.equal(legacy.category,undefined);assert.equal(legacy.title,project.title);
+  const clipped=await new GenerationService((await repo('cards-long')).store,async request=>request.name==='orbit_novelty'?{duplicate:false}:{...card,title:'Kısa başlık dışında oldukça uzun bir başlık yazdı bu model tamam mı peki',difficulty:'wild',tag:'t'.repeat(50)},'test',()=>.8).generate({type:'project'});
+  assert.ok(clipped.title.length<=60);assert.equal(clipped.difficulty,undefined);assert.equal(clipped.tag,undefined);assert.equal(clipped.why,card.why);
+});
+
+test('wilder: temperature 1.3 with the source idea, inherits type and category, at most 3 per card, source required',async()=>{
+  const {store}=await repo('wilder'),calls=[];
+  const service=new GenerationService(store,async request=>{calls.push(request);const n=calls.length;return request.name==='orbit_novelty'?{duplicate:false}:{...card,title:`Çılgın ${n}`,text:`Yeni${n} kelime${n*7919} dizisi${n*104729} ayrı${n*13}`,type:'activity',goal:'social',kind:'TRY'};},'test',()=>.8);
+  await assert.rejects(service.generate({wilder:true}),/invalid-request/);
+  await assert.rejects(service.generate({sourceIdeaId:'x'}),/invalid-request/);
+  await assert.rejects(service.generate({wilder:true,sourceIdeaId:'missing'}),/idea-not-found/);
+  await store.insert(seed(1,{id:'src',type:'activity',goal:'social',category:'movement',difficulty:'medium'}),'fp-src');
+  const wild=await service.generate({wilder:true,sourceIdeaId:'src'});
+  const call=calls.find(item=>item.name==='orbit_suggestion');
+  assert.equal(call.temperature,1.3);assert.equal(call.topP,.95);assert.equal(call.input.wilderSource.id,'src');assert.match(call.instructions,/WILDER MODE/);
+  assert.equal(wild.type,'activity');assert.equal(wild.category,'movement');assert.equal(wild.wilderOf,'src');assert.equal(wild.wilderCount,1);
+  for(let n=0;n<2;n++)await service.generate({wilder:true,sourceIdeaId:'src'});
+  await assert.rejects(service.generate({wilder:true,sourceIdeaId:'src'}),/wilder-limit/);
+  await store.insert(seed(2,{id:'deep',wilderCount:3}),'fp-deep');
+  await assert.rejects(service.generate({wilder:true,sourceIdeaId:'deep'}),/wilder-limit/);
+  await store.insert(seed(3,{id:'img',type:'image_prompt'}),'fp-img');
+  await assert.rejects(service.generate({wilder:true,sourceIdeaId:'img'}),/invalid-request/);
+});
+
+test('sampling parameters reach Gemini generationConfig, are left out when unset, and OpenAI gpt-5 never receives them',async()=>{
+  const bodies=[];
+  const gemini=createModelProvider({provider:'gemini',apiKey:'k'},async(endpoint,options)=>{bodies.push(JSON.parse(options.body));return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'{}'}]}}]});});
+  await gemini({name:'t',instructions:'i',input:{},schema:{type:'object'},temperature:1.3,topP:.95});await gemini({name:'t',instructions:'i',input:{},schema:{type:'object'}});
+  assert.equal(bodies[0].generationConfig.temperature,1.3);assert.equal(bodies[0].generationConfig.topP,.95);
+  assert.equal('temperature' in bodies[1].generationConfig,false);assert.equal(bodies[1].generationConfig.maxOutputTokens,16384);
+  const sent=[];const openai=model=>createModelProvider({apiKey:'k',model},async(endpoint,options)=>{sent.push(JSON.parse(options.body));return response({});});
+  await openai('gpt-5-mini')({name:'t',instructions:'i',input:{},schema:{type:'object'},temperature:1.3,topP:.95});await openai('gpt-4.1')({name:'t',instructions:'i',input:{},schema:{type:'object'},temperature:1.3,topP:.95});
+  assert.equal('temperature' in sent[0],false);assert.equal(sent[1].temperature,1.3);assert.equal(sent[1].top_p,.95);
+});
+
+test('API: Rebuild categories pick the card type, new options are validated, wilder needs its source, legacy bodies are untouched',async()=>{
+  const realFetch=globalThis.fetch,seen=[];
+  globalThis.__generationTestDb=database();Object.assign(globalThis.__generationTestEnv,{GEMINI_API_KEY:'test-key'});
+  let counter=0;
+  globalThis.fetch=async(endpoint,options)=>{const body=JSON.parse(options.body),instructions=body.systemInstruction.parts[0].text;seen.push(body);counter++;const asked=JSON.parse(body.contents[0].parts[0].text);
+    const wire=JSON.parse(instructions.slice(instructions.lastIndexOf('\n')+1));
+    const out=wire.properties.duplicate?{duplicate:false}:{...card,type:asked.requestType==='research'?'research':asked.requestType==='project'?'project':wire.properties.type.enum.length===1?wire.properties.type.enum[0]:'activity',goal:asked.requestType==='research'?'research':asked.requestType==='project'?'make':'social',kind:asked.requestType==='research'?'RESEARCH':'TRY',title:`Merdiven rekoru ${counter}`,text:`Apartman${counter} merdiveni${counter*31} üç turda çıkıp${counter*977} süreni rekoruna${counter*7} karşı tut.`,tag:'merdiven rekoru'};
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(out)}]}}]});};
+  try{await authenticatedRequest.run({username:'v2'},async()=>{
+    const ok=await api.POST(request({action:'generate',category:'movement',duration:'15m',difficulty:'easy',mood:'energetic'}));
+    const payload=await ok.json();assert.equal(ok.status,200,JSON.stringify(payload));assert.equal(payload.idea.type,'activity');assert.equal(payload.idea.category,'movement');assert.equal(payload.idea.why,card.why);assert.equal(payload.idea.difficulty,'easy');assert.equal(payload.idea.mood,'energetic');
+    assert.equal(seen[0].generationConfig.temperature,1.05);assert.equal(seen[0].generationConfig.topP,.95);
+    const bad=body=>api.POST(request({action:'generate',...body})).then(res=>res.status);
+    assert.equal(await bad({category:'movement',type:'research'}),400);
+    assert.equal(await bad({category:'movement',duration:'2h'}),400);assert.equal(await bad({category:'movement',difficulty:'insane'}),400);assert.equal(await bad({category:'movement',mood:'angry'}),400);
+    assert.equal(await bad({wilder:true}),400);assert.equal(await bad({sourceIdeaId:payload.idea.id}),400);assert.equal(await bad({wilder:true,sourceIdeaId:'bad id!'}),400);assert.equal(await bad({wilder:'yes',sourceIdeaId:payload.idea.id}),400);
+    assert.equal(await bad({type:'project',category:'science'}),400);
+    assert.equal(await bad({wilder:true,sourceIdeaId:'none-such'}),404);
+    const before=seen.length;
+    const wild=await api.POST(request({action:'generate',wilder:true,sourceIdeaId:payload.idea.id}));const wildBody=await wild.json();assert.equal(wild.status,200,JSON.stringify(wildBody));
+    assert.equal(seen[before].generationConfig.temperature,1.3);assert.equal(wildBody.idea.wilderOf,payload.idea.id);assert.equal(wildBody.idea.wilderCount,1);
+    assert.equal(await bad({category:'daily_life',type:'project'}),200);
+    // an old client sends only the legacy fields
+    assert.equal(await bad({type:'research',category:'science'}),200);assert.equal(await bad({type:'project'}),200);
+  });}finally{globalThis.fetch=realFetch;for(const key of Object.keys(globalThis.__generationTestEnv))delete globalThis.__generationTestEnv[key];}
 });
