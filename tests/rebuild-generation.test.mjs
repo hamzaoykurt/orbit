@@ -271,7 +271,7 @@ test('Visual Lab generates concepts, full prompts and sourced variations with du
   assert.match(conceptCall.instructions,/contemporary, present-day visual world/);assert.doesNotMatch(conceptCall.instructions+conceptCall.input.direction,/ancient|antique|vintage|sepia|aged/i);
   assert.match(conceptCall.input.direction,/contemporary or era-neutral world/);
   assert.match(promptCall.instructions,/technical image-generation prompt in natural English/);
-  assert.match(promptCall.instructions,/Do not age, historicize, modernize, polish or make the source more cinematic by default/);
+  assert.match(promptCall.instructions,/Keep the source's own era, finish and tone/);
   assert.match(promptCall.input.direction,/preserving its main subject, intended era and reality type/);
   assert.ok((await import(engineUrl)).isIdea(prompt));
   const variation=await service.generateVisualVariation({sourceId:prompt.id});assert.equal(variation.visualMode,'variation');assert.equal(variation.parentId,prompt.id);
