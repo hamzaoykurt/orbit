@@ -10,7 +10,7 @@ function moduleUrl(file, imports={}) {
 }
 const engineUrl=moduleUrl('../app/rebuild/idea-engine.ts');
 const engine=await import(engineUrl);
-const model=await import(moduleUrl('../app/rebuild/weekly-deck-model.ts',{'./idea-engine':engineUrl}));
+const model=await import(moduleUrl('../app/rebuild/weekly-deck-model.ts',{'./idea-engine':engineUrl,'../preserve-extras':moduleUrl('../app/preserve-extras.ts')}));
 const ideas = [{id:'test-project-a',kind:'MAKE',goal:'make',text:'Test artifact A'}, {id:'test-project-b',kind:'BUILD',goal:'make',text:'Test artifact B'}, {id:'test-social',kind:'GO',goal:'social',text:'Test experience'}];
 const week='2026-08-24', nextWeek='2026-08-31';
 const mark=(id,idea)=>({id,at:'2026-08-30T12:00:00Z',...(idea?{idea}:{})});

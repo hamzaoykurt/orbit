@@ -1295,7 +1295,7 @@ export default function PersonalOS() {
       ...(personalItemDraft.list === 'visit' ? { locationUrl: personalItemDraft.locationUrl.trim() } : {}),
     };
     if (editingPersonalItemId) {
-      setState((current) => ({ ...current, personalItemDetails: { ...current.personalItemDetails, [editingPersonalItemId]: details } }));
+      setState((current) => ({ ...current, personalItemDetails: { ...current.personalItemDetails, [editingPersonalItemId]: { ...current.personalItemDetails[editingPersonalItemId], ...details } } }));
       setModal(null); setEditingPersonalItemId(null); notify('Kayıt güncellendi.');
       return;
     }

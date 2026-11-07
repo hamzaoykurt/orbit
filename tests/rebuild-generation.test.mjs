@@ -14,9 +14,10 @@ const schemaUrl=url('../generation/schema.ts'),repoUrl=url('../generation/reposi
 const safeFetchUrl=url('../generation/safe-fetch.ts'),providerUrl=url('../generation/provider.ts',{"'./safe-fetch'":JSON.stringify(safeFetchUrl)}),providerErrorsUrl=url('../generation/provider-errors.ts');
 const {GenerationRepository}=await import(repoUrl),{GenerationService}=await import(serviceUrl),{createModelProvider}=await import(providerUrl);
 const {resolveModelConfig}=await import(providerUrl);
-const practice=await import(url('../app/rebuild/practice-model.ts'));
+const preserveUrl=url('../app/preserve-extras.ts'),preserveMap={"'../preserve-extras'":JSON.stringify(preserveUrl)};
+const practice=await import(url('../app/rebuild/practice-model.ts',preserveMap));
 const {projectFromIdea}=await import(loadModuleUrl(new URL('../app/rebuild/project-import.ts',import.meta.url)));
-const deck=await import(url('../app/rebuild/weekly-deck-model.ts',{"'./idea-engine'":JSON.stringify(engineUrl)}));
+const deck=await import(url('../app/rebuild/weekly-deck-model.ts',{"'./idea-engine'":JSON.stringify(engineUrl),...preserveMap}));
 function database(){
   const sqlite=new DatabaseSync(':memory:');
   return {prepare(sql){let args=[];return {bind(...values){args=values;return this;},async run(){const info=sqlite.prepare(sql).run(...args);return {success:true,meta:{changes:Number(info.changes)}};},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {success:true,results:sqlite.prepare(sql).all(...args)};}};},sqlite};

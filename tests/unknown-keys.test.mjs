@@ -112,3 +112,10 @@ test('web: the persisted-state merge carries unknown top-level keys (guard again
   assert.match(page, /return carryExtras\(saved, \{/);
   assert.match(page, /\}, Object\.keys\(defaultState\)\) as PersistedState;/);
 });
+
+test('web: editing a personal item merges into the stored details, so fields like bucket survive (guard)', () => {
+  const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.match(page, /\[editingPersonalItemId\]: \{ \.\.\.current\.personalItemDetails\[editingPersonalItemId\], \.\.\.details \}/);
+  assert.match(page, /settings: \{ \.\.\.defaultState\.settings, \.\.\.savedSettings,/, 'settings keep unknown fields such as subscriptions');
+  assert.match(page, /personalItemDetails: \{ \.\.\.defaultState\.personalItemDetails, \.\.\.\(saved\.personalItemDetails \?\? \{\}\) \}/);
+});

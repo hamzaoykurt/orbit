@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-const source = ts.transpileModule(readFileSync(new URL('../app/rebuild/journey-model.ts',import.meta.url),'utf8'), {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const dataUrl = (file) => 'data:text/javascript;base64,' + Buffer.from(ts.transpileModule(readFileSync(new URL(file,import.meta.url),'utf8'), {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText).toString('base64');
+const source = ts.transpileModule(readFileSync(new URL('../app/rebuild/journey-model.ts',import.meta.url),'utf8'), {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace("'../preserve-extras'", JSON.stringify(dataUrl('../app/preserve-extras.ts')));
 const model = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 test('26-week phases derive from dates with exact boundaries and no invented start',()=>{
   assert.equal(model.defaultPhases.reduce((sum,phase)=>sum+phase.weeks,0),26);
