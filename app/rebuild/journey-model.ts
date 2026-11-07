@@ -1,3 +1,4 @@
+import { carryExtras } from '../preserve-extras';
 export type Ratings = { flow: number; curiosity: number; process: number; improve: number; again: number };
 export type Experiment = { id: string; name: string; made: string; date: string; note: string; ratings: Ratings; archived: boolean; projectId: string };
 export type Output = { id: string; title: string; date: string; tag: string; note: string; link: string; image: string; projectId: string };
@@ -25,13 +26,13 @@ const ratingValue = (value: unknown) => typeof value === 'number' && Number.isIn
 export function normalizeJourney(value: Partial<Journey> | undefined): Journey {
   const base = emptyJourney();
   if (!value || typeof value !== 'object' || Array.isArray(value)) return base;
-  return { ...base, startDate: typeof value.startDate === 'string' && validDate(value.startDate) ? value.startDate : '',
+  return carryExtras(value, { ...base, startDate: typeof value.startDate === 'string' && validDate(value.startDate) ? value.startDate : '',
     phases: defaultPhases.map((phase,index) => { const stored = Array.isArray(value.phases) ? value.phases[index] : undefined; return { ...phase, ...(stored && typeof stored === 'object' ? stored : {}), id: phase.id, weeks: phase.weeks }; }),
     focus: value.focus && typeof value.focus === 'object' && !Array.isArray(value.focus) ? value.focus : {},
     experiments: Array.isArray(value.experiments) ? value.experiments.filter(item => item && typeof item.id === 'string' && typeof item.name === 'string').map(item => ({ ...item, made:textValue(item.made), note:textValue(item.note), date:textValue(item.date), projectId:textValue(item.projectId), archived:Boolean(item.archived), ratings: Object.fromEntries(Object.keys(emptyRatings).map(key => [key,ratingValue(item.ratings?.[key as keyof Ratings])])) as Ratings })) : [],
     outputs: Array.isArray(value.outputs) ? value.outputs.filter(item => item && typeof item.id === 'string' && typeof item.title === 'string').map(item=>({...item,date:textValue(item.date),tag:textValue(item.tag),note:textValue(item.note),link:textValue(item.link),image:textValue(item.image),projectId:textValue(item.projectId)})) : [],
     reviews: value.reviews && typeof value.reviews === 'object' && !Array.isArray(value.reviews) ? value.reviews : {},
-  };
+  }, ['version', 'startDate', 'phases', 'focus', 'experiments', 'outputs', 'reviews']);
 }
 export function journeyPosition(start: string, today: string) {
   if (!validDate(start)) return { week: 1, phase: 0, started: false, complete: false, future: false };

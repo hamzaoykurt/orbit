@@ -8,7 +8,8 @@ function moduleUrl(path, replacements = []) {
   for (const [from, to] of replacements) source = source.replace(from, to);
   return `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 }
-const model = await import(moduleUrl('../app/projects/project-types.ts'));
+const preserveUrl = moduleUrl('../app/preserve-extras.ts');
+const model = await import(moduleUrl('../app/projects/project-types.ts', [["'../preserve-extras'", JSON.stringify(preserveUrl)]]));
 const validationUrl = moduleUrl('../app/api/project-media/media-validation.ts');
 const validation = await import(validationUrl);
 

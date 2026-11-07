@@ -1,3 +1,4 @@
+import { carryExtras } from '../preserve-extras';
 import { completeGoal, ensureWeek, undoCompletion } from '../rebuild/weekly-deck-model';
 import type { WeeklyDeck } from '../rebuild/weekly-deck-model';
 import type { GoalKind } from '../rebuild/idea-engine';
@@ -66,9 +67,9 @@ function normalizeTemplate(value: unknown): Template {
       const s = record(entry);
       if (!safeId(s.id) || stepIds.has(s.id) || !text(s.text, 140)) return [];
       stepIds.add(s.id);
-      return [{ id: s.id, t: text(s.t, 12), text: text(s.text, 140) }];
+      return [carryExtras(s, { id: s.id, t: text(s.t, 12), text: text(s.text, 140) }, ['id', 't', 'text'])];
     });
-    blocks.push({ id: item.id, name: text(item.name, 40) || 'Blok', slot: item.slot, ...(kinds.includes(String(item.kind)) ? { kind: item.kind as GoalKind } : {}), steps });
+    blocks.push(carryExtras(item, { id: item.id, name: text(item.name, 40) || 'Blok', slot: item.slot, ...(kinds.includes(String(item.kind)) ? { kind: item.kind as GoalKind } : {}), steps }, ['id', 'name', 'slot', 'kind', 'steps']));
   }
   const week: Template['week'] = {};
   const savedWeek = record(saved.week);
@@ -79,7 +80,7 @@ function normalizeTemplate(value: unknown): Template {
     week[String(day)] = out;
   }
   const bonus = record(saved.bonus);
-  return { blocks, week, bonus: { am: text(bonus.am, 80), day: text(bonus.day, 80), pm: text(bonus.pm, 80) } };
+  return carryExtras(saved, { blocks, week, bonus: { am: text(bonus.am, 80), day: text(bonus.day, 80), pm: text(bonus.pm, 80) } }, ['blocks', 'week', 'bonus']);
 }
 export function normalizeProgram(value: unknown): Program {
   const saved = record(value);
@@ -95,12 +96,12 @@ export function normalizeProgram(value: unknown): Program {
     const breaks: WeekLog['breaks'] = {};
     if (typeof log.breaks === 'number') for (let i = 1; i <= count(log.breaks, 200); i++) breaks[`legacy${i}`] = '';
     else for (const [k, v] of Object.entries(record(log.breaks)).slice(0, 200)) if (safeId(k) && typeof v === 'string') breaks[k] = v.slice(0, 24);
-    weeks[key] = { done, moved, days, breaks };
+    weeks[key] = carryExtras(log, { done, moved, days, breaks }, ['done', 'moved', 'days', 'breaks']);
   }
   const profile = record(saved.profile);
   const badges: Record<string, string> = {};
   for (const [k, v] of Object.entries(record(profile.badges))) if (safeId(k) && typeof v === 'string') badges[k] = v.slice(0, 24);
-  return { version: 1, template: normalizeTemplate(saved.template), weeks, profile: { bankedXp: count(profile.bankedXp, 10_000_000), badges, bestStreak: count(profile.bestStreak, 400) } };
+  return carryExtras(saved, { version: 1 as const, template: normalizeTemplate(saved.template), weeks, profile: carryExtras(profile, { bankedXp: count(profile.bankedXp, 10_000_000), badges, bestStreak: count(profile.bestStreak, 400) }, ['bankedXp', 'badges', 'bestStreak']) }, ['version', 'template', 'weeks', 'profile']);
 }
 
 // ---- Dates ----

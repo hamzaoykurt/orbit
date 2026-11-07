@@ -1,3 +1,4 @@
+import { carryExtras } from '../preserve-extras';
 export const lifecycleLabels = {
   idea: 'Fikir', research: 'Araştırma', mvp: 'MVP', active: 'Geliştirme',
   paused: 'Beklemede', completed: 'Tamamlandı', archived: 'Arşiv',
@@ -39,12 +40,12 @@ export function normalizeCreationDraft(value: unknown): CreationDraft | null {
   for (const key of ['audience','goal','evidence','difference','scope','validation','capacity','tone'] as AnswerKey[]) {
     if (typeof raw.answers?.[key] === 'string') answers[key] = raw.answers[key]!.slice(0,300);
   }
-  return { id: raw.id, idea: typeof raw.idea === 'string' ? raw.idea.slice(0,1200) : '', title: typeof raw.title === 'string' ? raw.title.slice(0,100) : '', answers,
+  return carryExtras(raw, { id: raw.id, idea: typeof raw.idea === 'string' ? raw.idea.slice(0,1200) : '', title: typeof raw.title === 'string' ? raw.title.slice(0,100) : '', answers,
     step: ['idea','questions','design','review'].includes(raw.step || '') ? raw.step! : 'idea', question: Math.min(8,Math.max(0,Math.floor(Number(raw.question)||0))),
     selectedStyle: typeof raw.selectedStyle === 'string' ? raw.selectedStyle.slice(0,80) : null,
     ...(typeof raw.editingProjectId === 'string' ? { editingProjectId: raw.editingProjectId } : {}),
     ...(raw.lifecycle && Object.hasOwn(lifecycleLabels,raw.lifecycle) ? {lifecycle:raw.lifecycle} : {}),
-  };
+  }, ['id', 'idea', 'title', 'answers', 'step', 'question', 'selectedStyle', 'editingProjectId', 'lifecycle']);
 }
 
 export function normalizePlanning(value:unknown):ProjectPlanning|undefined {
