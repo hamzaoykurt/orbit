@@ -7,7 +7,7 @@ import { providerFailureCode, providerFailureMessage, providerFailureStatus } fr
 import type { ProviderBindings } from '../../../generation/provider';
 import { GenerationError, GenerationService } from '../../../generation/service';
 import { isStudioType, studioRequestInvalid } from '../../../generation/prompt-studio';
-import { CREATE_CATEGORIES, DIGITAL_PLATFORMS, GENERATION_UNAVAILABLE, IDEA_DIFFICULTIES, IDEA_DURATIONS, IDEA_MOODS, REBUILD_CATEGORIES, RESEARCH_CATEGORIES, SOCIAL_CATEGORIES } from '../../rebuild/idea-engine';
+import { CREATE_CATEGORIES, DIGITAL_PLATFORMS, GENERATION_UNAVAILABLE, IDEA_DIFFICULTIES, IDEA_DURATIONS, IDEA_MOODS, REBUILD_CATEGORIES, RESEARCH_CATEGORIES, SOCIAL_CATEGORIES, sanitizePrefs, sanitizeTopic } from '../../rebuild/idea-engine';
 import type { IdeaRequest, SuggestionType } from '../../rebuild/idea-engine';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const owner=authenticatedUser();if(!owner)return unauthorized();
   if(request.headers.get('origin')!==new URL(request.url).origin&&!(bearerRequest()&&!request.headers.get('origin')))return json({error:'Geçersiz istek kaynağı.'},403);
-  let store:GenerationRepository|undefined;let lock:string|undefined;
+  let store:GenerationRepository|undefined;let lock:string|undefined;let lockKind:string|undefined;
   try {
     const body=await readBody(request);
     if(!['generate','accept','decision'].includes(body.action))throw new GenerationError('invalid-request',400);
@@ -51,6 +51,8 @@ export async function POST(request: Request) {
       if(mapped){if(body.type&&body.type!=='surprise'&&body.type!==mapped)throw new GenerationError('invalid-request',400);}
       else if(!categoriesByType[String(body.type)]?.has(String(body.category)))throw new GenerationError('invalid-request',400);
     }
+    if(body.topic!==undefined&&body.topic!==null&&typeof body.topic!=='string')throw new GenerationError('invalid-request',400);
+    if(body.prefs!==undefined&&body.prefs!==null&&(typeof body.prefs!=='object'||Array.isArray(body.prefs)))throw new GenerationError('invalid-request',400);
     if(body.duration!==undefined&&!IDEA_DURATIONS.includes(body.duration))throw new GenerationError('invalid-request',400);
     if(body.difficulty!==undefined&&!IDEA_DIFFICULTIES.includes(body.difficulty))throw new GenerationError('invalid-request',400);
     if(body.mood!==undefined&&!IDEA_MOODS.includes(body.mood))throw new GenerationError('invalid-request',400);
@@ -77,11 +79,14 @@ export async function POST(request: Request) {
     const requiresModel=body.action==='generate'||existing?.type==='project'||existing?.type==='digital_project'||existing?.type==='research';
     if(requiresModel&&!config.apiKey)return json({error:'AI bağlantısı henüz kurulmadı. Sunucuya seçilen sağlayıcının API anahtarı eklenmeli.',code:'not_configured'},503);
     if(!await store.allowRequest())throw new GenerationError('rate-limited',429);
-    const token=crypto.randomUUID();if(!await store.acquire(token))throw new GenerationError('generation-in-progress',409);lock=token;
+    const token=crypto.randomUUID();const kind=body.action==='generate'?String(body.type||rebuildTypes.get(String(body.category))||body.goal||'surprise'):'accept';
+    if(!await store.acquire(token,kind))throw new GenerationError('generation-in-progress',409);lock=token;lockKind=kind;
+    // A dropped connection frees the lock at once; the finally below covers errors and timeouts.
+    const owned=store;request.signal.addEventListener('abort',()=>{void owned.release(token,kind).catch(()=>{});},{once:true});
     const service=new GenerationService(store,createFailoverProvider(bindings()),`${config.provider}/${config.model}`);
     const signal=AbortSignal.any([request.signal,AbortSignal.timeout(95_000)]);
     const mappedType=body.category?rebuildTypes.get(String(body.category)):undefined;
-    const idea=body.action==='generate'?await service.generate({type:body.type&&body.type!=='surprise'?body.type:mappedType??body.type,goal:body.goal,category:body.category,duration:body.duration,difficulty:body.difficulty,mood:body.mood,wilder:body.wilder===true,sourceIdeaId:body.sourceIdeaId,platform:body.platform,words:body.words,brief:body.brief?.trim(),visualMode:body.visualMode,sourceId:body.sourceId,visualKind:body.visualKind,targetModel:body.targetModel,typoText:body.typoText?.trim(),typoStyle:body.typoStyle,typoLayout:body.typoLayout,typoHierarchy:body.typoHierarchy,typoRelation:body.typoRelation,videoKind:body.videoKind,videoDuration:body.videoDuration,aspect:body.aspect} as IdeaRequest,signal):existing?.type==='digital_project'?await service.generateDigitalProjectPlan(body.id,signal):existing?.type==='research'?await service.generateResearchPlan(body.id,signal):await service.accept(body.id,signal);
+    const idea=body.action==='generate'?await service.generate({type:body.type&&body.type!=='surprise'?body.type:mappedType??body.type,goal:body.goal,category:body.category,topic:sanitizeTopic(body.topic)||undefined,prefs:sanitizePrefs(body.prefs),duration:body.duration,difficulty:body.difficulty,mood:body.mood,wilder:body.wilder===true,sourceIdeaId:body.sourceIdeaId,platform:body.platform,words:body.words,brief:body.brief?.trim(),visualMode:body.visualMode,sourceId:body.sourceId,visualKind:body.visualKind,targetModel:body.targetModel,typoText:body.typoText?.trim(),typoStyle:body.typoStyle,typoLayout:body.typoLayout,typoHierarchy:body.typoHierarchy,typoRelation:body.typoRelation,videoKind:body.videoKind,videoDuration:body.videoDuration,aspect:body.aspect} as IdeaRequest,signal):existing?.type==='digital_project'?await service.generateDigitalProjectPlan(body.id,signal):existing?.type==='research'?await service.generateResearchPlan(body.id,signal):await service.accept(body.id,signal);
     return json({idea});
   }catch(error){
     const code=error instanceof GenerationError?error.code:providerFailureCode(error);
@@ -91,5 +96,5 @@ export async function POST(request: Request) {
     if(code==='visual-source-mismatch')return json({error:'AI görselin ana konusunu koruyamadı. Aynı kaynakla tekrar deneyebilirsin.',code},503);
     const messages:Record<string,string>={'generation-in-progress':'Bir üretim zaten sürüyor. Bitince tekrar dene.','invalid-card':'AI eksiksiz bir fikir kartı üretemedi. Tekrar dene.','wilder-limit':'Bu fikir en fazla 3 kez çılgınlaştırılabilir. Yeni bir fikir iste.','rate-limited':'Çok hızlı istek gönderildi. Bir dakika sonra tekrar dene.','no-novel-result':'Öncekilerden yeterince farklı bir fikir üretilemedi. Tekrar dene.','idea-not-found':'Bu fikir geçmişte bulunamadı.','invalid-request':'Geçersiz üretim isteği.','invalid-provider-output':'AI geçerli bir yanıt üretemedi. Tekrar dene; özel verilerin gönderilmedi.'};
     return json({error:messages[code]||providerFailureMessage(code)||GENERATION_UNAVAILABLE,code},error instanceof GenerationError?error.status:providerFailureStatus(code));
-  }finally{if(store&&lock)await store.release(lock).catch(()=>{});}
+  }finally{if(store&&lock)await store.release(lock,lockKind).catch(()=>{});}
 }

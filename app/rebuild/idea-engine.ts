@@ -1,10 +1,29 @@
 export type GoalKind = 'body' | 'english' | 'make' | 'research' | 'social' | 'any';
 export type SuggestionType = 'project' | 'digital_project' | 'image_prompt' | 'video_prompt' | 'research' | 'activity' | 'meal' | 'vocabulary' | 'speaking';
 export type DigitalPlatform = 'mobile_app' | 'web_app' | 'desktop_app' | 'game' | 'browser_extension' | 'plugin' | 'automation' | 'interactive_experience';
-export const RESEARCH_CATEGORIES = [{value:'surprise',label:'Karışık'},{value:'science',label:'Bilim'},{value:'technology',label:'Teknoloji'},{value:'society',label:'Toplum'},{value:'psychology',label:'Zihin'},{value:'nature',label:'Doğa'},{value:'arts',label:'Sanat'},{value:'future',label:'Gelecek'},{value:'everyday',label:'Gündelik hayat'}] as const;
+export const RESEARCH_CATEGORIES = [{value:'surprise',label:'Karışık'},{value:'culture_general',label:'Genel kültür'},{value:'literature',label:'Edebiyat & kitaplar'},{value:'music',label:'Müzik'},{value:'art_history',label:'Sanat tarihi & akımlar'},{value:'traditions',label:'Gelenekler & festivaller'},{value:'world_cultures',label:'Dünya kültürleri'},{value:'turkish_culture',label:'Türk kültürü & tarihi'},{value:'space',label:'Uzay & astronomi'},{value:'dinosaurs',label:'Dinozorlar & tarih öncesi'},{value:'history',label:'Tarih'},{value:'ancient',label:'Antik uygarlıklar & arkeoloji'},{value:'mythology',label:'Mitoloji'},{value:'body_health',label:'İnsan vücudu & sağlık'},{value:'brain_psychology',label:'Beyin & psikoloji'},{value:'animals',label:'Hayvanlar'},{value:'ocean',label:'Okyanus'},{value:'physics_universe',label:'Fizik & evren'},{value:'ai',label:'Yapay zeka'},{value:'software_internet',label:'Yazılım & internet'},{value:'design_typography',label:'Tasarım & tipografi'},{value:'engineering_inventions',label:'Mühendislik & icatlar'},{value:'economy_money',label:'Ekonomi & para'},{value:'entrepreneurship',label:'Girişimcilik'},{value:'philosophy',label:'Felsefe'},{value:'geography_countries',label:'Coğrafya & ülkeler'},{value:'language_words',label:'Dil & kelimeler'},{value:'cinema_games',label:'Sinema & oyunlar'},{value:'sport_science',label:'Spor bilimi'},{value:'food_science',label:'Yemek bilimi'},{value:'science',label:'Bilim'},{value:'technology',label:'Teknoloji'},{value:'society',label:'Toplum'},{value:'psychology',label:'Zihin'},{value:'nature',label:'Doğa'},{value:'arts',label:'Sanat'},{value:'future',label:'Gelecek'},{value:'everyday',label:'Gündelik hayat'}] as const;
 export const SOCIAL_CATEGORIES = [{value:'surprise',label:'Karışık'},{value:'outdoor',label:'Açık hava'},{value:'indoor',label:'Kapalı alan'},{value:'digital',label:'Dijital'},{value:'culture',label:'Kültür'},{value:'community',label:'Topluluk'},{value:'creative',label:'Yaratıcı'},{value:'low_energy',label:'Düşük enerji'}] as const;
 export const CREATE_CATEGORIES = [{value:'surprise',label:'Karışık'},{value:'physical',label:'Fiziksel'},{value:'electronics',label:'Elektronik'},{value:'visual',label:'Görsel'},{value:'craft',label:'El işi'},{value:'spatial',label:'Mekânsal'},{value:'experimental',label:'Deneysel'},{value:'software',label:'Yazılım'}] as const;
 export const DIGITAL_PLATFORMS = [{value:'surprise',label:'Karışık'},{value:'mobile_app',label:'Mobil uygulama'},{value:'web_app',label:'Web uygulaması'},{value:'desktop_app',label:'Masaüstü'},{value:'game',label:'Oyun'},{value:'browser_extension',label:'Tarayıcı eklentisi'},{value:'plugin',label:'Eklenti'},{value:'automation',label:'Otomasyon'},{value:'interactive_experience',label:'İnteraktif deneyim'}] as const;
+// Optional free research topic (request field `topic`): control characters stripped, whitespace collapsed, at most 80 characters. Empty means "no topic".
+export const MAX_TOPIC = 80;
+export function sanitizeTopic(value: unknown): string { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029<>`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_TOPIC).trim() : ''; }
+// Optional personal preferences sent by the client (never stored or hard-coded on the server). avoid areas are never used.
+export const PREF_LEVELS = ['beginner','intermediate','advanced'] as const;
+export type UserPrefs = { likes?: string[]; avoid?: string[]; level?: typeof PREF_LEVELS[number] };
+const prefItem = (value: unknown) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029<>`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 30).trim() : '';
+function prefList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const raw of value) { const item = prefItem(raw); if (item && !out.some(old => old.toLocaleLowerCase('tr') === item.toLocaleLowerCase('tr'))) out.push(item); if (out.length >= 8) break; }
+  return out;
+}
+export function sanitizePrefs(value: unknown): UserPrefs | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>, likes = prefList(source.likes), avoid = prefList(source.avoid);
+  const level = PREF_LEVELS.includes(source.level as typeof PREF_LEVELS[number]) ? source.level as typeof PREF_LEVELS[number] : undefined;
+  return likes.length || avoid.length || level ? { ...(likes.length ? { likes } : {}), ...(avoid.length ? { avoid } : {}), ...(level ? { level } : {}) } : undefined;
+}
 export type ResearchCategory = typeof RESEARCH_CATEGORIES[number]['value'];
 export type SocialCategory = typeof SOCIAL_CATEGORIES[number]['value'];
 export type CreateCategory = typeof CREATE_CATEGORIES[number]['value'];
@@ -49,7 +68,7 @@ export type Idea = {
   platform?: DigitalPlatform;
   visualMode?: 'concept' | 'prompt' | 'variation';
   parentId?: string;
-  // Prompt Studio: Turkish short summary of the English production brief, plus the options the brief was built from.
+  // summary: on text cards a one-sentence plain-Turkish "Kısaca" (<=120 chars); on Prompt Studio cards a Turkish summary of the English production brief. Optional; clients fall back to the old layout without it.
   summary?: string; visualKind?: VisualKind; targetModel?: string; typography?: TypographySpec; video?: VideoSpec;
   // Rebuild v2 card fields; all optional so records saved before them still open.
   category?: RebuildCategory; tag?: string; why?: string; first30?: string[]; difficulty?: IdeaDifficulty; duration?: string; mood?: IdeaMood;
@@ -59,7 +78,7 @@ export type GeneratedIdea = Idea & {
   title: string; type: SuggestionType; domain: string; generatedAt: string; model: string;
   status: 'generated' | 'skipped' | 'rejected' | 'accepted';
 };
-export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; category?:IdeaCategory; platform?:DigitalPlatform; words?: string[]; brief?: string; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; visualKind?: VisualKind; targetModel?: string; typoText?: string; typoStyle?: TypographySpec['style']; typoLayout?: TypographySpec['layout']; typoHierarchy?: TypographySpec['hierarchy']; typoRelation?: TypographySpec['relation']; videoKind?: VideoKind; videoDuration?: VideoSpec['durationSec']; aspect?: VideoSpec['aspect']; duration?: IdeaDuration; difficulty?: IdeaDifficulty; mood?: IdeaMood; wilder?: boolean; sourceIdeaId?: string; signal?: AbortSignal };
+export type IdeaRequest = { goal?: GoalKind; type?: SuggestionType | 'surprise'; category?:IdeaCategory; platform?:DigitalPlatform; words?: string[]; brief?: string; visualMode?: 'concept' | 'prompt' | 'variation'; sourceId?: string; visualKind?: VisualKind; targetModel?: string; typoText?: string; typoStyle?: TypographySpec['style']; typoLayout?: TypographySpec['layout']; typoHierarchy?: TypographySpec['hierarchy']; typoRelation?: TypographySpec['relation']; videoKind?: VideoKind; videoDuration?: VideoSpec['durationSec']; aspect?: VideoSpec['aspect']; duration?: IdeaDuration; difficulty?: IdeaDifficulty; mood?: IdeaMood; wilder?: boolean; sourceIdeaId?: string; topic?: string; prefs?: UserPrefs; signal?: AbortSignal };
 export const GENERATION_UNAVAILABLE = 'AI üretimi şu anda kullanılamıyor. Lütfen daha sonra tekrar dene.';
 
 export function isIdea(value: unknown): value is Idea {
