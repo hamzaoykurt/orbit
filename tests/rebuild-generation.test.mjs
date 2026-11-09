@@ -82,9 +82,9 @@ test('Gemini receives every output contract through generation, novelty, vocabul
   const research=await service.generate({type:'research'});
   assert.deepEqual((await service.accept(research.id)).researchPlan,questions);
   assert.equal((await service.generate({type:'vocabulary',goal:'english'})).words.length,5);
-  assert.equal(contracts.length,6);
+  assert.equal(contracts.length,8);
   assert.equal((await store.all()).length,3);
-  assert.equal(contracts[0].properties.text.maxLength,600);
+  assert.equal(contracts[0].properties.text.maxLength,240);
 });
 test('provider sends strict server-side schema and rejects incomplete, refusal and malformed outputs',async()=>{
   let sent;const provider=createModelProvider({apiKey:'test-only-key',model:'configured-model'},async(endpoint,options)=>{sent={endpoint:String(endpoint),...JSON.parse(options.body)};return response(project);});
@@ -95,15 +95,15 @@ test('provider sends strict server-side schema and rejects incomplete, refusal a
 test('generation persists fresh concepts, expands only after acceptance and retries accepted plans idempotently',async()=>{
   const {store}=await repo();const calls=[];const service=new GenerationService(store,async request=>{calls.push(request);return request.name==='orbit_accepted_plan'?plan:project;},'test-model',()=>.2);
   const idea=await service.generate({type:'project'});
-  assert.equal(calls.length,1);assert.equal(idea.projectPlan,undefined);assert.equal((await store.all()).length,1);
-  const accepted=await service.accept(idea.id);assert.deepEqual(accepted.projectPlan,plan);assert.equal(calls.length,2);assert.equal(accepted.status,'accepted');
-  assert.deepEqual(await service.accept(idea.id),accepted);assert.equal(calls.length,2);
+  assert.equal(calls.length,2);assert.equal(idea.projectPlan,undefined);assert.equal((await store.all()).length,1);
+  const accepted=await service.accept(idea.id);assert.deepEqual(accepted.projectPlan,plan);assert.equal(calls.length,3);assert.equal(accepted.status,'accepted');
+  assert.deepEqual(await service.accept(idea.id),accepted);assert.equal(calls.length,3);
   const imported=projectFromIdea(accepted);assert.deepEqual(imported.project.tasks,plan.tasks);assert.equal(imported.workspace.description,plan.description);assert.ok(imported.workspace.notes[0].body.includes(plan.scope));assert.equal(imported.project.id,accepted.resultingId);
 });
 test('research acceptance creates topic-specific questions, preserves main question and can resume after reload',async()=>{
   const {store}=await repo();const calls=[];const service=new GenerationService(store,async request=>{calls.push(request);return request.name==='orbit_accepted_plan'?questions:topic;},'test');
   const idea=await service.generate({type:'research'});assert.equal(idea.researchPlan,undefined);
-  const accepted=await service.accept(idea.id);assert.equal(calls.length,2);
+  const accepted=await service.accept(idea.id);assert.equal(calls.length,3);
   let state=practice.acceptIntoPractice(practice.emptyPractice(),accepted);
   state=practice.updateQuestion(state,accepted.resultingId,state.research[0].questions[0].id,{explored:true,note:'Kısa kanıt notu'});
   const roundtrip=practice.normalizePractice(JSON.parse(JSON.stringify(state)));
@@ -112,12 +112,12 @@ test('research acceptance creates topic-specific questions, preserves main quest
 });
 test('exact and near duplicates are rejected, never rerolled from stored history',async()=>{
   const {store}=await repo();let calls=0;const service=new GenerationService(store,async()=>{calls++;return project;},'test');await service.generate({type:'project'});
-  await assert.rejects(service.generate({type:'project'}),error=>error.code==='no-novel-result');assert.equal(calls,4);assert.equal((await store.all()).length,1);
+  await assert.rejects(service.generate({type:'project'}),error=>error.code==='no-novel-result');assert.equal(calls,5);assert.equal((await store.all()).length,1);
   const semantic=new GenerationService(store,async request=>request.name==='orbit_novelty'?{duplicate:true}:{...project,title:'Ses masası',text:'Bir masa objesiyle sesin yönünün nasıl değiştiğini karşılaştır.'},'test');
   await assert.rejects(semantic.generate({type:'project'}),error=>error.code==='no-novel-result');assert.equal((await store.all()).length,1);
 });
 test('unexpected directions are requested without using saved interests as a restrictive ranking',async()=>{
-  const {store}=await repo();let prompt;const service=new GenerationService(store,async request=>{prompt=request;return topic;},'test',()=>.9);
+  const {store}=await repo();let prompt;const service=new GenerationService(store,async request=>{if(request.name==='orbit_suggestion')prompt=request;return topic;},'test',()=>.9);
   await service.generate({type:'surprise'});assert.match(prompt.input.direction,/outside/);assert.equal(prompt.input.goal,'any');assert.match(prompt.instructions,/NEVER as a restrictive/);
 });
 test('Surprise cannot become workout/English, plans must match request and questions cannot be generic duplicate entries',async()=>{
@@ -227,6 +227,7 @@ test('CREATE remains open to physical and digital media; DIGITAL independently r
   const {store}=await repo();const prompts=[];let attempts=0,checks=0;
   const service=new GenerationService(store,async request=>{
     prompts.push(request);
+    if(request.name==='orbit_realism')return {realistic:true};
     if(request.name==='orbit_novelty')return {duplicate:false,digitalOnly:++checks>1};
     if(request.input.requestType==='project')return project;
     return ++attempts===1?{...digital,title:'Sensör oyunu',text:'Arduino devresiyle ses üreten bir fiziksel oyun cihazı yap.'}:digital;
@@ -234,7 +235,7 @@ test('CREATE remains open to physical and digital media; DIGITAL independently r
   assert.equal((await service.generateCreateIdea()).type,'project');
   const created=await service.generateDigitalProjectIdea();assert.equal(created.platform,'game');assert.equal(attempts,2);
   assert.match(prompts[0].instructions,/Digital ideas remain welcome/);
-  assert.match(prompts.find(p=>p.input.requestType==='digital_project').instructions,/ONLY a software project/);
+  assert.match(prompts.find(p=>p.input.requestType==='digital_project').instructions,/ONLY a small software tool/);
   assert.equal((await store.all()).length,2);
 });
 test('DIGITAL never falls back to physical concepts and validates platform labels',async()=>{
@@ -398,19 +399,18 @@ test('backup provider is opt-in: AI_FALLBACK plus the backup key, otherwise the 
 
 // ---- Rebuild v2: diversity seeds, memory, card schema, wilder mode, /api/ideas parameters ----
 const diversity=await import(url('../generation/diversity.ts'));
-const card={title:'Balkon sesi haritası',text:'Evinin etrafındaki sesleri üç noktadan kaydedip kısa bir ses haritası çıkar.',domain:'Ses',type:'project',kind:'MAKE',goal:'make',why:'Bildiğin mahalleyi sesle yeniden tanırsın.',first30:['Telefonu aç ve balkonda 60 saniye kayıt al.','Kaydı bir kâğıda üç kelimeyle etiketle.'],difficulty:'easy',duration:'~2 saat toplam',tag:'ses haritası'};
+const card={title:'Balkon sesi haritası',text:'Evinin etrafındaki sesleri üç noktadan kaydedip kısa bir ses haritası çıkar.',domain:'Ses',type:'project',kind:'MAKE',goal:'make',summary:'Evinin çevresindeki sesleri kaydedip kısa bir ses haritası yapacaksın.',why:'Bildiğin mahalleyi sesle yeniden tanırsın.',first30:['Telefonu aç ve balkonda 60 saniye kayıt al.','Kaydı bir kâğıda üç kelimeyle etiketle.'],difficulty:'easy',duration:'~2 saat toplam',tag:'ses haritası'};
 const quiet=request=>request.name==='orbit_novelty'?{duplicate:false}:card;
 const seed=(n,over={})=>({id:`seed-${n}`,title:`Eski fikir ${n}`,text:`Tamamen farklı eski metin sayı ${n} ${'x'.repeat(n)}`,domain:`Alan ${n}`,type:'project',kind:'MAKE',goal:'make',generatedAt:new Date(2026,0,1,0,n).toISOString(),model:'t',status:'generated',...over});
 const overlap=(a,b)=>{const t=v=>new Set(v.split(' ').filter(w=>w.length>3)),x=t(a),y=t(b);return [...x].filter(w=>y.has(w)).length/new Set([...x,...y]).size;};
 
-test('every Rebuild category has about 30 sub-areas, three lenses per request vary with server randomness and no list pulls toward the old',()=>{
+test('every Rebuild category has about 30 sub-areas, two plain lenses per request vary with server randomness and no list pulls toward the old',()=>{
   for(const [key,list] of Object.entries(diversity.SUBFIELDS)){assert.ok(list.length>=28&&list.length<=32,`${key}: ${list.length}`);assert.equal(new Set(list).size,list.length,key);}
   assert.equal(Object.keys(diversity.SUBFIELDS).length,10);
   const a=diversity.pickLenses(()=>0),b=diversity.pickLenses(()=>.99);
-  assert.equal(a.length,3);assert.notDeepEqual(a,b);assert.match(a[0],/^kısıt:/);assert.match(a[1],/^kişi\/durum:/);assert.match(a[2],/^iki alanı birleştir: .+ \+ .+/);
-  const [x,y]=a[2].replace('iki alanı birleştir: ','').split(' + ');assert.notEqual(x,y);
+  assert.equal(a.length,2);assert.notDeepEqual(a,b);assert.match(a[0],/^kısıt:/);assert.match(a[1],/^kişi[/]durum:/);assert.equal(diversity.FIELD_LENSES,undefined);
   const picked=diversity.pickSubfields('movement',['daily_life'],(()=>{let v=.1;return()=>(v=(v+.31)%1);})());assert.equal(picked.length,2);assert.notEqual(picked[0],picked[1]);picked.forEach(item=>assert.ok(diversity.SUBFIELDS.movement.includes(item)));
-  const all=JSON.stringify([diversity.SUBFIELDS,diversity.CONSTRAINT_LENSES,diversity.PERSON_LENSES,diversity.FIELD_LENSES]);
+  const all=JSON.stringify([diversity.SUBFIELDS,diversity.CONSTRAINT_LENSES,diversity.PERSON_LENSES]);
   assert.doesNotMatch(all,/antik|arkeoloji|antique|ancient|vintage/i);
 });
 
@@ -431,7 +431,7 @@ test('each request carries fresh seeds and memory as title+tag only: last 30, re
   assert.equal(first.input.history,undefined);
   assert.ok(first.input.memory.rejectedOrSkipped.some(item=>item.tag==='reddedilen etiket'));assert.equal(first.input.memory.rejectedOrSkipped.length,2);
   assert.deepEqual(first.input.memory.acceptedInterest.map(item=>item.tag),['kabul etiket']);
-  assert.equal(first.input.seed.lenses.length,3);assert.equal(first.input.seed.inspiration.length,2);first.input.seed.inspiration.forEach(item=>assert.ok(diversity.SUBFIELDS.daily_life.includes(item)));
+  assert.equal(first.input.seed.lenses.length,2);assert.equal(first.input.seed.inspiration.length,2);first.input.seed.inspiration.forEach(item=>assert.ok(diversity.SUBFIELDS.daily_life.includes(item)));
   assert.notDeepEqual(first.input.seed,second.input.seed);
 });
 
@@ -449,8 +449,8 @@ test('cards: schema asks for the new fields, valid fields are stored, a new-styl
   const service=new GenerationService(store,async request=>{calls.push(request);return quiet(request);},'test',()=>.8);
   const made=await service.generate({type:'project',category:'handmade',difficulty:'hard',mood:'tired',duration:'1h'});
   const props=calls[0].schema.properties;
-  for(const key of ['why','first30','difficulty','duration','tag'])assert.ok(props[key],key);
-  assert.equal(props.title.maxLength,60);assert.equal(props.why.maxLength,140);assert.equal(props.first30.maxItems,3);
+  for(const key of ['summary','why','first30','difficulty','duration','tag'])assert.ok(props[key],key);
+  assert.equal(props.title.maxLength,50);assert.equal(props.why.maxLength,120);assert.equal(props.summary.maxLength,120);assert.equal(props.first30.maxItems,3);
   assert.equal(made.category,'handmade');assert.equal(made.mood,'tired');assert.equal(made.difficulty,'hard');assert.equal(made.why,card.why);assert.deepEqual(made.first30,card.first30);assert.equal(made.tag,'ses haritası');
   assert.match(calls[0].instructions,/about one hour in total/);assert.match(calls[0].instructions,/Difficulty must be hard/);assert.match(calls[0].instructions,/tired/);
   assert.equal(calls[0].temperature,1.05);assert.equal(calls[0].topP,.95);
@@ -498,7 +498,7 @@ test('API: Rebuild categories pick the card type, new options are validated, wil
   let counter=0;
   globalThis.fetch=async(endpoint,options)=>{const body=JSON.parse(options.body),instructions=body.systemInstruction.parts[0].text;seen.push(body);counter++;const asked=JSON.parse(body.contents[0].parts[0].text);
     const wire=JSON.parse(instructions.slice(instructions.lastIndexOf('\n')+1));
-    const out=wire.properties.duplicate?{duplicate:false}:{...card,type:asked.requestType==='research'?'research':asked.requestType==='project'?'project':wire.properties.type.enum.length===1?wire.properties.type.enum[0]:'activity',goal:asked.requestType==='research'?'research':asked.requestType==='project'?'make':'social',kind:asked.requestType==='research'?'RESEARCH':'TRY',title:`Merdiven rekoru ${counter}`,text:`Apartman${counter} merdiveni${counter*31} üç turda çıkıp${counter*977} süreni rekoruna${counter*7} karşı tut.`,tag:'merdiven rekoru'};
+    const out=wire.properties.duplicate||wire.properties.realistic?{duplicate:false}:{...card,type:asked.requestType==='research'?'research':asked.requestType==='project'?'project':wire.properties.type.enum.length===1?wire.properties.type.enum[0]:'activity',goal:asked.requestType==='research'?'research':asked.requestType==='project'?'make':'social',kind:asked.requestType==='research'?'RESEARCH':'TRY',title:`Merdiven rekoru ${counter}`,text:`Apartman${counter} merdiveni${counter*31} üç turda çıkıp${counter*977} süreni rekoruna${counter*7} karşı tut.`,tag:'merdiven rekoru'};
     return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(out)}]}}]});};
   try{await authenticatedRequest.run({username:'v2'},async()=>{
     const ok=await api.POST(request({action:'generate',category:'movement',duration:'15m',difficulty:'easy',mood:'energetic'}));
@@ -632,5 +632,171 @@ test('Prompt Studio API end to end: a video request reaches Gemini with the stud
     assert.equal(res.status,200,JSON.stringify(payload));assert.equal(payload.idea.type,'video_prompt');assert.equal(payload.idea.video.kind,'ui_animation');assert.equal(payload.idea.video.timeline.length,2);assert.equal(payload.idea.targetModel,'sora');
     const sent=seen[0],instructions=sent.systemInstruction.parts[0].text;assert.match(instructions,/Format for Sora/);assert.equal(sent.generationConfig.temperature,1.15);
     const history=await (await api.GET(new Request('https://orbit.test/api/ideas?type=video_prompt'))).json();assert.equal(history.items.length,1);assert.equal(history.items[0].video.durationSec,10);
+  });}finally{globalThis.fetch=realFetch;for(const key of Object.keys(globalThis.__generationTestEnv))delete globalThis.__generationTestEnv[key];}
+});
+
+const badIdeas=[
+  {title:'Üç Hurda ve Üç Dakika: Masa Başı Mikro Tiyatrosu',text:'Çekmecedeki bozuk kulaklık ve kablolarla bir arkadaşınla üçer dakikalık doğaçlama sahneler oyna.'},
+  {title:'Kozmik Koku Seansı: Öğrenci Evi Tanışma Çemberi',text:'Ev arkadaşlarını topla, baharatları gök cisimleriyle eşleştirip gözü kapalı kokla.'},
+  {title:'Akşam yemeği',text:'Üç arkadaşını davet et ve birlikte yemek yapın.'},
+  {title:'Mahalle yürüyüşü',text:'Arkadaşlarınla mahallede yürüyüşe çık.'},
+];
+const goodIdeas=[
+  {title:'Mahalledeki yürüyüş grubuna katıl',text:'Bu hafta mahallendeki bir koşu ya da yürüyüş grubunun duyurusunu bul ve ilk buluşmaya git.',why:'Düzenli temas arkadaşlık getirir.',first30:['Grubun sayfasına bak ve kayıt ol.']},
+  {title:'Kütüphanede okuma kulübüne git',text:'Kütüphanenin okuma kulübü etkinliğine katıl.'},
+  {title:'Eski bir tanıdığa mesaj at',text:'Uzun zamandır konuşmadığın bir arkadaşına kısa bir mesaj yaz ve kahve teklif et.'},
+  {title:'Yazılım meetup’ına kayıt ol',text:'Şehrindeki bir meetup’a kayıt ol; gidince bir kişiye ne üzerinde çalıştığını sor.'},
+];
+test('realism filter flags friend-required, group and gimmick ideas but passes plain solo or low-threshold ones',()=>{
+  for(const idea of badIdeas)assert.ok(diversity.realismProblems(idea).length>0,idea.title);
+  assert.ok(diversity.realismProblems(badIdeas[0]).includes('friend-required'));assert.ok(diversity.realismProblems(badIdeas[0]).includes('gimmick'));assert.ok(diversity.realismProblems(badIdeas[0]).includes('title-colon'));
+  assert.ok(diversity.realismProblems(badIdeas[1]).includes('friend-required'));assert.ok(diversity.realismProblems(badIdeas[2]).includes('group-required'));
+  for(const idea of goodIdeas)assert.deepEqual(diversity.realismProblems(idea),[],idea.title);
+});
+
+test('social ladder starts easy and moves up with accepted social cards',()=>{
+  const accepted=n=>Array.from({length:n},(_,i)=>({id:String(i),type:'activity',category:'social_outdoor',status:'accepted'}));
+  assert.equal(diversity.pickSocialStep([],()=>.9),'medium');assert.equal(diversity.pickSocialStep([],()=>.1),'very_easy');
+  assert.equal(diversity.pickSocialStep(accepted(10),()=>.9),'advanced');assert.equal(diversity.pickSocialStep(accepted(10),()=>.05),'very_easy');
+  for(let i=0;i<50;i++)assert.notEqual(diversity.pickSocialStep([],()=>i/50),'advanced');
+});
+
+test('social requests carry the ladder step, no lenses and the realism prompt; unrealistic output is rejected and retried',async()=>{
+  const {store}=await repo('realism');const calls=[];let n=0;
+  const social={title:'Mahalledeki yürüyüş grubuna katıl',text:'Bu hafta mahallendeki bir koşu ya da yürüyüş grubunun buluşmasına git ve bir kişiyle tanış.',domain:'Topluluk',type:'activity',kind:'TRY',goal:'social',summary:'Bu hafta bir yürüyüş grubuna gidip bir kişiyle tanışacaksın.',why:'Düzenli temas arkadaşlık getirir.',first30:['Şehrindeki yürüyüş gruplarını ara ve birine kayıt ol.'],difficulty:'easy',duration:'~1 saat',tag:'yürüyüş grubu'};
+  const service=new GenerationService(store,async request=>{
+    calls.push(request);
+    if(request.name==='orbit_novelty')return {duplicate:false};
+    if(request.name==='orbit_realism')return {realistic:true,needsOthers:false,gimmick:false};
+    n++;
+    if(n===1)return {...social,title:'Kozmik Koku Seansı: Tanışma Çemberi',text:'Ev arkadaşlarını topla ve baharatları gök cisimleriyle eşleştir.'};
+    return social;
+  },'test',()=>.1);
+  const idea=await service.generate({type:'activity',category:'social_outdoor'});
+  assert.equal(idea.title,'Mahalledeki yürüyüş grubuna katıl');
+  const suggestions=calls.filter(c=>c.name==='orbit_suggestion');
+  assert.equal(suggestions.length,2);
+  assert.equal(suggestions[0].input.socialStep,'very_easy');assert.deepEqual(suggestions[0].input.seed.lenses,[]);
+  assert.equal(suggestions[0].input.previousAttemptRejected,undefined);assert.match(suggestions[1].input.previousAttemptRejected,/friend-required/);
+  assert.match(suggestions[0].instructions,/REALISM/);assert.match(suggestions[0].instructions,/Exposure ladder/);assert.match(suggestions[0].instructions,/never write "arkadaşınla"/);
+  assert.doesNotMatch(suggestions[0].instructions,/surprising|twice as strange|blend at least two/);
+});
+
+test('AI self-check rejects ideas that fail the ordinary-person test and the service gives up after three tries',async()=>{
+  const {store}=await repo('selfcheck');let checks=0;
+  const idea={title:'Balkonda sessiz kitap saati',text:'Akşam yarım saat balkonda telefonsuz kitap oku.',domain:'Günlük',type:'project',kind:'MAKE',goal:'make',summary:'Akşam yarım saat telefonsuz kitap okuyacaksın.',why:'Kısa molalarda dikkatini toplamayı öğrenirsin.',first30:['Bir kitap seç ve balkona çık.'],difficulty:'easy',duration:'~30 dk',tag:'sakin mola'};
+  const service=new GenerationService(store,async request=>{
+    if(request.name==='orbit_realism'){checks++;return {realistic:checks>1,needsOthers:false,gimmick:false};}
+    if(request.name==='orbit_novelty')return {duplicate:false};
+    return {...idea,title:`Balkonda kitap ${checks}`,text:`Akşam balkonda telefonsuz kitap oku sayı${checks*97} kesin${checks*31}`};
+  },'test');
+  const out=await service.generate({type:'project',category:'daily_life'});
+  assert.ok(out.id);assert.equal(checks,2);
+  const strict=new GenerationService((await repo('selfcheck2')).store,async request=>request.name==='orbit_realism'?{realistic:true,needsOthers:true,gimmick:false}:request.name==='orbit_novelty'?{duplicate:false}:idea,'test');
+  await assert.rejects(strict.generate({type:'project',category:'daily_life'}),/no-novel-result/);
+});
+
+test('research: concrete categories keep the old values, give the model topic hints, and a free topic is sanitized and passed as data',async()=>{
+  const engine=await import(engineUrl);const values=engine.RESEARCH_CATEGORIES.map(item=>item.value);
+  for(const old of ['surprise','science','technology','society','psychology','nature','arts','future','everyday'])assert.ok(values.includes(old),old);
+  for(const fresh of ['space','dinosaurs','history','ancient','mythology','body_health','brain_psychology','animals','ocean','physics_universe','ai','software_internet','design_typography','engineering_inventions','economy_money','entrepreneurship','philosophy','geography_countries','language_words','cinema_games','sport_science','food_science'])assert.ok(values.includes(fresh),fresh);
+  assert.equal(new Set(values).size,values.length);assert.equal(engine.RESEARCH_CATEGORIES.find(item=>item.value==='space').label,'Uzay & astronomi');
+  assert.equal(engine.sanitizeTopic('  kara\n delikler\t<b>x</b> '+'a'.repeat(100)).length<=80,true);assert.equal(engine.sanitizeTopic('  kara\n delikler  '),'kara delikler');assert.equal(engine.sanitizeTopic(42),'');assert.equal(engine.sanitizeTopic(undefined),'');
+  const {store}=await repo('topics');const calls=[];
+  const service=new GenerationService(store,async request=>{calls.push(request);return request.name==='orbit_novelty'?{duplicate:false}:{...(request.input.requestType==='project'?project:topic),title:`Konu ${calls.length}`,text:`Soru${calls.length*131} nedir ve neden${calls.length*977} önemlidir`,why:'Konuyu sohbette anlatmayı öğrenirsin.',first30:['Bir makale aç.'],tag:'merak'};},'test');
+  await service.generate({type:'research',category:'space'});await service.generate({type:'research',category:'surprise',topic:'  Kara\n delikler '});await service.generate({type:'project',topic:'kara delikler'});
+  const [spaceCall,topicCall,projectCall]=calls.filter(c=>c.name==='orbit_suggestion');
+  assert.match(spaceCall.instructions,/Uzay & astronomi/);assert.match(spaceCall.instructions,/black holes/);assert.deepEqual(spaceCall.input.seed.inspiration,[]);assert.equal(spaceCall.input.topic,undefined);
+  assert.equal(topicCall.input.topic,'Kara delikler');assert.match(topicCall.instructions,/free topic/);assert.deepEqual(topicCall.input.seed.inspiration,[]);
+  assert.equal(projectCall.input.topic,undefined);assert.match(spaceCall.instructions,/REALISM/);assert.match(spaceCall.instructions,/no colon subtitles/);
+});
+
+test('generation lock: per user and kind, freed after errors and aborts, taken over once the old request is stale',async()=>{
+  const {store}=await repo('locks');const realNow=Date.now;let clock=realNow();Date.now=()=>clock;
+  try{
+    assert.equal(await store.acquire('r1','research'),true);
+    assert.equal(await store.acquire('p1','project'),true);assert.equal(await store.acquire('r2','research'),false);
+    clock+=14_000;assert.equal(await store.acquire('r2','research'),false);
+    clock+=2_000;assert.equal(await store.acquire('r3','research'),true);
+    await store.release('r1','research');assert.equal(await store.acquire('r4','research'),false);
+    await store.release('r3','research');assert.equal(await store.acquire('r5','research'),true);
+    clock+=101_000;assert.equal(await store.acquire('r6','research'),true);
+  }finally{Date.now=realNow;}
+});
+
+test('API: a failed research generation frees the lock, so the next request is not answered with "already running"',async()=>{
+  const realFetch=globalThis.fetch;let fail=true,n=0;
+  globalThis.__generationTestDb=database();Object.assign(globalThis.__generationTestEnv,{GEMINI_API_KEY:'test-key'});
+  globalThis.fetch=async(endpoint,options)=>{if(fail)throw new Error('network down');const body=JSON.parse(options.body),instructions=body.systemInstruction.parts[0].text,wire=JSON.parse(instructions.slice(instructions.lastIndexOf('\n')+1));
+    const out=wire.properties.duplicate||wire.properties.realistic?{duplicate:false}:{...card,type:'research',goal:'research',kind:'RESEARCH',title:'Kara delik '+(++n),text:'Kara delikler '+n*7331+' ışığı '+n*9113+' yakalar '+n*3137+' görürüz '+n*5419+' sorusu '+n*1277,domain:'Uzay'};
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(out)}]}}]});};
+  try{await authenticatedRequest.run({username:'lockuser'},async()=>{
+    const first=await api.POST(request({action:'generate',type:'research',category:'space',topic:'kara delikler'}));assert.notEqual(first.status,200);assert.notEqual((await first.json()).code,'generation-in-progress');
+    fail=false;
+    const second=await api.POST(request({action:'generate',type:'research',category:'space',topic:'kara delikler'}));const payload=await second.json();assert.equal(second.status,200,JSON.stringify(payload));assert.equal(payload.idea.type,'research');
+    assert.equal((await api.POST(request({action:'generate',type:'research',topic:42}))).status,400);
+    {const third=await api.POST(request({action:'generate',type:'research',category:'space'}));assert.equal(third.status,200,JSON.stringify(await third.json()));}
+  });}finally{globalThis.fetch=realFetch;for(const key of Object.keys(globalThis.__generationTestEnv))delete globalThis.__generationTestEnv[key];}
+});
+
+test('culture categories come right after Karışık and keep every older value',async()=>{
+  const {RESEARCH_CATEGORIES}=await import(engineUrl),values=RESEARCH_CATEGORIES.map(item=>item.value);
+  assert.deepEqual(values.slice(0,9),['surprise','culture_general','literature','music','art_history','traditions','world_cultures','turkish_culture','space']);
+  assert.deepEqual(RESEARCH_CATEGORIES.slice(1,8).map(item=>item.label),['Genel kültür','Edebiyat & kitaplar','Müzik','Sanat tarihi & akımlar','Gelenekler & festivaller','Dünya kültürleri','Türk kültürü & tarihi']);
+  for(const old of ['science','technology','society','psychology','nature','arts','future','everyday'])assert.ok(values.includes(old),old);
+  const {store}=await repo('culture');let seen;
+  await new GenerationService(store,async request=>{if(request.name==='orbit_suggestion')seen=request;return request.name==='orbit_novelty'?{duplicate:false}:{...topic,summary:'Müziğin nasıl doğduğunu öğreneceksin.',why:'Sohbette anlatılır.',first30:['Bir parça dinle.']};},'test').generate({type:'research',category:'music'});
+  assert.match(seen.instructions,/famous composers/);assert.match(seen.instructions,/Müzik/);
+});
+
+test('short cards: summary is stored, over-long text is cut at a sentence or regenerated, the realism filter covers digital gimmicks',async()=>{
+  const ok={...card,summary:'Evinin seslerini kaydedip küçük bir harita yapacaksın.',text:'Birinci cümle kısa ve açık. İkinci cümle de kısa. Üçüncü cümle fazla olduğu için kesilir.'};
+  const {store}=await repo('short');
+  const made=await new GenerationService(store,async request=>request.name==='orbit_novelty'?{duplicate:false}:ok,'test',()=>.8).generate({type:'project',category:'daily_life'});
+  assert.equal(made.summary,ok.summary);assert.equal(made.text,'Birinci cümle kısa ve açık. İkinci cümle de kısa.');assert.ok(made.title.length<=50);
+  let calls=0;const long={...ok,text:'Bu tek cümle çok uzun olduğu için hiçbir yerden güvenle kesilemez '.repeat(6)+'.'};
+  await assert.rejects(new GenerationService((await repo('short2')).store,async()=>{calls++;return long;},'test',()=>.8).generate({type:'project',category:'daily_life'}),/invalid-card/);assert.equal(calls,3);
+  const longSummary={...ok,summary:'Çok uzun bir özet cümlesi '.repeat(8)};calls=0;
+  await assert.rejects(new GenerationService((await repo('short3')).store,async()=>{calls++;return longSummary;},'test',()=>.8).generate({type:'project',category:'daily_life'}),/invalid-card/);
+  for(const bad of [{title:'Ruh Haline Göre Işık Enstalasyonu',text:'Metaforik bir interaktif deneyim kur.'},{title:'Oyunlaştırılmış çamaşır günü',text:'Çamaşırı oyunlaştır.'},{title:'Sanal evren kur',text:'Kendi sanal evrenini yap.'}])assert.ok(diversity.realismProblems(bad).includes('gimmick'),bad.title);
+  assert.deepEqual(diversity.realismProblems({title:'Aboneliklerini listeleyen web aracı',text:'Aylık aboneliklerini tek sayfada toplayan küçük bir araç yaz.'}),[]);
+  const digital={...ok,type:'digital_project',kind:'BUILD',goal:'make',platform:'web_app'};let prompt;
+  await new GenerationService((await repo('short4')).store,async request=>{if(request.name==='orbit_suggestion')prompt=request;return request.name==='orbit_novelty'?{duplicate:false,digitalOnly:true}:digital;},'test',()=>.8).generate({type:'digital_project',platform:'web_app'});
+  assert.match(prompt.instructions,/ONE person/);assert.match(prompt.instructions,/Aylık aboneliklerini listeleyen tek sayfalık web aracı/);assert.match(prompt.instructions,/No metaphor/);
+  assert.equal(prompt.schema.properties.summary.maxLength,120);assert.equal(prompt.schema.properties.first30.items.maxLength,80);assert.equal(prompt.schema.properties.text.maxLength,240);
+});
+
+const electronics={title:'Bitki sulama uyarısı',summary:'Hazır kit ile bitkin susayınca ışık yakan bir devre kuracaksın.',text:'Hazır kitteki nem sensörünü Arduino’ya bağla. Kodu AI’a yazdır, toprak kuruyunca LED yansın.',domain:'Elektronik',type:'project',kind:'BUILD',goal:'make',why:'Hazır kit ile bir devre kurmayı ve AI ile kod yazdırmayı öğrenirsin.',first30:['Sensörü Arduino analog girişine bağla.','Değeri seri monitörde oku.'],difficulty:'easy',duration:'~3 saat toplam',tag:'nem sensörü'};
+test('prefs: sanitized, passed as data, avoid areas never reach the user, learning outcome is mandatory, electronics is multidisciplinary',async()=>{
+  const engine=await import(engineUrl);
+  assert.deepEqual(engine.sanitizePrefs({likes:[' fizik ','Matematik','fizik','x'.repeat(50),42,'<b>biyoloji</b>',...Array(10).fill(0).map((_,i)=>'ilgi'+i)],avoid:['kimya'],level:'beginner'}),{likes:['fizik','Matematik','x'.repeat(30),'b biyoloji /b','ilgi0','ilgi1','ilgi2','ilgi3'],avoid:['kimya'],level:'beginner'});
+  assert.equal(engine.sanitizePrefs({level:'expert'}),undefined);assert.equal(engine.sanitizePrefs('x'),undefined);assert.equal(engine.sanitizePrefs([]),undefined);assert.deepEqual(engine.sanitizePrefs({avoid:[],level:'advanced'}),{level:'advanced'});
+  for(const bad of ['Kimyasal reaksiyonla pil yap','Asit ile paslanma deneyi','Molekül modeli kur'])assert.ok(diversity.realismProblems({title:bad,text:'Kısa bir metin.'},{avoid:['kimya']}).includes('avoided-topic'),bad);
+  assert.deepEqual(diversity.realismProblems({title:'Sarkaç periyodunu ölç',text:'Bir ip ve telefonla sarkacın periyodunu ölç.'},{avoid:['kimya']}),[]);
+  assert.ok(diversity.realismProblems({title:'Sensör devresi',text:'Devre kur.',why:'Eğlenceli bir iş.'},{learning:true}).includes('vague-learning'));
+  assert.deepEqual(diversity.realismProblems({title:'Sensör devresi',text:'Devre kur.',why:'Ohm yasasını öğrenirsin.'},{learning:true}),[]);
+  const {store}=await repo('prefs');const calls=[];let n=0;
+  const service=new GenerationService(store,async request=>{calls.push(request);if(request.name==='orbit_novelty')return {duplicate:false};if(request.name==='orbit_realism')return {realistic:true};n++;
+    return n===1?{...electronics,title:'Kimyasal pil devresi',text:'Asitli bir pil yapıp devreye bağla.'}:n===2?{...electronics,why:'Eğlenceli bir iş olur.',text:'Sensör devresi kur '+n*7919+' ve '+n*104729+' dene '+n*1299709}:{...electronics,text:'Sensörü oku '+n*15485863+' ve '+n*32452843+' ışığı yak '+n*49979687};},'test',()=>.5);
+  const made=await service.generate({type:'project',category:'electronics',prefs:{likes:['fizik','matematik'],avoid:['kimya'],level:'beginner'}});
+  const asks=calls.filter(c=>c.name==='orbit_suggestion');
+  assert.equal(asks.length,3);assert.deepEqual(asks[0].input.prefs,{likes:['fizik','matematik'],avoid:['kimya'],level:'beginner'});
+  assert.match(asks[0].instructions,/NEVER use, mention or touch any area in avoid/);assert.match(asks[0].instructions,/beginner level/);assert.match(asks[0].instructions,/multidisciplinary/);assert.match(asks[0].instructions,/ready-made starter kit/);assert.match(asks[0].instructions,/default is BEGINNER/);assert.match(asks[0].instructions,/AI-ASSISTED MAKING/);assert.doesNotMatch(asks[0].instructions,/Ohm|PWM|voltage divider/);assert.match(asks[0].instructions,/Sana katacağı/);
+  assert.match(asks[1].input.previousAttemptRejected,/avoided-topic/);assert.match(asks[2].input.previousAttemptRejected,/vague-learning/);
+  assert.equal(made.why,electronics.why);
+  const review=calls.find(c=>c.name==='orbit_realism');assert.deepEqual(review.input.avoid,['kimya']);assert.ok(review.schema.properties.violatesAvoid);
+  const viol=new GenerationService((await repo('prefs2')).store,async request=>request.name==='orbit_realism'?{violatesAvoid:true}:request.name==='orbit_novelty'?{duplicate:false}:electronics,'test',()=>.5);
+  await assert.rejects(viol.generate({type:'project',category:'electronics',prefs:{avoid:['kimya']}}),/no-novel-result/);
+  const none=[];await new GenerationService((await repo('prefs3')).store,async request=>{none.push(request);return request.name==='orbit_novelty'?{duplicate:false}:electronics;},'test',()=>.5).generate({type:'project',category:'electronics'});
+  assert.equal(none.find(c=>c.name==='orbit_suggestion').input.prefs,undefined);
+});
+test('API: prefs must be an object; garbage inside is dropped',async()=>{
+  const realFetch=globalThis.fetch,seen=[];globalThis.__generationTestDb=database();Object.assign(globalThis.__generationTestEnv,{GEMINI_API_KEY:'test-key'});
+  globalThis.fetch=async(endpoint,options)=>{const body=JSON.parse(options.body),instructions=body.systemInstruction.parts[0].text,wire=JSON.parse(instructions.slice(instructions.lastIndexOf('\n')+1));seen.push(body);
+    return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(wire.properties.duplicate||wire.properties.realistic?{duplicate:false}:electronics)}]}}]});};
+  try{await authenticatedRequest.run({username:'prefsuser'},async()=>{
+    assert.equal((await api.POST(request({action:'generate',type:'project',prefs:'kimya'}))).status,400);assert.equal((await api.POST(request({action:'generate',type:'project',prefs:['kimya']}))).status,400);
+    const ok=await api.POST(request({action:'generate',type:'project',category:'electronics',prefs:{avoid:['kimya',7],level:'bogus'}}));assert.equal(ok.status,200,JSON.stringify(await ok.clone().json()));
+    assert.ok(seen[0].contents[0].parts[0].text.includes('"prefs":{"avoid":["kimya"]}'));
   });}finally{globalThis.fetch=realFetch;for(const key of Object.keys(globalThis.__generationTestEnv))delete globalThis.__generationTestEnv[key];}
 });

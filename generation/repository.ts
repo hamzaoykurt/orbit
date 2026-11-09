@@ -1,6 +1,7 @@
 import type { GeneratedIdea, SuggestionType } from '../app/rebuild/idea-engine';
 import { GENERATION_SCHEMA } from './schema';
 
+export const LOCK_TTL_MS = 100_000, LOCK_TAKEOVER_MS = 15_000;
 export class GenerationRepository {
   constructor(private db: D1Database, private owner: string) {}
   async ensure() { for (const sql of GENERATION_SCHEMA) await this.db.prepare(sql).run(); }
@@ -34,13 +35,18 @@ export class GenerationRepository {
   async decision(id: string, status: 'skipped' | 'rejected') {
     await this.db.prepare("UPDATE orbit_generation_history SET status = ? WHERE owner = ? AND id = ? AND status != 'accepted'").bind(status, this.owner, id).run();
   }
-  async acquire(token: string) {
+  // One lock per owner AND kind (a stuck research request must not block a project request). The lease is only a little
+  // longer than the request budget (95 s in the route). A same-kind request that arrives after LOCK_TAKEOVER_MS takes the
+  // lock over: the client only starts a new request after abandoning the old one, so waiting out the lease helps nobody.
+  // The old request's release() then no-ops because its token no longer matches.
+  private lockKey(kind?: string) { return kind ? `${this.owner}|${kind}` : this.owner; }
+  async acquire(token: string, kind?: string) {
     const now = Date.now();
     const result = await this.db.prepare(`INSERT INTO orbit_generation_locks(owner, token, expires_at) VALUES (?, ?, ?)
-      ON CONFLICT(owner) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at WHERE orbit_generation_locks.expires_at < ?`).bind(this.owner, token, now + 120_000, now).run();
+      ON CONFLICT(owner) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at WHERE orbit_generation_locks.expires_at < ?`).bind(this.lockKey(kind), token, now + LOCK_TTL_MS, now + LOCK_TTL_MS - LOCK_TAKEOVER_MS).run();
     return result.meta.changes === 1;
   }
-  async release(token: string) { await this.db.prepare('DELETE FROM orbit_generation_locks WHERE owner = ? AND token = ?').bind(this.owner, token).run(); }
+  async release(token: string, kind?: string) { await this.db.prepare('DELETE FROM orbit_generation_locks WHERE owner = ? AND token = ?').bind(this.lockKey(kind), token).run(); }
   async allowRequest() {
     const window = Math.floor(Date.now() / 60_000);
     const result = await this.db.prepare(`INSERT INTO orbit_generation_limits(owner, window, attempts) VALUES (?, ?, 1)
