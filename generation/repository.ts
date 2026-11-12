@@ -47,11 +47,11 @@ export class GenerationRepository {
     return result.meta.changes === 1;
   }
   async release(token: string, kind?: string) { await this.db.prepare('DELETE FROM orbit_generation_locks WHERE owner = ? AND token = ?').bind(this.lockKey(kind), token).run(); }
-  async allowRequest() {
+  async allowRequest(max = 20) {
     const window = Math.floor(Date.now() / 60_000);
     const result = await this.db.prepare(`INSERT INTO orbit_generation_limits(owner, window, attempts) VALUES (?, ?, 1)
       ON CONFLICT(owner) DO UPDATE SET window = excluded.window, attempts = CASE WHEN orbit_generation_limits.window = excluded.window THEN orbit_generation_limits.attempts + 1 ELSE 1 END
-      WHERE orbit_generation_limits.window != excluded.window OR orbit_generation_limits.attempts < 20`).bind(this.owner, window).run();
+      WHERE orbit_generation_limits.window != excluded.window OR orbit_generation_limits.attempts < ?`).bind(this.owner, window, max).run();
     return result.meta.changes === 1;
   }
 }
