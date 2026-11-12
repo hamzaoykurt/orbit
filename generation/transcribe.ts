@@ -3,6 +3,9 @@ import type { ProviderBindings } from './provider';
 
 // Speech-to-text for the native app: raw audio in, plain Turkish text out. Audio is user data, never stored or logged.
 export const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+// WAV (16 kHz mono PCM16, about 32 KB/s) is about 9.6 MB for 5 min, and its length is checked exactly from the header.
+export const MAX_WAV_BYTES = 10 * 1024 * 1024;
+export const maxBytesFor = (mime: string) => (mime === 'audio/wav' ? MAX_WAV_BYTES : MAX_AUDIO_BYTES);
 export const MAX_AUDIO_SECONDS = 300;
 export const AUDIO_TYPES = ['audio/mp4', 'audio/aac', 'audio/wav', 'audio/ogg', 'audio/webm'] as const;
 

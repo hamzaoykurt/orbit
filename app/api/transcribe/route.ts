@@ -4,12 +4,12 @@ import { getDatabase } from '../../../db/client';
 import { GenerationRepository } from '../../../generation/repository';
 import type { ProviderBindings } from '../../../generation/provider';
 import { providerFailureCode, providerFailureMessage } from '../../../generation/provider-errors';
-import { AUDIO_TYPES, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, transcribeAudio, wavSeconds } from '../../../generation/transcribe';
+import { AUDIO_TYPES, MAX_AUDIO_SECONDS, maxBytesFor, transcribeAudio, wavSeconds } from '../../../generation/transcribe';
 export const dynamic = 'force-dynamic';
 
 const PER_MINUTE = 10;
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
-const tooBig = () => json({ error: 'Ses kaydı çok uzun veya büyük. En fazla 5 dakika ve 8 MB olabilir.' }, 413);
+const tooBig = () => json({ error: 'Ses kaydı çok uzun veya büyük. En fazla 5 dakika olabilir (WAV en çok 10 MB, diğer biçimler 8 MB).' }, 413);
 
 // POST /api/transcribe: raw audio body, `?lang=tr` (default), `?hint=` (up to 80 chars). Answers {text}. Nothing is stored or logged.
 export async function POST(request: Request) {
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const lang = params.get('lang') ?? 'tr';
   if (!/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(lang)) return json({ error: 'Geçersiz dil kodu.' }, 400);
   const hint = (params.get('hint') ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 80);
-  if (Number(request.headers.get('content-length') ?? 0) > MAX_AUDIO_BYTES) return tooBig();
+  if (Number(request.headers.get('content-length') ?? 0) > maxBytesFor(mime)) return tooBig();
 
   try {
     const limiter = new GenerationRepository(getDatabase(), `transcribe|${owner}`);
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         const { value, done } = await reader.read();
         if (done) break;
         size += value.byteLength;
-        if (size > MAX_AUDIO_BYTES) { await reader.cancel(); return tooBig(); }
+        if (size > maxBytesFor(mime)) { await reader.cancel(); return tooBig(); }
         chunks.push(value);
       }
     } catch { return json({ error: 'Ses kaydı okunamadı. Tekrar dene.' }, 400); }

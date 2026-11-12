@@ -58,6 +58,10 @@ test('413 when the body is over 8 MB (declared or streamed) or a WAV is longer t
   const stream = new ReadableStream({ start(controller) { for (let i = 0; i < 9; i++) controller.enqueue(new Uint8Array(1024 * 1024)); controller.close(); } });
   const streamed = await authenticatedRequest.run({ username: 'owner', bearer: true }, () => route.POST(new Request('https://orbit.test/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'audio/aac' }, body: stream, duplex: 'half' })));
   assert.equal(streamed.status, 413);
+  // WAV gets 10 MB: 9.5 MB of WAV passes the size cap (and is under 5 min), 10 MB + 1 does not.
+  globalThis.fetch = async () => gemini('ok');
+  assert.equal((await call(new Uint8Array(9.5 * 1024 * 1024), { type: 'audio/wav' })).status, 200);
+  assert.equal((await call(new Uint8Array(10 * 1024 * 1024 + 1), { type: 'audio/wav' })).status, 413);
   // 16 kHz mono 16-bit = 32000 bytes/s: 301 s of data is over the limit, 10 s is fine.
   const wav = (seconds) => { const data = 32000 * seconds, out = Buffer.alloc(44 + data); out.write('RIFF', 0); out.writeUInt32LE(36 + data, 4); out.write('WAVEfmt ', 8); out.writeUInt32LE(16, 16); out.writeUInt16LE(1, 20); out.writeUInt16LE(1, 22); out.writeUInt32LE(16000, 24); out.writeUInt32LE(32000, 28); out.writeUInt16LE(2, 32); out.writeUInt16LE(16, 34); out.write('data', 36); out.writeUInt32LE(data, 40); return out; };
   assert.equal((await call(wav(301), { type: 'audio/wav' })).status, 413);
