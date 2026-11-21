@@ -71,6 +71,11 @@ function legAllowed(client: string) {
   if (!hit || hit.resetAt <= at) { legHits.set(client, { count: 1, resetAt: at + LEG_WINDOW_MS }); return true; }
   return ++hit.count <= LEG_LIMIT;
 }
+// The browser interface is closed unless ORBIT_WEB_LOGIN=on: the native app (Bearer token) is the only
+// client. With it off there is no web sign-in and cookie sessions open nothing; app tokens, the
+// sessionless Google Calendar legs and the ProFitness machine routes are unchanged.
+export const webLoginEnabled = (env: Cloudflare.Env) => (env as { ORBIT_WEB_LOGIN?: string }).ORBIT_WEB_LOGIN?.trim().toLowerCase() === 'on';
+const WEB_CLOSED = 'Web arayüzü kapalı. Orbit’i uygulamadan kullan.';
 type Next = () => Promise<Response>;
 const seconds = () => Math.floor(Date.now() / 1000);
 const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
@@ -272,8 +277,10 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
       return secureResponse(url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/token') ? Response.json({ error }, { status: 503 }) : loginPage({ configured: false, status: 503, error }));
     }
     const version = await hash(`${env.ORBIT_AUTH_USERNAME}:${env.ORBIT_AUTH_PASSWORD_HASH}`);
+    const webOpen = webLoginEnabled(env);
     if (url.pathname === '/auth/login') {
       if (request.method !== 'POST') return secureResponse(new Response(null, { status: 405, headers: { Allow: 'POST' } }));
+      if (!webOpen) return secureResponse(loginPage({ closed: true, status: 403, error: WEB_CLOSED }));
       return secureResponse(await login(request, env, version));
     }
     if (url.pathname === '/auth/token') {
@@ -311,7 +318,8 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
     const withState = request.method === 'GET' && url.pathname === '/api/state';
     let session: Session | null = null;
     let stateRow: unknown;
-    const sessionHash = bearerMode ? bearerHash : tokenHash;
+    // Web closed: a browser cookie is never looked up, so existing web sessions open nothing.
+    const sessionHash = bearerMode ? bearerHash : webOpen ? tokenHash : null;
     if (sessionHash) {
       const lookupStart = Date.now();
       // Reads may reuse a lookup that is at most a few seconds old (session-cache.ts);
@@ -324,6 +332,7 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
     }
     if (url.pathname === '/login') {
       if (!['GET', 'HEAD'].includes(request.method)) return secureResponse(new Response(null, { status: 405 }));
+      if (!webOpen) return secureResponse(loginPage({ closed: true }), token ? [cookie(request, '', false, true), expiryMark(request, 0, false, true)] : undefined);
       return secureResponse(session ? redirect(safeNext(url.searchParams.get('next'))) : loginPage({ next: safeNext(url.searchParams.get('next')) }));
     }
     if (!session && !bearerMode && appOAuthLeg(request, url)) {
@@ -334,7 +343,13 @@ async function authenticate(request: Request, env: Cloudflare.Env, next: Next, t
     }
     if (!session) {
       const isPage = request.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/auth/') && !request.headers.has('rsc') && !url.searchParams.has('_rsc') && (request.headers.get('accept')?.includes('text/html') || url.pathname === '/');
-      return secureResponse(isPage ? redirect(`/login${url.pathname === '/' && !url.search ? '' : `?next=${encodeURIComponent(safeNext(url.pathname + url.search))}`}`) : unauthorized());
+      const denied = isPage ? redirect(`/login${url.pathname === '/' && !url.search ? '' : `?next=${encodeURIComponent(safeNext(url.pathname + url.search))}`}`) : unauthorized();
+      // A browser that still holds a web session drops it, its cached app shell and its local copy.
+      if (!webOpen && token && !bearerMode && isPage) {
+        denied.headers.set('Clear-Site-Data', '"cache", "storage"');
+        return secureResponse(denied, [cookie(request, '', false, true), expiryMark(request, 0, false, true)]);
+      }
+      return secureResponse(denied);
     }
     // CSRF is a cookie problem: a Bearer token is attached by hand, never by the browser.
     if (!bearerMode && !['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !sameOrigin(request)) return secureResponse(new Response('Geçersiz istek kaynağı.', { status: 403 }));

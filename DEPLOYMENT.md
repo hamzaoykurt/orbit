@@ -57,6 +57,8 @@ Media is never public. Uploads and reads pass through `/api/project-media`, requ
 
 ## Private access and remembered devices
 
+**Web interface closed by default.** Unless the Worker variable `ORBIT_WEB_LOGIN=on` is set, the browser form (`/auth/login`) refuses every sign-in, `/login` shows a notice instead of a form, and cookie sessions open nothing (a browser that still has one is sent to `/login` and its cookie, app shell and local copy are cleared). The native app is unaffected: `POST /auth/token`, Bearer requests to every API, `/auth/token/revoke` and the sessionless Google Calendar `connect`/`callback` legs work as before. To reopen the web interface without a deploy, add `ORBIT_WEB_LOGIN=on` as a plain-text variable on `personalos`.
+
 The Worker entry point (`worker/index.ts`) authenticates all pages, APIs, RSC responses and application assets. Keep `assets.run_worker_first: true`; disabling it exposes client bundles containing personal defaults. Only the login page, service worker and explicitly listed generic icons/manifest are public. API routes also require the server's authenticated request context; client identity headers are never trusted.
 
 Before the first authenticated deployment:

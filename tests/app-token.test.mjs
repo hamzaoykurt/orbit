@@ -37,7 +37,7 @@ before(async () => {
   });
   mf = new Miniflare({
     modules: true, script: bundle.outputFiles[0].text, compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'], d1Databases: ['DB'],
-    bindings: { ORBIT_AUTH_USERNAME: 'emir', ORBIT_AUTH_PASSWORD_HASH: passwordHash, GOOGLE_OAUTH_CLIENT_ID: 'test-client', GOOGLE_OAUTH_CLIENT_SECRET: 'test-secret', GOOGLE_TOKEN_ENCRYPTION_KEY: stateKey },
+    bindings: { ORBIT_WEB_LOGIN: 'on', ORBIT_AUTH_USERNAME: 'emir', ORBIT_AUTH_PASSWORD_HASH: passwordHash, GOOGLE_OAUTH_CLIENT_ID: 'test-client', GOOGLE_OAUTH_CLIENT_SECRET: 'test-secret', GOOGLE_TOKEN_ENCRYPTION_KEY: stateKey },
     outboundService: async fake => {
       const url = new URL(fake.url);
       if (url.pathname.startsWith('/calendar/v3/')) {

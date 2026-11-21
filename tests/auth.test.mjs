@@ -17,7 +17,7 @@ before(async () => {
       export default {fetch(request,env){env.ASSETS={fetch:async()=>new Response('public-icon')};return withAuthentication(request,env,async()=>Response.json({private:true,user:authenticatedUser()}))}};`, resolveDir: process.cwd(), loader: 'ts' },
     platform: 'node', format: 'esm', bundle: true, write: false,
   });
-  mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text, compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'], d1Databases: ['DB'], bindings: { ORBIT_AUTH_USERNAME: 'emir', ORBIT_AUTH_PASSWORD_HASH: passwordHash } });
+  mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text, compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'], d1Databases: ['DB'], bindings: { ORBIT_WEB_LOGIN: 'on', ORBIT_AUTH_USERNAME: 'emir', ORBIT_AUTH_PASSWORD_HASH: passwordHash } });
   database = await mf.getD1Database('DB');
   await database.batch(readFileSync(new URL('../migrations/0002_auth.sql', import.meta.url), 'utf8').split(';').map(query => query.trim()).filter(Boolean).map(query => database.prepare(query)));
 });
