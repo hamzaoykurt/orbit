@@ -151,7 +151,7 @@ before(async () => {
     platform: 'node', format: 'esm', bundle: true, write: false,
   });
   mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text, compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'], d1Databases: ['DB'],
-    bindings: { ORBIT_AUTH_USERNAME: 'emir', ORBIT_AUTH_PASSWORD_HASH: passwordHash, ORBIT_SESSION_CACHE_SECONDS: '3' } });
+    bindings: { ORBIT_WEB_LOGIN: 'on', ORBIT_AUTH_USERNAME: 'emir', ORBIT_AUTH_PASSWORD_HASH: passwordHash, ORBIT_SESSION_CACHE_SECONDS: '3' } });
   db = await mf.getD1Database('DB');
   await db.batch([...sql('0001_orbit_state.sql'), ...sql('0002_auth.sql')].map(q => db.prepare(q)));
   await db.prepare("INSERT INTO orbit_state (workspace_id, state_json, revision) VALUES ('orbit-personal-os', '{\"hello\":1}', 4)").run();
